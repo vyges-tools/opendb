@@ -18,10 +18,22 @@ fn registry_is_populated() {
 fn registry_covers_the_new_target_classes() {
     use std::collections::HashSet;
     let classes: HashSet<&str> = registry::FIELDS.iter().map(|f| f.class).collect();
-    // hierarchy / grouping / region + index-addressed blockage / track-grid
-    for c in ["dbModule", "dbGroup", "dbRegion", "dbBlockage", "dbTrackGrid"] {
+    // hierarchy / grouping / region + index-addressed blockage / track-grid + DRC markers
+    for c in ["dbModule", "dbGroup", "dbRegion", "dbBlockage", "dbTrackGrid",
+              "dbMarkerCategory", "dbMarker"] {
         assert!(classes.contains(c), "{c} should be exposed in the registry");
     }
+}
+
+#[test]
+fn registry_marker_reads_are_graceful_when_absent() {
+    // the clean fixture has no DRC markers; reads over a missing category must return typed
+    // defaults (0 / ""), never panic — instrumentation must survive an empty design.
+    let db = Db::open(FIXTURE).unwrap();
+    let n = registry::get(&db, "dbMarkerCategory", "get_marker_count", &["nope".into()]).unwrap();
+    assert_eq!(n, serde_json::json!(0));
+    let name = registry::get(&db, "dbMarker", "get_name", &["nope".into(), "0".into()]).unwrap();
+    assert_eq!(name, serde_json::json!(""));
 }
 
 #[test]

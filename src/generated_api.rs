@@ -446,4 +446,26 @@ impl Db {
     pub fn trackgrid_get_block(&self, idx: usize) -> String { sys::trackgrid_get_block(self.r(), idx) }
     pub fn trackgrid_get_num_grid_patterns_x(&self, idx: usize) -> i32 { sys::trackgrid_get_num_grid_patterns_x(self.r(), idx) }
     pub fn trackgrid_get_num_grid_patterns_y(&self, idx: usize) -> i32 { sys::trackgrid_get_num_grid_patterns_y(self.r(), idx) }
+    pub fn marker_cat_get_name(&self, category: &str) -> String { sys::marker_cat_get_name(self.r(), category) }
+    pub fn marker_cat_get_description(&self, category: &str) -> String { sys::marker_cat_get_description(self.r(), category) }
+    pub fn marker_cat_get_max_markers(&self, category: &str) -> i32 { sys::marker_cat_get_max_markers(self.r(), category) }
+    pub fn marker_cat_get_markers(&self, category: &str) -> Vec<String> { (0..sys::num_marker_cat_get_markers(self.r(), category)).map(|i| sys::nth_marker_cat_get_markers(self.r(), category, i)).collect() }
+    pub fn marker_cat_get_marker_categories(&self, category: &str) -> Vec<String> { (0..sys::num_marker_cat_get_marker_categories(self.r(), category)).map(|i| sys::nth_marker_cat_get_marker_categories(self.r(), category, i)).collect() }
+    pub fn marker_cat_get_top_category(&self, category: &str) -> String { sys::marker_cat_get_top_category(self.r(), category) }
+    pub fn marker_cat_get_source(&self, category: &str) -> String { sys::marker_cat_get_source(self.r(), category) }
+    pub fn marker_cat_get_marker_count(&self, category: &str) -> i32 { sys::marker_cat_get_marker_count(self.r(), category) }
+    pub fn marker_get_comment(&self, category: &str, idx: usize) -> String { sys::marker_get_comment(self.r(), category, idx) }
+    pub fn marker_get_line_number(&self, category: &str, idx: usize) -> i32 { sys::marker_get_line_number(self.r(), category, idx) }
+    pub fn marker_is_visited(&self, category: &str, idx: usize) -> bool { sys::marker_is_visited(self.r(), category, idx) }
+    pub fn marker_is_visible(&self, category: &str, idx: usize) -> bool { sys::marker_is_visible(self.r(), category, idx) }
+    pub fn marker_is_waived(&self, category: &str, idx: usize) -> bool { sys::marker_is_waived(self.r(), category, idx) }
+    pub fn marker_get_name(&self, category: &str, idx: usize) -> String { sys::marker_get_name(self.r(), category, idx) }
+    pub fn marker_get_category(&self, category: &str, idx: usize) -> String { sys::marker_get_category(self.r(), category, idx) }
+    pub fn marker_get_tech_layer(&self, category: &str, idx: usize) -> String { sys::marker_get_tech_layer(self.r(), category, idx) }
+    pub fn marker_get_b_box_x_min(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_x_min(self.r(), category, idx) }
+    pub fn marker_get_b_box_y_min(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_y_min(self.r(), category, idx) }
+    pub fn marker_get_b_box_x_max(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_x_max(self.r(), category, idx) }
+    pub fn marker_get_b_box_y_max(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_y_max(self.r(), category, idx) }
+    pub fn marker_get_b_box_dx(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_dx(self.r(), category, idx) }
+    pub fn marker_get_b_box_dy(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_dy(self.r(), category, idx) }
 }

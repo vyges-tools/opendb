@@ -153,4 +153,12 @@ impl Db {
     pub fn blockage_set_soft(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::blockage_set_soft(self.r(), idx)?) }
     pub fn blockage_set_is_system_reserved(&mut self, idx: usize, is_system_reserved: bool) -> crate::Result<()> { Ok(sys::blockage_set_is_system_reserved(self.r(), idx, is_system_reserved)?) }
     pub fn blockage_set_max_density(&mut self, idx: usize, max_density: f32) -> crate::Result<()> { Ok(sys::blockage_set_max_density(self.r(), idx, max_density)?) }
+    pub fn marker_cat_set_description(&mut self, category: &str, description: &str) -> crate::Result<()> { Ok(sys::marker_cat_set_description(self.r(), category, description)?) }
+    pub fn marker_cat_set_source(&mut self, category: &str, source: &str) -> crate::Result<()> { Ok(sys::marker_cat_set_source(self.r(), category, source)?) }
+    pub fn marker_cat_set_max_markers(&mut self, category: &str, max_markers: i32) -> crate::Result<()> { Ok(sys::marker_cat_set_max_markers(self.r(), category, max_markers)?) }
+    pub fn marker_set_comment(&mut self, category: &str, idx: usize, comment: &str) -> crate::Result<()> { Ok(sys::marker_set_comment(self.r(), category, idx, comment)?) }
+    pub fn marker_set_line_number(&mut self, category: &str, idx: usize, line_number: i32) -> crate::Result<()> { Ok(sys::marker_set_line_number(self.r(), category, idx, line_number)?) }
+    pub fn marker_set_visited(&mut self, category: &str, idx: usize, visited: bool) -> crate::Result<()> { Ok(sys::marker_set_visited(self.r(), category, idx, visited)?) }
+    pub fn marker_set_visible(&mut self, category: &str, idx: usize, visible: bool) -> crate::Result<()> { Ok(sys::marker_set_visible(self.r(), category, idx, visible)?) }
+    pub fn marker_set_waived(&mut self, category: &str, idx: usize, waived: bool) -> crate::Result<()> { Ok(sys::marker_set_waived(self.r(), category, idx, waived)?) }
 }
