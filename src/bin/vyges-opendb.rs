@@ -102,7 +102,10 @@ fn main() {
 }
 
 fn run() -> Result<(), Fail> {
-    let mut args = std::env::args().skip(1);
+    // `vyges mcp` appends `--json` to every engine call (the Loom envelope convention). Our read
+    // subcommands already emit JSON and the rest write files, so accept it globally as a no-op —
+    // otherwise every opendb call through MCP dies on "unknown argument: --json".
+    let mut args = std::env::args().skip(1).filter(|a| a != "--json");
     let cmd = args.next().unwrap_or_default();
     match cmd.as_str() {
         "info" => info(args),
