@@ -18,9 +18,11 @@ fn registry_is_populated() {
 fn registry_covers_the_new_target_classes() {
     use std::collections::HashSet;
     let classes: HashSet<&str> = registry::FIELDS.iter().map(|f| f.class).collect();
-    // hierarchy / grouping / region + index-addressed blockage / track-grid + DRC markers
+    // hierarchy / grouping / region + index-addressed blockage / track-grid + DRC markers +
+    // the deep module hierarchy (mod-inst/net/bterm/iterm)
     for c in ["dbModule", "dbGroup", "dbRegion", "dbBlockage", "dbTrackGrid",
-              "dbMarkerCategory", "dbMarker"] {
+              "dbMarkerCategory", "dbMarker",
+              "dbModInst", "dbModNet", "dbModBTerm", "dbModITerm"] {
         assert!(classes.contains(c), "{c} should be exposed in the registry");
     }
 }

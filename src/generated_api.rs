@@ -468,4 +468,36 @@ impl Db {
     pub fn marker_get_b_box_y_max(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_y_max(self.r(), category, idx) }
     pub fn marker_get_b_box_dx(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_dx(self.r(), category, idx) }
     pub fn marker_get_b_box_dy(&self, category: &str, idx: usize) -> i32 { sys::marker_get_b_box_dy(self.r(), category, idx) }
+    pub fn modinst_get_name(&self, path: &str) -> String { sys::modinst_get_name(self.r(), path) }
+    pub fn modinst_get_parent(&self, path: &str) -> String { sys::modinst_get_parent(self.r(), path) }
+    pub fn modinst_get_master(&self, path: &str) -> String { sys::modinst_get_master(self.r(), path) }
+    pub fn modinst_get_group(&self, path: &str) -> String { sys::modinst_get_group(self.r(), path) }
+    pub fn modinst_get_hierarchical_name(&self, path: &str) -> String { sys::modinst_get_hierarchical_name(self.r(), path) }
+    pub fn modinst_get_mod_i_terms(&self, path: &str) -> Vec<String> { (0..sys::num_modinst_get_mod_i_terms(self.r(), path)).map(|i| sys::nth_modinst_get_mod_i_terms(self.r(), path, i)).collect() }
+    pub fn modnet_get_parent(&self, name: &str) -> String { sys::modnet_get_parent(self.r(), name) }
+    pub fn modnet_get_mod_i_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_mod_i_terms(self.r(), name)).map(|i| sys::nth_modnet_get_mod_i_terms(self.r(), name, i)).collect() }
+    pub fn modnet_get_mod_b_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_mod_b_terms(self.r(), name)).map(|i| sys::nth_modnet_get_mod_b_terms(self.r(), name, i)).collect() }
+    pub fn modnet_get_i_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_i_terms(self.r(), name)).map(|i| sys::nth_modnet_get_i_terms(self.r(), name, i)).collect() }
+    pub fn modnet_get_b_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_b_terms(self.r(), name)).map(|i| sys::nth_modnet_get_b_terms(self.r(), name, i)).collect() }
+    pub fn modnet_get_name(&self, name: &str) -> String { sys::modnet_get_name(self.r(), name) }
+    pub fn modnet_get_const_name(&self, name: &str) -> String { sys::modnet_get_const_name(self.r(), name) }
+    pub fn modnet_get_hierarchical_name(&self, name: &str) -> String { sys::modnet_get_hierarchical_name(self.r(), name) }
+    pub fn modnet_find_related_net(&self, name: &str) -> String { sys::modnet_find_related_net(self.r(), name) }
+    pub fn modnet_get_next_mod_nets_in_fanin(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_next_mod_nets_in_fanin(self.r(), name)).map(|i| sys::nth_modnet_get_next_mod_nets_in_fanin(self.r(), name, i)).collect() }
+    pub fn modnet_get_next_mod_nets_in_fanout(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_next_mod_nets_in_fanout(self.r(), name)).map(|i| sys::nth_modnet_get_next_mod_nets_in_fanout(self.r(), name, i)).collect() }
+    pub fn modnet_get_first_parent_mod_net(&self, name: &str) -> String { sys::modnet_get_first_parent_mod_net(self.r(), name) }
+    pub fn modbterm_get_name(&self, module: &str, idx: usize) -> String { sys::modbterm_get_name(self.r(), module, idx) }
+    pub fn modbterm_get_parent(&self, module: &str, idx: usize) -> String { sys::modbterm_get_parent(self.r(), module, idx) }
+    pub fn modbterm_get_hierarchical_name(&self, module: &str, idx: usize) -> String { sys::modbterm_get_hierarchical_name(self.r(), module, idx) }
+    pub fn modbterm_get_parent_mod_i_term(&self, module: &str, idx: usize) -> String { sys::modbterm_get_parent_mod_i_term(self.r(), module, idx) }
+    pub fn modbterm_get_mod_net(&self, module: &str, idx: usize) -> String { sys::modbterm_get_mod_net(self.r(), module, idx) }
+    pub fn modbterm_get_sig_type(&self, module: &str, idx: usize) -> String { sys::modbterm_get_sig_type(self.r(), module, idx) }
+    pub fn modbterm_get_io_type(&self, module: &str, idx: usize) -> String { sys::modbterm_get_io_type(self.r(), module, idx) }
+    pub fn modbterm_is_bus_port(&self, module: &str, idx: usize) -> bool { sys::modbterm_is_bus_port(self.r(), module, idx) }
+    pub fn modbterm_get_mod_inst(&self, module: &str, idx: usize) -> String { sys::modbterm_get_mod_inst(self.r(), module, idx) }
+    pub fn moditerm_get_name(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_name(self.r(), modinst, idx) }
+    pub fn moditerm_get_parent(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_parent(self.r(), modinst, idx) }
+    pub fn moditerm_get_hierarchical_name(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_hierarchical_name(self.r(), modinst, idx) }
+    pub fn moditerm_get_mod_net(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_mod_net(self.r(), modinst, idx) }
+    pub fn moditerm_get_child_mod_b_term(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_child_mod_b_term(self.r(), modinst, idx) }
 }
