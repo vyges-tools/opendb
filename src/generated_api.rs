@@ -539,4 +539,126 @@ impl Db {
     pub fn level_shifter_get_cell_name(&self, name: &str) -> String { sys::level_shifter_get_cell_name(self.r(), name) }
     pub fn level_shifter_get_cell_input(&self, name: &str) -> String { sys::level_shifter_get_cell_input(self.r(), name) }
     pub fn level_shifter_get_cell_output(&self, name: &str) -> String { sys::level_shifter_get_cell_output(self.r(), name) }
+    pub fn tech_get_name(&self) -> String { sys::tech_get_name(self.r()) }
+    pub fn tech_get_extraction_rules_file(&self) -> String { sys::tech_get_extraction_rules_file(self.r()) }
+    pub fn tech_get_db_units_per_micron(&self) -> i32 { sys::tech_get_db_units_per_micron(self.r()) }
+    pub fn tech_get_layers(&self) -> Vec<String> { (0..sys::num_tech_get_layers(self.r())).map(|i| sys::nth_tech_get_layers(self.r(), i)).collect() }
+    pub fn tech_first_frontside_routing_layer(&self) -> String { sys::tech_first_frontside_routing_layer(self.r()) }
+    pub fn tech_first_backside_routing_layer(&self) -> String { sys::tech_first_backside_routing_layer(self.r()) }
+    pub fn tech_get_vias(&self) -> Vec<String> { (0..sys::num_tech_get_vias(self.r())).map(|i| sys::nth_tech_get_vias(self.r(), i)).collect() }
+    pub fn tech_get_lef_units(&self) -> i32 { sys::tech_get_lef_units(self.r()) }
+    pub fn tech_get_lef_version(&self) -> f64 { sys::tech_get_lef_version(self.r()) }
+    pub fn tech_get_lef_version_str(&self) -> String { sys::tech_get_lef_version_str(self.r()) }
+    pub fn tech_has_no_wire_ext_at_pin(&self) -> bool { sys::tech_has_no_wire_ext_at_pin(self.r()) }
+    pub fn tech_has_clearance_measure(&self) -> bool { sys::tech_has_clearance_measure(self.r()) }
+    pub fn tech_has_use_min_spacing_obs(&self) -> bool { sys::tech_has_use_min_spacing_obs(self.r()) }
+    pub fn tech_has_use_min_spacing_pin(&self) -> bool { sys::tech_has_use_min_spacing_pin(self.r()) }
+    pub fn tech_has_manufacturing_grid(&self) -> bool { sys::tech_has_manufacturing_grid(self.r()) }
+    pub fn tech_get_manufacturing_grid(&self) -> i32 { sys::tech_get_manufacturing_grid(self.r()) }
+    pub fn tech_get_layer_count(&self) -> i32 { sys::tech_get_layer_count(self.r()) }
+    pub fn tech_get_routing_layer_count(&self) -> i32 { sys::tech_get_routing_layer_count(self.r()) }
+    pub fn tech_get_via_count(&self) -> i32 { sys::tech_get_via_count(self.r()) }
+    pub fn tech_get_non_default_rules(&self) -> Vec<String> { (0..sys::num_tech_get_non_default_rules(self.r())).map(|i| sys::nth_tech_get_non_default_rules(self.r(), i)).collect() }
+    pub fn tech_get_via_rules(&self) -> Vec<String> { (0..sys::num_tech_get_via_rules(self.r())).map(|i| sys::nth_tech_get_via_rules(self.r(), i)).collect() }
+    pub fn tech_get_via_generate_rules(&self) -> Vec<String> { (0..sys::num_tech_get_via_generate_rules(self.r())).map(|i| sys::nth_tech_get_via_generate_rules(self.r(), i)).collect() }
+    pub fn lib_get_name(&self, name: &str) -> String { sys::lib_get_name(self.r(), name) }
+    pub fn lib_get_const_name(&self, name: &str) -> String { sys::lib_get_const_name(self.r(), name) }
+    pub fn lib_get_db_units_per_micron(&self, name: &str) -> i32 { sys::lib_get_db_units_per_micron(self.r(), name) }
+    pub fn lib_get_tech(&self, name: &str) -> String { sys::lib_get_tech(self.r(), name) }
+    pub fn lib_get_masters(&self, name: &str) -> Vec<String> { (0..sys::num_lib_get_masters(self.r(), name)).map(|i| sys::nth_lib_get_masters(self.r(), name, i)).collect() }
+    pub fn lib_get_sites(&self, name: &str) -> Vec<String> { (0..sys::num_lib_get_sites(self.r(), name)).map(|i| sys::nth_lib_get_sites(self.r(), name, i)).collect() }
+    pub fn lib_get_lef_units(&self, name: &str) -> i32 { sys::lib_get_lef_units(self.r(), name) }
+    pub fn capnode_get_node(&self, idx: usize) -> u32 { sys::capnode_get_node(self.r(), idx) }
+    pub fn capnode_get_shape_id(&self, idx: usize) -> u32 { sys::capnode_get_shape_id(self.r(), idx) }
+    pub fn capnode_is_name(&self, idx: usize) -> bool { sys::capnode_is_name(self.r(), idx) }
+    pub fn capnode_is_i_term(&self, idx: usize) -> bool { sys::capnode_is_i_term(self.r(), idx) }
+    pub fn capnode_is_b_term(&self, idx: usize) -> bool { sys::capnode_is_b_term(self.r(), idx) }
+    pub fn capnode_is_internal(&self, idx: usize) -> bool { sys::capnode_is_internal(self.r(), idx) }
+    pub fn capnode_is_branch(&self, idx: usize) -> bool { sys::capnode_is_branch(self.r(), idx) }
+    pub fn capnode_is_dangling(&self, idx: usize) -> bool { sys::capnode_is_dangling(self.r(), idx) }
+    pub fn capnode_is_foreign(&self, idx: usize) -> bool { sys::capnode_is_foreign(self.r(), idx) }
+    pub fn capnode_is_tree_node(&self, idx: usize) -> bool { sys::capnode_is_tree_node(self.r(), idx) }
+    pub fn capnode_is_select(&self, idx: usize) -> bool { sys::capnode_is_select(self.r(), idx) }
+    pub fn capnode_incr_children_cnt(&self, idx: usize) -> u32 { sys::capnode_incr_children_cnt(self.r(), idx) }
+    pub fn capnode_get_children_cnt(&self, idx: usize) -> u32 { sys::capnode_get_children_cnt(self.r(), idx) }
+    pub fn capnode_get_sort_index(&self, idx: usize) -> u32 { sys::capnode_get_sort_index(self.r(), idx) }
+    pub fn capnode_check_c_c(&self, idx: usize) -> bool { sys::capnode_check_c_c(self.r(), idx) }
+    pub fn capnode_get_net(&self, idx: usize) -> String { sys::capnode_get_net(self.r(), idx) }
+    pub fn rseg_updated_cap(&self, idx: usize) -> bool { sys::rseg_updated_cap(self.r(), idx) }
+    pub fn rseg_check_c_c(&self, idx: usize) -> bool { sys::rseg_check_c_c(self.r(), idx) }
+    pub fn rseg_get_source_node(&self, idx: usize) -> u32 { sys::rseg_get_source_node(self.r(), idx) }
+    pub fn rseg_get_target_node(&self, idx: usize) -> u32 { sys::rseg_get_target_node(self.r(), idx) }
+    pub fn rseg_get_shape_id(&self, idx: usize) -> u32 { sys::rseg_get_shape_id(self.r(), idx) }
+    pub fn rseg_path_low_to_high(&self, idx: usize) -> bool { sys::rseg_path_low_to_high(self.r(), idx) }
+    pub fn rseg_allocated_cap(&self, idx: usize) -> bool { sys::rseg_allocated_cap(self.r(), idx) }
+    pub fn rseg_get_net(&self, idx: usize) -> String { sys::rseg_get_net(self.r(), idx) }
+    pub fn rseg_get_coords_x(&self, idx: usize) -> i32 { sys::rseg_get_coords_x(self.r(), idx) }
+    pub fn rseg_get_coords_y(&self, idx: usize) -> i32 { sys::rseg_get_coords_y(self.r(), idx) }
+    pub fn ccseg_get_source_node_num(&self, idx: usize) -> u32 { sys::ccseg_get_source_node_num(self.r(), idx) }
+    pub fn ccseg_get_target_node_num(&self, idx: usize) -> u32 { sys::ccseg_get_target_node_num(self.r(), idx) }
+    pub fn ccseg_get_source_net(&self, idx: usize) -> String { sys::ccseg_get_source_net(self.r(), idx) }
+    pub fn ccseg_get_target_net(&self, idx: usize) -> String { sys::ccseg_get_target_net(self.r(), idx) }
+    pub fn ccseg_get_infile_cnt(&self, idx: usize) -> u32 { sys::ccseg_get_infile_cnt(self.r(), idx) }
+    pub fn ccseg_is_marked(&self, idx: usize) -> bool { sys::ccseg_is_marked(self.r(), idx) }
+    pub fn sbox_get_via_bottom_layer_mask(&self, net: &str, swire_idx: usize, sbox_idx: usize) -> u32 { sys::sbox_get_via_bottom_layer_mask(self.r(), net, swire_idx, sbox_idx) }
+    pub fn sbox_get_via_cut_layer_mask(&self, net: &str, swire_idx: usize, sbox_idx: usize) -> u32 { sys::sbox_get_via_cut_layer_mask(self.r(), net, swire_idx, sbox_idx) }
+    pub fn sbox_get_via_top_layer_mask(&self, net: &str, swire_idx: usize, sbox_idx: usize) -> u32 { sys::sbox_get_via_top_layer_mask(self.r(), net, swire_idx, sbox_idx) }
+    pub fn sbox_has_via_layer_masks(&self, net: &str, swire_idx: usize, sbox_idx: usize) -> bool { sys::sbox_has_via_layer_masks(self.r(), net, swire_idx, sbox_idx) }
+    pub fn bpin_get_placement_status(&self, bterm: &str, idx: usize) -> String { sys::bpin_get_placement_status(self.r(), bterm, idx) }
+    pub fn bpin_get_b_term(&self, bterm: &str, idx: usize) -> String { sys::bpin_get_b_term(self.r(), bterm, idx) }
+    pub fn bpin_get_b_box_x_min(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_x_min(self.r(), bterm, idx) }
+    pub fn bpin_get_b_box_y_min(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_y_min(self.r(), bterm, idx) }
+    pub fn bpin_get_b_box_x_max(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_x_max(self.r(), bterm, idx) }
+    pub fn bpin_get_b_box_y_max(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_y_max(self.r(), bterm, idx) }
+    pub fn bpin_get_b_box_dx(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_dx(self.r(), bterm, idx) }
+    pub fn bpin_get_b_box_dy(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_dy(self.r(), bterm, idx) }
+    pub fn bpin_has_effective_width(&self, bterm: &str, idx: usize) -> bool { sys::bpin_has_effective_width(self.r(), bterm, idx) }
+    pub fn bpin_get_effective_width(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_effective_width(self.r(), bterm, idx) }
+    pub fn bpin_has_min_spacing(&self, bterm: &str, idx: usize) -> bool { sys::bpin_has_min_spacing(self.r(), bterm, idx) }
+    pub fn bpin_get_min_spacing(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_min_spacing(self.r(), bterm, idx) }
+    pub fn mpin_get_m_term(&self, master: &str, term: &str, idx: usize) -> String { sys::mpin_get_m_term(self.r(), master, term, idx) }
+    pub fn mpin_get_master(&self, master: &str, term: &str, idx: usize) -> String { sys::mpin_get_master(self.r(), master, term, idx) }
+    pub fn mpin_get_b_box_x_min(&self, master: &str, term: &str, idx: usize) -> i32 { sys::mpin_get_b_box_x_min(self.r(), master, term, idx) }
+    pub fn mpin_get_b_box_y_min(&self, master: &str, term: &str, idx: usize) -> i32 { sys::mpin_get_b_box_y_min(self.r(), master, term, idx) }
+    pub fn mpin_get_b_box_x_max(&self, master: &str, term: &str, idx: usize) -> i32 { sys::mpin_get_b_box_x_max(self.r(), master, term, idx) }
+    pub fn mpin_get_b_box_y_max(&self, master: &str, term: &str, idx: usize) -> i32 { sys::mpin_get_b_box_y_max(self.r(), master, term, idx) }
+    pub fn mpin_get_b_box_dx(&self, master: &str, term: &str, idx: usize) -> i32 { sys::mpin_get_b_box_dx(self.r(), master, term, idx) }
+    pub fn mpin_get_b_box_dy(&self, master: &str, term: &str, idx: usize) -> i32 { sys::mpin_get_b_box_dy(self.r(), master, term, idx) }
+    pub fn techviarule_get_name(&self, idx: usize) -> String { sys::techviarule_get_name(self.r(), idx) }
+    pub fn techviarule_get_via_count(&self, idx: usize) -> u32 { sys::techviarule_get_via_count(self.r(), idx) }
+    pub fn techviarule_get_via_layer_rule_count(&self, idx: usize) -> u32 { sys::techviarule_get_via_layer_rule_count(self.r(), idx) }
+    pub fn techviagenrule_get_name(&self, idx: usize) -> String { sys::techviagenrule_get_name(self.r(), idx) }
+    pub fn techviagenrule_is_default(&self, idx: usize) -> bool { sys::techviagenrule_is_default(self.r(), idx) }
+    pub fn techviagenrule_get_via_layer_rule_count(&self, idx: usize) -> u32 { sys::techviagenrule_get_via_layer_rule_count(self.r(), idx) }
+    pub fn techvialayerrule_get_layer(&self, gen_idx: usize, layer_idx: usize) -> String { sys::techvialayerrule_get_layer(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_width(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_width(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_enclosure(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_enclosure(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_overhang(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_overhang(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_overhang(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_overhang(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_metal_overhang(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_metal_overhang(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_metal_overhang(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_metal_overhang(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_rect(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_rect(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_spacing(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_spacing(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_has_resistance(&self, gen_idx: usize, layer_idx: usize) -> bool { sys::techvialayerrule_has_resistance(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_resistance(&self, gen_idx: usize, layer_idx: usize) -> f64 { sys::techvialayerrule_get_resistance(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_width_min_width(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_width_min_width(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_width_max_width(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_width_max_width(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_enclosure_overhang1(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_enclosure_overhang1(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_enclosure_overhang2(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_enclosure_overhang2(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_spacing_x_spacing(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_spacing_x_spacing(self.r(), gen_idx, layer_idx) }
+    pub fn techvialayerrule_get_spacing_y_spacing(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_spacing_y_spacing(self.r(), gen_idx, layer_idx) }
+    pub fn layerantenna_is_valid(&self, layer: &str) -> bool { sys::layerantenna_is_valid(self.r(), layer) }
+    pub fn layerantenna_has_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_area_factor(self.r(), layer) }
+    pub fn layerantenna_has_side_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_side_area_factor(self.r(), layer) }
+    pub fn layerantenna_get_area_factor(&self, layer: &str) -> f64 { sys::layerantenna_get_area_factor(self.r(), layer) }
+    pub fn layerantenna_get_side_area_factor(&self, layer: &str) -> f64 { sys::layerantenna_get_side_area_factor(self.r(), layer) }
+    pub fn layerantenna_is_area_factor_diff_use_only(&self, layer: &str) -> bool { sys::layerantenna_is_area_factor_diff_use_only(self.r(), layer) }
+    pub fn layerantenna_is_side_area_factor_diff_use_only(&self, layer: &str) -> bool { sys::layerantenna_is_side_area_factor_diff_use_only(self.r(), layer) }
+    pub fn layerantenna_has_antenna_cum_routing_plus_cut(&self, layer: &str) -> bool { sys::layerantenna_has_antenna_cum_routing_plus_cut(self.r(), layer) }
+    pub fn layerantenna_get_p_a_r(&self, layer: &str) -> f64 { sys::layerantenna_get_p_a_r(self.r(), layer) }
+    pub fn layerantenna_get_c_a_r(&self, layer: &str) -> f64 { sys::layerantenna_get_c_a_r(self.r(), layer) }
+    pub fn layerantenna_get_p_s_r(&self, layer: &str) -> f64 { sys::layerantenna_get_p_s_r(self.r(), layer) }
+    pub fn layerantenna_get_c_s_r(&self, layer: &str) -> f64 { sys::layerantenna_get_c_s_r(self.r(), layer) }
+    pub fn layerantenna_get_gate_plus_diff_factor(&self, layer: &str) -> f64 { sys::layerantenna_get_gate_plus_diff_factor(self.r(), layer) }
+    pub fn layerantenna_get_area_minus_diff_factor(&self, layer: &str) -> f64 { sys::layerantenna_get_area_minus_diff_factor(self.r(), layer) }
 }

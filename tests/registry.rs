@@ -23,9 +23,24 @@ fn registry_covers_the_new_target_classes() {
     for c in ["dbModule", "dbGroup", "dbRegion", "dbBlockage", "dbTrackGrid",
               "dbMarkerCategory", "dbMarker",
               "dbModInst", "dbModNet", "dbModBTerm", "dbModITerm",
-              "dbPowerDomain", "dbPowerSwitch", "dbIsolation", "dbLevelShifter"] {
+              "dbPowerDomain", "dbPowerSwitch", "dbIsolation", "dbLevelShifter",
+              // tech / lib / parasitics / pins / tech-rules (core classes)
+              "dbTech", "dbLib", "dbCapNode", "dbRSeg", "dbCCSeg", "dbSBox", "dbBPin", "dbMPin",
+              "dbTechViaRule", "dbTechViaGenerateRule", "dbTechViaLayerRule",
+              "dbTechLayerAntennaRule"] {
+        // (dbTechAntennaPinModel is setter-only -> WRITE_FIELDS, not the read FIELDS below)
         assert!(classes.contains(c), "{c} should be exposed in the registry");
     }
+}
+
+#[test]
+fn registry_tech_and_lib_read_populated() {
+    // dbTech / dbLib are populated in the fixture — functional reads (not just discovery)
+    let db = Db::open(FIXTURE).unwrap();
+    // sky130 uses 1000 DBU/micron
+    let dbu = registry::get(&db, "dbTech", "get_db_units_per_micron", &[]).unwrap();
+    assert_eq!(dbu, serde_json::json!(1000));
+    assert!(!db.tech_get_name().is_empty() || db.tech_get_db_units_per_micron() == 1000);
 }
 
 #[test]

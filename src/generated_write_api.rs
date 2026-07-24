@@ -187,4 +187,54 @@ impl Db {
     pub fn level_shifter_set_cell_name(&mut self, name: &str, cell_name: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_name(self.r(), name, cell_name)?) }
     pub fn level_shifter_set_cell_input(&mut self, name: &str, cell_input: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_input(self.r(), name, cell_input)?) }
     pub fn level_shifter_set_cell_output(&mut self, name: &str, cell_output: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_output(self.r(), name, cell_output)?) }
+    pub fn tech_set_extraction_rules_file(&mut self, path: &str) -> crate::Result<()> { Ok(sys::tech_set_extraction_rules_file(self.r(), path)?) }
+    pub fn tech_set_lef_units(&mut self, units: i32) -> crate::Result<()> { Ok(sys::tech_set_lef_units(self.r(), units)?) }
+    pub fn tech_set_lef_version(&mut self, inver: f64) -> crate::Result<()> { Ok(sys::tech_set_lef_version(self.r(), inver)?) }
+    pub fn tech_set_manufacturing_grid(&mut self, ingrd: i32) -> crate::Result<()> { Ok(sys::tech_set_manufacturing_grid(self.r(), ingrd)?) }
+    pub fn lib_set_lef_units(&mut self, name: &str, units: i32) -> crate::Result<()> { Ok(sys::lib_set_lef_units(self.r(), name, units)?) }
+    pub fn capnode_set_capacitance(&mut self, idx: usize, cap: f64, corner: i32) -> crate::Result<()> { Ok(sys::capnode_set_capacitance(self.r(), idx, cap, corner)?) }
+    pub fn capnode_set_node(&mut self, idx: usize, nodeid: u32) -> crate::Result<()> { Ok(sys::capnode_set_node(self.r(), idx, nodeid)?) }
+    pub fn capnode_set_select(&mut self, idx: usize, value: bool) -> crate::Result<()> { Ok(sys::capnode_set_select(self.r(), idx, value)?) }
+    pub fn capnode_set_children_cnt(&mut self, idx: usize, cnt: u32) -> crate::Result<()> { Ok(sys::capnode_set_children_cnt(self.r(), idx, cnt)?) }
+    pub fn capnode_set_name_flag(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::capnode_set_name_flag(self.r(), idx)?) }
+    pub fn capnode_set_b_term_flag(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::capnode_set_b_term_flag(self.r(), idx)?) }
+    pub fn capnode_set_i_term_flag(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::capnode_set_i_term_flag(self.r(), idx)?) }
+    pub fn capnode_set_internal_flag(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::capnode_set_internal_flag(self.r(), idx)?) }
+    pub fn capnode_set_branch_flag(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::capnode_set_branch_flag(self.r(), idx)?) }
+    pub fn capnode_set_foreign_flag(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::capnode_set_foreign_flag(self.r(), idx)?) }
+    pub fn capnode_set_sort_index(&mut self, idx: usize, a0: u32) -> crate::Result<()> { Ok(sys::capnode_set_sort_index(self.r(), idx, a0)?) }
+    pub fn capnode_set_net(&mut self, idx: usize, netid: u32) -> crate::Result<()> { Ok(sys::capnode_set_net(self.r(), idx, netid)?) }
+    pub fn capnode_set_next(&mut self, idx: usize, nextid: u32) -> crate::Result<()> { Ok(sys::capnode_set_next(self.r(), idx, nextid)?) }
+    pub fn rseg_set_capacitance(&mut self, idx: usize, cap: f64, corner: i32) -> crate::Result<()> { Ok(sys::rseg_set_capacitance(self.r(), idx, cap, corner)?) }
+    pub fn rseg_set_resistance(&mut self, idx: usize, res: f64, corner: i32) -> crate::Result<()> { Ok(sys::rseg_set_resistance(self.r(), idx, res, corner)?) }
+    pub fn rseg_set_next(&mut self, idx: usize, next_id: u32) -> crate::Result<()> { Ok(sys::rseg_set_next(self.r(), idx, next_id)?) }
+    pub fn rseg_set_source_node(&mut self, idx: usize, nodeid: u32) -> crate::Result<()> { Ok(sys::rseg_set_source_node(self.r(), idx, nodeid)?) }
+    pub fn rseg_set_target_node(&mut self, idx: usize, nodeid: u32) -> crate::Result<()> { Ok(sys::rseg_set_target_node(self.r(), idx, nodeid)?) }
+    pub fn rseg_set_coords(&mut self, idx: usize, x: i32, y: i32) -> crate::Result<()> { Ok(sys::rseg_set_coords(self.r(), idx, x, y)?) }
+    pub fn ccseg_set_capacitance(&mut self, idx: usize, cap: f64, corner: i32) -> crate::Result<()> { Ok(sys::ccseg_set_capacitance(self.r(), idx, cap, corner)?) }
+    pub fn ccseg_set_mark(&mut self, idx: usize, value: bool) -> crate::Result<()> { Ok(sys::ccseg_set_mark(self.r(), idx, value)?) }
+    pub fn sbox_set_via_layer_mask(&mut self, net: &str, swire_idx: usize, sbox_idx: usize, bottom: u32, cut: u32, top: u32) -> crate::Result<()> { Ok(sys::sbox_set_via_layer_mask(self.r(), net, swire_idx, sbox_idx, bottom, cut, top)?) }
+    pub fn bpin_set_placement_status(&mut self, bterm: &str, idx: usize, status: &str) -> crate::Result<()> { Ok(sys::bpin_set_placement_status(self.r(), bterm, idx, status)?) }
+    pub fn bpin_set_effective_width(&mut self, bterm: &str, idx: usize, w: i32) -> crate::Result<()> { Ok(sys::bpin_set_effective_width(self.r(), bterm, idx, w)?) }
+    pub fn bpin_set_min_spacing(&mut self, bterm: &str, idx: usize, w: i32) -> crate::Result<()> { Ok(sys::bpin_set_min_spacing(self.r(), bterm, idx, w)?) }
+    pub fn mpin_clear_pin_access(&mut self, master: &str, term: &str, idx: usize, pin_access_idx: i32) -> crate::Result<()> { Ok(sys::mpin_clear_pin_access(self.r(), master, term, idx, pin_access_idx)?) }
+    pub fn techvialayerrule_set_width(&mut self, gen_idx: usize, layer_idx: usize, min_width: i32, max_width: i32) -> crate::Result<()> { Ok(sys::techvialayerrule_set_width(self.r(), gen_idx, layer_idx, min_width, max_width)?) }
+    pub fn techvialayerrule_set_enclosure(&mut self, gen_idx: usize, layer_idx: usize, overhang1: i32, overhang2: i32) -> crate::Result<()> { Ok(sys::techvialayerrule_set_enclosure(self.r(), gen_idx, layer_idx, overhang1, overhang2)?) }
+    pub fn techvialayerrule_set_overhang(&mut self, gen_idx: usize, layer_idx: usize, overhang: i32) -> crate::Result<()> { Ok(sys::techvialayerrule_set_overhang(self.r(), gen_idx, layer_idx, overhang)?) }
+    pub fn techvialayerrule_set_metal_overhang(&mut self, gen_idx: usize, layer_idx: usize, overhang: i32) -> crate::Result<()> { Ok(sys::techvialayerrule_set_metal_overhang(self.r(), gen_idx, layer_idx, overhang)?) }
+    pub fn techvialayerrule_set_spacing(&mut self, gen_idx: usize, layer_idx: usize, x_spacing: i32, y_spacing: i32) -> crate::Result<()> { Ok(sys::techvialayerrule_set_spacing(self.r(), gen_idx, layer_idx, x_spacing, y_spacing)?) }
+    pub fn techvialayerrule_set_resistance(&mut self, gen_idx: usize, layer_idx: usize, r: f64) -> crate::Result<()> { Ok(sys::techvialayerrule_set_resistance(self.r(), gen_idx, layer_idx, r)?) }
+    pub fn layerantenna_set_gate_plus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_gate_plus_diff_factor(self.r(), layer, factor)?) }
+    pub fn layerantenna_set_area_minus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_area_minus_diff_factor(self.r(), layer, factor)?) }
+    pub fn layerantenna_set_area_factor(&mut self, layer: &str, factor: f64, diffuse: bool) -> crate::Result<()> { Ok(sys::layerantenna_set_area_factor(self.r(), layer, factor, diffuse)?) }
+    pub fn layerantenna_set_side_area_factor(&mut self, layer: &str, factor: f64, diffuse: bool) -> crate::Result<()> { Ok(sys::layerantenna_set_side_area_factor(self.r(), layer, factor, diffuse)?) }
+    pub fn layerantenna_set_antenna_cum_routing_plus_cut(&mut self, layer: &str, value: bool) -> crate::Result<()> { Ok(sys::layerantenna_set_antenna_cum_routing_plus_cut(self.r(), layer, value)?) }
+    pub fn layerantenna_set_p_a_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_p_a_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_c_a_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_c_a_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_p_s_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_p_s_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_c_s_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_c_s_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_diff_p_a_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_p_a_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_diff_c_a_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_c_a_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_diff_p_s_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_p_s_r(self.r(), layer, ratio)?) }
+    pub fn layerantenna_set_diff_c_s_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_c_s_r(self.r(), layer, ratio)?) }
 }
