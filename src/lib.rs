@@ -54,6 +54,51 @@ fn path_str(p: impl AsRef<Path>) -> Result<String> {
     p.as_ref().to_str().map(str::to_owned).ok_or(Error::NonUtf8Path)
 }
 
+// --- centralize libodb's native (C++ utl::Logger) diagnostics through vyges-events ---
+#[cfg(unix)]
+fn spdlog_level_to_severity(level: i32) -> vyges_events::Severity {
+    use vyges_events::Severity::*;
+    // spdlog level_enum: trace0 debug1 info2 warn3 err4 critical5 off6(utl `report`)
+    match level {
+        0 => Trace,
+        1 => Debug,
+        2 => Info,
+        3 => Warn,
+        4 | 5 => Error,
+        _ => Info,
+    }
+}
+
+#[cfg(unix)]
+fn forward_libodb_log(level: i32, msg: &str) {
+    // utl formats "[INFO ODB-0127] <body>" — lift the ODB-0127 id as the clustering code and strip
+    // the "[level id]" prefix (the event renderer re-adds its own), leaving a clean body.
+    let text = msg.trim_end();
+    let (code, body) = match text.strip_prefix('[').and_then(|s| s.split_once(']')) {
+        Some((inner, rest)) => (
+            inner.split_whitespace().find(|t| t.contains('-')),
+            rest.trim_start(),
+        ),
+        None => (None, text),
+    };
+    let mut ev = vyges_events::Event::new("vyges-opendb", spdlog_level_to_severity(level), body);
+    if let Some(code) = code {
+        ev = ev.with_code(code);
+    }
+    vyges_events::emit(&ev);
+}
+
+/// Route libodb's native `utl::Logger` diagnostics (`[INFO ODB-0127] …`) through `vyges-events`,
+/// centralizing odb's C++ log output with the rest of the suite's causal trail. Call once at engine
+/// start; idempotent. Until called, libodb logs go only to its own stdout (unchanged behavior).
+#[cfg(unix)]
+pub fn init_events_logging() {
+    sys::set_log_sink(forward_libodb_log);
+}
+/// No-op on non-unix (libodb is unavailable there).
+#[cfg(not(unix))]
+pub fn init_events_logging() {}
+
 /// An OpenDB design database (owns a `dbDatabase` + its logger). Unix-only.
 #[cfg(unix)]
 pub struct Db {
