@@ -139,6 +139,23 @@ fn generated_vector_getter_lists_leaf_insts() {
 }
 
 #[test]
+fn generated_via_params_value_struct() {
+    let db = Db::open(FIXTURE).unwrap();
+    // dbViaParams is a value-struct returned by dbVia::getViaParams() — reached via a thread-local
+    // pointer so the standard getter marshalling applies. Read a real block via's cut geometry.
+    let vias = db.block_get_vias();
+    let via = vias
+        .iter()
+        .find(|v| db.via_params_get_x_cut_size(v) > 0)
+        .expect("a block via with cut params");
+    assert!(db.via_params_get_x_cut_size(via) > 0);
+    assert!(db.via_params_get_y_cut_size(via) > 0);
+    assert!(db.via_params_get_num_cut_rows(via) >= 1);
+    // the cut-layer relation resolves to a named tech layer
+    assert!(!db.via_params_get_cut_layer(via).is_empty());
+}
+
+#[test]
 fn generated_module_hierarchy_reads() {
     let db = Db::open(FIXTURE).unwrap();
     // the fixture's flat design has a top module named after the block — exercises the newly

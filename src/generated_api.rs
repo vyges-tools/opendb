@@ -661,4 +661,23 @@ impl Db {
     pub fn layerantenna_get_c_s_r(&self, layer: &str) -> f64 { sys::layerantenna_get_c_s_r(self.r(), layer) }
     pub fn layerantenna_get_gate_plus_diff_factor(&self, layer: &str) -> f64 { sys::layerantenna_get_gate_plus_diff_factor(self.r(), layer) }
     pub fn layerantenna_get_area_minus_diff_factor(&self, layer: &str) -> f64 { sys::layerantenna_get_area_minus_diff_factor(self.r(), layer) }
+    pub fn via_params_get_x_cut_size(&self, via: &str) -> i32 { sys::via_params_get_x_cut_size(self.r(), via) }
+    pub fn via_params_get_y_cut_size(&self, via: &str) -> i32 { sys::via_params_get_y_cut_size(self.r(), via) }
+    pub fn via_params_get_x_cut_spacing(&self, via: &str) -> i32 { sys::via_params_get_x_cut_spacing(self.r(), via) }
+    pub fn via_params_get_y_cut_spacing(&self, via: &str) -> i32 { sys::via_params_get_y_cut_spacing(self.r(), via) }
+    pub fn via_params_get_x_top_enclosure(&self, via: &str) -> i32 { sys::via_params_get_x_top_enclosure(self.r(), via) }
+    pub fn via_params_get_y_top_enclosure(&self, via: &str) -> i32 { sys::via_params_get_y_top_enclosure(self.r(), via) }
+    pub fn via_params_get_x_bottom_enclosure(&self, via: &str) -> i32 { sys::via_params_get_x_bottom_enclosure(self.r(), via) }
+    pub fn via_params_get_y_bottom_enclosure(&self, via: &str) -> i32 { sys::via_params_get_y_bottom_enclosure(self.r(), via) }
+    pub fn via_params_get_num_cut_rows(&self, via: &str) -> i32 { sys::via_params_get_num_cut_rows(self.r(), via) }
+    pub fn via_params_get_num_cut_cols(&self, via: &str) -> i32 { sys::via_params_get_num_cut_cols(self.r(), via) }
+    pub fn via_params_get_x_origin(&self, via: &str) -> i32 { sys::via_params_get_x_origin(self.r(), via) }
+    pub fn via_params_get_y_origin(&self, via: &str) -> i32 { sys::via_params_get_y_origin(self.r(), via) }
+    pub fn via_params_get_x_top_offset(&self, via: &str) -> i32 { sys::via_params_get_x_top_offset(self.r(), via) }
+    pub fn via_params_get_y_top_offset(&self, via: &str) -> i32 { sys::via_params_get_y_top_offset(self.r(), via) }
+    pub fn via_params_get_x_bottom_offset(&self, via: &str) -> i32 { sys::via_params_get_x_bottom_offset(self.r(), via) }
+    pub fn via_params_get_y_bottom_offset(&self, via: &str) -> i32 { sys::via_params_get_y_bottom_offset(self.r(), via) }
+    pub fn via_params_get_top_layer(&self, via: &str) -> String { sys::via_params_get_top_layer(self.r(), via) }
+    pub fn via_params_get_cut_layer(&self, via: &str) -> String { sys::via_params_get_cut_layer(self.r(), via) }
+    pub fn via_params_get_bottom_layer(&self, via: &str) -> String { sys::via_params_get_bottom_layer(self.r(), via) }
 }
