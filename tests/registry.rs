@@ -66,6 +66,26 @@ fn registry_marker_reads_are_graceful_when_absent() {
 }
 
 #[test]
+fn registry_miss_is_assertive_and_catalogued() {
+    let db = Db::open(FIXTURE).unwrap();
+    // the "unimplemented but real odb API" catalog is the food-chain "what to fix" map
+    assert!(registry::UNIMPLEMENTED.len() > 100, "expected a populated unimplemented catalog");
+
+    // calling a real-but-unbound odb method -> assertive "not implemented" (also emitted as an
+    // ODB-0900 vyges-events warning naming the exact class::method)
+    let u = &registry::UNIMPLEMENTED[0];
+    let e = registry::get(&db, u.class, u.field, &[]).unwrap_err();
+    assert!(e.to_string().contains("not implemented"), "got: {e}");
+
+    // a non-odb class is distinguished from a real class (ODB-0902 vs ODB-0901)
+    let e2 = registry::get(&db, "dbBogusClass", "x", &[]).unwrap_err();
+    assert!(e2.to_string().contains("not an odb class"), "got: {e2}");
+    // a real class + bogus field
+    let e3 = registry::get(&db, "dbNet", "totally_bogus_field", &[]).unwrap_err();
+    assert!(e3.to_string().contains("unknown field"), "got: {e3}");
+}
+
+#[test]
 fn registry_get_dispatches_all_value_kinds() {
     let db = Db::open(FIXTURE).unwrap();
 
