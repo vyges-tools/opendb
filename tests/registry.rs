@@ -22,9 +22,21 @@ fn registry_covers_the_new_target_classes() {
     // the deep module hierarchy (mod-inst/net/bterm/iterm)
     for c in ["dbModule", "dbGroup", "dbRegion", "dbBlockage", "dbTrackGrid",
               "dbMarkerCategory", "dbMarker",
-              "dbModInst", "dbModNet", "dbModBTerm", "dbModITerm"] {
+              "dbModInst", "dbModNet", "dbModBTerm", "dbModITerm",
+              "dbPowerDomain", "dbPowerSwitch", "dbIsolation", "dbLevelShifter"] {
         assert!(classes.contains(c), "{c} should be exposed in the registry");
     }
+}
+
+#[test]
+fn registry_power_intent_reads_are_graceful_when_absent() {
+    // the fixture has no UPF power intent; reads over a missing power domain must return typed
+    // defaults, not panic
+    let db = Db::open(FIXTURE).unwrap();
+    let v = registry::get(&db, "dbPowerDomain", "get_voltage", &["no_pd".into()]).unwrap();
+    assert_eq!(v, serde_json::json!(0.0)); // f32 voltage -> default 0.0
+    let n = registry::get(&db, "dbLevelShifter", "get_name", &["no_ls".into()]).unwrap();
+    assert_eq!(n, serde_json::json!(""));
 }
 
 #[test]

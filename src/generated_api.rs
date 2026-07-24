@@ -500,4 +500,43 @@ impl Db {
     pub fn moditerm_get_hierarchical_name(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_hierarchical_name(self.r(), modinst, idx) }
     pub fn moditerm_get_mod_net(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_mod_net(self.r(), modinst, idx) }
     pub fn moditerm_get_child_mod_b_term(&self, modinst: &str, idx: usize) -> String { sys::moditerm_get_child_mod_b_term(self.r(), modinst, idx) }
+    pub fn pwr_domain_get_name(&self, name: &str) -> String { sys::pwr_domain_get_name(self.r(), name) }
+    pub fn pwr_domain_get_group(&self, name: &str) -> String { sys::pwr_domain_get_group(self.r(), name) }
+    pub fn pwr_domain_is_top(&self, name: &str) -> bool { sys::pwr_domain_is_top(self.r(), name) }
+    pub fn pwr_domain_get_parent(&self, name: &str) -> String { sys::pwr_domain_get_parent(self.r(), name) }
+    pub fn pwr_domain_get_voltage(&self, name: &str) -> f32 { sys::pwr_domain_get_voltage(self.r(), name) }
+    pub fn pwr_domain_get_power_switches(&self, name: &str) -> Vec<String> { (0..sys::num_pwr_domain_get_power_switches(self.r(), name)).map(|i| sys::nth_pwr_domain_get_power_switches(self.r(), name, i)).collect() }
+    pub fn pwr_domain_get_isolations(&self, name: &str) -> Vec<String> { (0..sys::num_pwr_domain_get_isolations(self.r(), name)).map(|i| sys::nth_pwr_domain_get_isolations(self.r(), name, i)).collect() }
+    pub fn pwr_domain_get_level_shifters(&self, name: &str) -> Vec<String> { (0..sys::num_pwr_domain_get_level_shifters(self.r(), name)).map(|i| sys::nth_pwr_domain_get_level_shifters(self.r(), name, i)).collect() }
+    pub fn pwr_switch_get_name(&self, name: &str) -> String { sys::pwr_switch_get_name(self.r(), name) }
+    pub fn pwr_switch_get_power_domain(&self, name: &str) -> String { sys::pwr_switch_get_power_domain(self.r(), name) }
+    pub fn pwr_switch_get_lib_cell(&self, name: &str) -> String { sys::pwr_switch_get_lib_cell(self.r(), name) }
+    pub fn isolation_get_name(&self, name: &str) -> String { sys::isolation_get_name(self.r(), name) }
+    pub fn isolation_get_applies_to(&self, name: &str) -> String { sys::isolation_get_applies_to(self.r(), name) }
+    pub fn isolation_get_clamp_value(&self, name: &str) -> String { sys::isolation_get_clamp_value(self.r(), name) }
+    pub fn isolation_get_isolation_signal(&self, name: &str) -> String { sys::isolation_get_isolation_signal(self.r(), name) }
+    pub fn isolation_get_isolation_sense(&self, name: &str) -> String { sys::isolation_get_isolation_sense(self.r(), name) }
+    pub fn isolation_get_location(&self, name: &str) -> String { sys::isolation_get_location(self.r(), name) }
+    pub fn isolation_get_power_domain(&self, name: &str) -> String { sys::isolation_get_power_domain(self.r(), name) }
+    pub fn isolation_get_isolation_cells(&self, name: &str) -> Vec<String> { (0..sys::num_isolation_get_isolation_cells(self.r(), name)).map(|i| sys::nth_isolation_get_isolation_cells(self.r(), name, i)).collect() }
+    pub fn level_shifter_get_name(&self, name: &str) -> String { sys::level_shifter_get_name(self.r(), name) }
+    pub fn level_shifter_get_domain(&self, name: &str) -> String { sys::level_shifter_get_domain(self.r(), name) }
+    pub fn level_shifter_get_source(&self, name: &str) -> String { sys::level_shifter_get_source(self.r(), name) }
+    pub fn level_shifter_get_sink(&self, name: &str) -> String { sys::level_shifter_get_sink(self.r(), name) }
+    pub fn level_shifter_is_use_functional_equivalence(&self, name: &str) -> bool { sys::level_shifter_is_use_functional_equivalence(self.r(), name) }
+    pub fn level_shifter_get_applies_to(&self, name: &str) -> String { sys::level_shifter_get_applies_to(self.r(), name) }
+    pub fn level_shifter_get_applies_to_boundary(&self, name: &str) -> String { sys::level_shifter_get_applies_to_boundary(self.r(), name) }
+    pub fn level_shifter_get_rule(&self, name: &str) -> String { sys::level_shifter_get_rule(self.r(), name) }
+    pub fn level_shifter_get_threshold(&self, name: &str) -> f32 { sys::level_shifter_get_threshold(self.r(), name) }
+    pub fn level_shifter_is_no_shift(&self, name: &str) -> bool { sys::level_shifter_is_no_shift(self.r(), name) }
+    pub fn level_shifter_is_force_shift(&self, name: &str) -> bool { sys::level_shifter_is_force_shift(self.r(), name) }
+    pub fn level_shifter_get_location(&self, name: &str) -> String { sys::level_shifter_get_location(self.r(), name) }
+    pub fn level_shifter_get_input_supply(&self, name: &str) -> String { sys::level_shifter_get_input_supply(self.r(), name) }
+    pub fn level_shifter_get_output_supply(&self, name: &str) -> String { sys::level_shifter_get_output_supply(self.r(), name) }
+    pub fn level_shifter_get_internal_supply(&self, name: &str) -> String { sys::level_shifter_get_internal_supply(self.r(), name) }
+    pub fn level_shifter_get_name_prefix(&self, name: &str) -> String { sys::level_shifter_get_name_prefix(self.r(), name) }
+    pub fn level_shifter_get_name_suffix(&self, name: &str) -> String { sys::level_shifter_get_name_suffix(self.r(), name) }
+    pub fn level_shifter_get_cell_name(&self, name: &str) -> String { sys::level_shifter_get_cell_name(self.r(), name) }
+    pub fn level_shifter_get_cell_input(&self, name: &str) -> String { sys::level_shifter_get_cell_input(self.r(), name) }
+    pub fn level_shifter_get_cell_output(&self, name: &str) -> String { sys::level_shifter_get_cell_output(self.r(), name) }
 }

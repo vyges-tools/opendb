@@ -161,4 +161,30 @@ impl Db {
     pub fn marker_set_visited(&mut self, category: &str, idx: usize, visited: bool) -> crate::Result<()> { Ok(sys::marker_set_visited(self.r(), category, idx, visited)?) }
     pub fn marker_set_visible(&mut self, category: &str, idx: usize, visible: bool) -> crate::Result<()> { Ok(sys::marker_set_visible(self.r(), category, idx, visible)?) }
     pub fn marker_set_waived(&mut self, category: &str, idx: usize, waived: bool) -> crate::Result<()> { Ok(sys::marker_set_waived(self.r(), category, idx, waived)?) }
+    pub fn pwr_domain_set_top(&mut self, name: &str, top: bool) -> crate::Result<()> { Ok(sys::pwr_domain_set_top(self.r(), name, top)?) }
+    pub fn pwr_domain_set_voltage(&mut self, name: &str, voltage: f32) -> crate::Result<()> { Ok(sys::pwr_domain_set_voltage(self.r(), name, voltage)?) }
+    pub fn pwr_switch_set_out_supply_port(&mut self, name: &str, out_port: &str, net: &str) -> crate::Result<()> { Ok(sys::pwr_switch_set_out_supply_port(self.r(), name, out_port, net)?) }
+    pub fn isolation_set_applies_to(&mut self, name: &str, applies_to: &str) -> crate::Result<()> { Ok(sys::isolation_set_applies_to(self.r(), name, applies_to)?) }
+    pub fn isolation_set_clamp_value(&mut self, name: &str, clamp_value: &str) -> crate::Result<()> { Ok(sys::isolation_set_clamp_value(self.r(), name, clamp_value)?) }
+    pub fn isolation_set_isolation_signal(&mut self, name: &str, isolation_signal: &str) -> crate::Result<()> { Ok(sys::isolation_set_isolation_signal(self.r(), name, isolation_signal)?) }
+    pub fn isolation_set_isolation_sense(&mut self, name: &str, isolation_sense: &str) -> crate::Result<()> { Ok(sys::isolation_set_isolation_sense(self.r(), name, isolation_sense)?) }
+    pub fn isolation_set_location(&mut self, name: &str, location: &str) -> crate::Result<()> { Ok(sys::isolation_set_location(self.r(), name, location)?) }
+    pub fn level_shifter_set_source(&mut self, name: &str, source: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_source(self.r(), name, source)?) }
+    pub fn level_shifter_set_sink(&mut self, name: &str, sink: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_sink(self.r(), name, sink)?) }
+    pub fn level_shifter_set_use_functional_equivalence(&mut self, name: &str, use_functional_equivalence: bool) -> crate::Result<()> { Ok(sys::level_shifter_set_use_functional_equivalence(self.r(), name, use_functional_equivalence)?) }
+    pub fn level_shifter_set_applies_to(&mut self, name: &str, applies_to: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_applies_to(self.r(), name, applies_to)?) }
+    pub fn level_shifter_set_applies_to_boundary(&mut self, name: &str, applies_to_boundary: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_applies_to_boundary(self.r(), name, applies_to_boundary)?) }
+    pub fn level_shifter_set_rule(&mut self, name: &str, rule: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_rule(self.r(), name, rule)?) }
+    pub fn level_shifter_set_threshold(&mut self, name: &str, threshold: f32) -> crate::Result<()> { Ok(sys::level_shifter_set_threshold(self.r(), name, threshold)?) }
+    pub fn level_shifter_set_no_shift(&mut self, name: &str, no_shift: bool) -> crate::Result<()> { Ok(sys::level_shifter_set_no_shift(self.r(), name, no_shift)?) }
+    pub fn level_shifter_set_force_shift(&mut self, name: &str, force_shift: bool) -> crate::Result<()> { Ok(sys::level_shifter_set_force_shift(self.r(), name, force_shift)?) }
+    pub fn level_shifter_set_location(&mut self, name: &str, location: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_location(self.r(), name, location)?) }
+    pub fn level_shifter_set_input_supply(&mut self, name: &str, input_supply: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_input_supply(self.r(), name, input_supply)?) }
+    pub fn level_shifter_set_output_supply(&mut self, name: &str, output_supply: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_output_supply(self.r(), name, output_supply)?) }
+    pub fn level_shifter_set_internal_supply(&mut self, name: &str, internal_supply: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_internal_supply(self.r(), name, internal_supply)?) }
+    pub fn level_shifter_set_name_prefix(&mut self, name: &str, name_prefix: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_name_prefix(self.r(), name, name_prefix)?) }
+    pub fn level_shifter_set_name_suffix(&mut self, name: &str, name_suffix: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_name_suffix(self.r(), name, name_suffix)?) }
+    pub fn level_shifter_set_cell_name(&mut self, name: &str, cell_name: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_name(self.r(), name, cell_name)?) }
+    pub fn level_shifter_set_cell_input(&mut self, name: &str, cell_input: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_input(self.r(), name, cell_input)?) }
+    pub fn level_shifter_set_cell_output(&mut self, name: &str, cell_output: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_output(self.r(), name, cell_output)?) }
 }
