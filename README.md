@@ -71,6 +71,45 @@ Three behaviours worth knowing before you rely on them:
   section of the [`vyges-opendb-lib` README](https://github.com/vyges-tools/opendb-lib) for
   the full detail and the TODO to expose them together.
 
+## 3D structural sign-off
+
+`check-3dblox` runs OpenDB's 3D linter over a chiplet assembly — logical connectivity, floating
+chips, overlapping dies, unused `internal_ext` regions, connection-region overlap and
+mating-surface gap versus connection thickness, bump alignment, and alignment markers.
+
+```sh
+vyges-opendb check-3dblox -i stack.odb
+```
+
+```json
+{ "violations": 2,
+  "categories": [
+    { "category": "Floating chips", "count": 1,
+      "markers": [ { "name": "u_base", "comment": "Isolated chip set starting with u_base" } ] },
+    { "category": "Connection regions", "count": 1,
+      "markers": [ { "name": "stack:bond0, u_base.regions.back",
+                     "comment": "Invalid connection bond0: u_top/front (faces BOTTOM) to u_base/back (faces BOTTOM)" } ] } ] }
+```
+
+The report is self-contained — findings, not just counts — because the markers live in the
+in-memory database and are never written back, so a second command could not fetch them.
+OpenDB's own `[WARNING ODB-nnnn]` lines go to **stderr**, leaving stdout parseable.
+
+From Rust the same detail is reachable through the ordinary marker accessors — no new read path
+— addressed by a slash path, since the 3D categories nest under a top category on the chip:
+
+```rust
+let db = Db::open("stack.odb")?;
+if db.check_3dblox()? > 0 {
+    let why = registry::get(&db, "dbMarker", "get_comment",
+                            &["3DBlox/Connection regions".into(), "0".into()])?;
+}
+```
+
+It is a **checker, not a repairer**: it annotates the in-memory database with markers and never
+modifies the design, so `Db::check_3dblox` takes `&self` and nothing is persisted unless you
+write the database out. Re-running is idempotent.
+
 ## Build & test
 
 ```sh

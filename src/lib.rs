@@ -182,6 +182,37 @@ impl Db {
     pub fn bterm_direction(&self, bterm: &str) -> String { sys::bterm_direction(self.r(), bterm) }
     /// Total routed wire length over all nets, in DBU.
     pub fn total_wire_length(&self) -> u64 { sys::total_wire_length(self.r()) }
+
+    /// Run OpenDB's 3D structural lint (`check_3dblox`) over the chiplet assembly and return
+    /// the number of violations found — **0 means clean**.
+    ///
+    /// Covers logical connectivity, floating chips, overlapping dies, unused `INTERNAL_EXT`
+    /// regions, connection-region overlap and mating-surface gap versus connection thickness,
+    /// bump physical alignment, and alignment markers.
+    ///
+    /// Violations are filed as ordinary `dbMarker` objects under a `3DBlox` category on the top
+    /// chip, one sub-category per check, so the detail is read back through the normal marker
+    /// accessors using a slash path — e.g. `3DBlox/Overlapping chips`.
+    ///
+    /// Takes `&self`: this is a checker, not a repairer. It annotates the in-memory database
+    /// with markers and never modifies the design. Errors if there is no top chip.
+    pub fn check_3dblox(&self) -> Result<usize> { Ok(sys::check_3dblox(self.r())?) }
+
+    /// Run `f` with OpenDB's diagnostics captured instead of written to its default **stdout**
+    /// sink, returning `f`'s value alongside the captured text.
+    ///
+    /// Needed by anything whose stdout must stay machine-readable — OpenDB writes human-readable
+    /// `[WARNING ODB-nnnn] …` lines to stdout, which would otherwise interleave with JSON. The
+    /// caller decides where the text goes (stderr, a log, a report field).
+    ///
+    /// Capture detaches the events forwarder for the duration and restores it afterwards, so
+    /// messages emitted inside `f` reach the events trail only through what the caller does with
+    /// the returned text.
+    pub fn with_captured_logs<T>(&self, f: impl FnOnce(&Self) -> T) -> (T, String) {
+        sys::log_capture_begin(self.r());
+        let out = f(self);
+        (out, sys::log_capture_end(self.r()))
+    }
     /// All net names.
     pub fn net_names(&self) -> Vec<String> {
         (0..self.num_nets()).map(|i| sys::nth_net_name(self.r(), i)).collect()

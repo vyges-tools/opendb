@@ -65,6 +65,9 @@ commands:
   report-connectivity       --input <f.odb>
                       Dump the netlist connectivity graph as JSON (report).
 
+  check-3dblox              --input <f.odb>
+                      3D/chiplet structural sign-off lint; reports violations as JSON (check).
+
   custom-io-placement       --input <in.odb> --output <out.odb> [--config <cfg.json>]
                       Place I/O port pins (CUSTOM_IO_PLACEMENT in the config).
 
@@ -121,6 +124,7 @@ fn run() -> Result<(), Fail> {
         "remove-obstructions" => remove_obstructions(args),
         "write-verilog-header" => write_verilog_header(args),
         "report-wire-length" => report_wire_length(args),
+        "check-3dblox" => check_3dblox(args),
         "report-connectivity" => report_connectivity(args),
         "custom-io-placement" => custom_io_placement(args),
         "write-def" => write_def(args),
@@ -733,6 +737,88 @@ fn write_verilog_header(mut args: impl Iterator<Item = String>) -> Result<(), Fa
         Some(p) => std::fs::write(&p, header)?,
         None => print!("{header}"),
     }
+    Ok(())
+}
+
+const CHECK_3DBLOX_DESCRIBE: &str = r#"{
+  "step": "check-3dblox",
+  "summary": "3D/chiplet structural sign-off lint over a multi-die assembly: logical connectivity, floating chips, overlapping dies, unused internal_ext regions, connection-region overlap and mating-surface gap vs connection thickness, bump alignment, and alignment markers. Read-only: reports violations as markers, never modifies the design.",
+  "librelane_equivalent": null,
+  "unix_only": true,
+  "args": [
+    { "name": "--input", "kind": "input", "type": "path", "required": true, "description": "input .odb design" }
+  ],
+  "output": "JSON { violations, categories: [{ category, count, markers: [{ name, comment }] }] } on stdout; exit 0 regardless of findings"
+}"#;
+
+/// `check-3dblox --input <f.odb> | --describe`.
+fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let mut input = None;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--describe" => {
+                println!("{CHECK_3DBLOX_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!("usage: vyges-opendb check-3dblox --input <f.odb>");
+                return Ok(());
+            }
+            other => return Err(format!("check-3dblox: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("check-3dblox: --input <f.odb> required")?;
+    let db = Db::open(&input)?;
+    // OpenDB writes its human-readable warnings to stdout, which would interleave with the JSON
+    // below and make this subcommand unparseable. Capture them and re-emit on stderr, where
+    // diagnostics belong when stdout is a data channel.
+    let (violations, logs) = db.with_captured_logs(|db| db.check_3dblox());
+    if !logs.is_empty() {
+        eprint!("{logs}");
+    }
+    let violations = violations?;
+
+    // Report the findings themselves, not just counts. The markers live in the in-memory
+    // database and are never written back, so a caller could not fetch them in a second
+    // command — this output has to be self-contained to be useful.
+    let get = |class: &str, field: &str, keys: &[String]| {
+        vyges_opendb::registry::get(&db, class, field, keys).ok()
+    };
+    let mut categories = Vec::new();
+    for check in [
+        "Logical Connectivity",
+        "Floating chips",
+        "Overlapping chips",
+        "Unused internal_ext",
+        "Connection regions",
+        "Bump Alignment",
+        "Alignment Markers",
+    ] {
+        let path = format!("3DBlox/{check}");
+        let count = get("dbMarkerCategory", "get_marker_count", &[path.clone()])
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        if count == 0 {
+            continue; // checks that passed are omitted rather than listed as zero
+        }
+        let markers: Vec<serde_json::Value> = (0..count)
+            .map(|i| {
+                let keys = [path.clone(), i.to_string()];
+                serde_json::json!({
+                    "name": get("dbMarker", "get_name", &keys),
+                    "comment": get("dbMarker", "get_comment", &keys),
+                })
+            })
+            .collect();
+        categories.push(serde_json::json!({
+            "category": check, "count": count, "markers": markers,
+        }));
+    }
+    println!(
+        "{}",
+        serde_json::json!({ "violations": violations, "categories": categories })
+    );
     Ok(())
 }
 
