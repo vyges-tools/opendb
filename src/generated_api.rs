@@ -724,4 +724,45 @@ impl Db {
     pub fn chipinst_get_b_box_y_max(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_y_max(self.r(), chip, inst) }
     pub fn chipinst_get_b_box_dx(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_dx(self.r(), chip, inst) }
     pub fn chipinst_get_b_box_dy(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_dy(self.r(), chip, inst) }
+    pub fn chipregion_get_name(&self, chip: &str, region: &str) -> String { sys::chipregion_get_name(self.r(), chip, region) }
+    pub fn chipregion_get_box_x_min(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_x_min(self.r(), chip, region) }
+    pub fn chipregion_get_box_y_min(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_y_min(self.r(), chip, region) }
+    pub fn chipregion_get_box_x_max(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_x_max(self.r(), chip, region) }
+    pub fn chipregion_get_box_y_max(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_y_max(self.r(), chip, region) }
+    pub fn chipregion_get_box_dx(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_dx(self.r(), chip, region) }
+    pub fn chipregion_get_box_dy(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_dy(self.r(), chip, region) }
+    pub fn chipregion_get_chip(&self, chip: &str, region: &str) -> String { sys::chipregion_get_chip(self.r(), chip, region) }
+    pub fn chipregion_get_side(&self, chip: &str, region: &str) -> String { sys::chipregion_get_side(self.r(), chip, region) }
+    pub fn chipregion_get_layer(&self, chip: &str, region: &str) -> String { sys::chipregion_get_layer(self.r(), chip, region) }
+    pub fn chipregioninst_get_chip_inst(&self, chip: &str, inst: &str, region: &str) -> String { sys::chipregioninst_get_chip_inst(self.r(), chip, inst, region) }
+    pub fn chipregioninst_get_chip_region(&self, chip: &str, inst: &str, region: &str) -> String { sys::chipregioninst_get_chip_region(self.r(), chip, inst, region) }
+    pub fn chipbump_get_chip(&self, chip: &str, region: &str, idx: usize) -> String { sys::chipbump_get_chip(self.r(), chip, region, idx) }
+    pub fn chipbump_get_chip_region(&self, chip: &str, region: &str, idx: usize) -> String { sys::chipbump_get_chip_region(self.r(), chip, region, idx) }
+    pub fn chipbump_get_inst(&self, chip: &str, region: &str, idx: usize) -> String { sys::chipbump_get_inst(self.r(), chip, region, idx) }
+    pub fn chipbump_get_net(&self, chip: &str, region: &str, idx: usize) -> String { sys::chipbump_get_net(self.r(), chip, region, idx) }
+    pub fn chipbump_get_b_term(&self, chip: &str, region: &str, idx: usize) -> String { sys::chipbump_get_b_term(self.r(), chip, region, idx) }
+    pub fn chipconn_get_name(&self, chip: &str, conn: &str) -> String { sys::chipconn_get_name(self.r(), chip, conn) }
+    pub fn chipconn_get_thickness(&self, chip: &str, conn: &str) -> i32 { sys::chipconn_get_thickness(self.r(), chip, conn) }
+    pub fn chipconn_get_parent_chip(&self, chip: &str, conn: &str) -> String { sys::chipconn_get_parent_chip(self.r(), chip, conn) }
+    pub fn chipconn_get_top_region_path(&self, chip: &str, conn: &str) -> Vec<String> { (0..sys::num_chipconn_get_top_region_path(self.r(), chip, conn)).map(|i| sys::nth_chipconn_get_top_region_path(self.r(), chip, conn, i)).collect() }
+    pub fn chipconn_get_bottom_region_path(&self, chip: &str, conn: &str) -> Vec<String> { (0..sys::num_chipconn_get_bottom_region_path(self.r(), chip, conn)).map(|i| sys::nth_chipconn_get_bottom_region_path(self.r(), chip, conn, i)).collect() }
+    pub fn chipnet_get_name(&self, chip: &str, net: &str) -> String { sys::chipnet_get_name(self.r(), chip, net) }
+    pub fn chipnet_get_chip(&self, chip: &str, net: &str) -> String { sys::chipnet_get_chip(self.r(), chip, net) }
+    pub fn chipnet_get_num_bump_insts(&self, chip: &str, net: &str) -> u32 { sys::chipnet_get_num_bump_insts(self.r(), chip, net) }
+    pub fn chippath_get_name(&self, chip: &str, path: &str) -> String { sys::chippath_get_name(self.r(), chip, path) }
+    pub fn chippath_get_chip(&self, chip: &str, path: &str) -> String { sys::chippath_get_chip(self.r(), chip, path) }
+    pub fn unfoldedchip_get_name(&self, path: &str) -> String { sys::unfoldedchip_get_name(self.r(), path) }
+    pub fn unfoldedchip_get_chip_inst_path(&self, path: &str) -> Vec<String> { (0..sys::num_unfoldedchip_get_chip_inst_path(self.r(), path)).map(|i| sys::nth_unfoldedchip_get_chip_inst_path(self.r(), path, i)).collect() }
+    pub fn unfoldedregion_get_parent_chip(&self, path: &str, idx: usize) -> String { sys::unfoldedregion_get_parent_chip(self.r(), path, idx) }
+    pub fn unfoldedregion_get_effective_side(&self, path: &str, idx: usize) -> String { sys::unfoldedregion_get_effective_side(self.r(), path, idx) }
+    pub fn unfoldedregion_is_top(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_top(self.r(), path, idx) }
+    pub fn unfoldedregion_is_bottom(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_bottom(self.r(), path, idx) }
+    pub fn unfoldedregion_is_internal(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_internal(self.r(), path, idx) }
+    pub fn unfoldedregion_is_internal_ext(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_internal_ext(self.r(), path, idx) }
+    pub fn unfoldedregion_get_surface_z(&self, path: &str, idx: usize) -> i32 { sys::unfoldedregion_get_surface_z(self.r(), path, idx) }
+    pub fn unfoldedbump_get_global_position_x(&self, path: &str, region_idx: usize, idx: usize) -> i32 { sys::unfoldedbump_get_global_position_x(self.r(), path, region_idx, idx) }
+    pub fn unfoldedbump_get_global_position_y(&self, path: &str, region_idx: usize, idx: usize) -> i32 { sys::unfoldedbump_get_global_position_y(self.r(), path, region_idx, idx) }
+    pub fn unfoldedbump_get_global_position_z(&self, path: &str, region_idx: usize, idx: usize) -> i32 { sys::unfoldedbump_get_global_position_z(self.r(), path, region_idx, idx) }
+    pub fn unfoldedconn_get_chip_conn(&self, idx: usize) -> String { sys::unfoldedconn_get_chip_conn(self.r(), idx) }
+    pub fn unfoldednet_get_chip_net(&self, idx: usize) -> String { sys::unfoldednet_get_chip_net(self.r(), idx) }
 }

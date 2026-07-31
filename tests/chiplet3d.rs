@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-// The ODB 3D / chiplet schema (dbChip, dbChipInst) read against POPULATED data with exact
-// values — not discovery or graceful-empty. The fixture is synthesized by opendb-lib's
-// test/make-3d-fixture.cpp (-DVYGES_ODB_MK3DFIXTURE=ON) because our safe API does not expose
-// structural creation and we cannot read a .3dbv/.3dbx yet.
+// The ODB 3D / chiplet schema read against POPULATED data with exact values — not discovery or
+// graceful-empty. The fixture is synthesized by opendb-lib's test/make-3d-fixture.cpp
+// (-DVYGES_ODB_MK3DFIXTURE=ON) because our safe API does not expose structural creation and we
+// cannot read a .3dbv/.3dbx yet.
 //
 // The fixture, and what it is for:
 //
-//   stack : dbChip HIER, no tech
+//   stack : dbChip HIER, the database's top chip
 //     |- u_top  : dbChipInst -> top_die  (DIE)       loc (1000, 2000, 3000)  orient MZ_R90
 //     |- u_base : dbChipInst -> base_die (SUBSTRATE) loc (0, 0, 0)           orient R0
+//     |- bond0  : dbChipConn  u_top/front <-> u_base/back, thickness 25
+//     |- vdd_3d : dbChipNet   ·   path0 : dbChipPath
+//
+//   top_die  : block "top_die_blk" w/ inst "bump_pad0"; region "front" (FRONT) w/ one dbChipBump
+//   base_die : region "back" (BACK)
+//
+// Region insts, bump insts and the entire UNFOLDED model are derived rather than stored — the
+// first two by dbChipInst::create, the last by constructUnfoldedModel(), which runs on read.
 use vyges_opendb::{registry, Db};
 
 const FIXTURE: &str = "tests/fixtures/chiplet3d.odb";
@@ -19,6 +27,11 @@ fn chip(db: &Db, name: &str, field: &str) -> serde_json::Value {
 
 fn inst(db: &Db, name: &str, field: &str) -> serde_json::Value {
     registry::get(db, "dbChipInst", field, &["stack".into(), name.into()]).unwrap()
+}
+
+fn get(db: &Db, class: &str, field: &str, keys: &[&str]) -> serde_json::Value {
+    let keys: Vec<String> = keys.iter().map(|s| s.to_string()).collect();
+    registry::get(db, class, field, &keys).unwrap()
 }
 
 #[test]
@@ -105,4 +118,136 @@ fn a_chip_inst_is_keyed_by_its_parent_not_globally() {
     assert_eq!(wrong, serde_json::json!(0));
     let right = inst(&db, "u_top", "get_loc_z");
     assert_eq!(right, serde_json::json!(3000));
+}
+
+// ---- bonding surfaces, bumps, connections -----------------------------------------------------
+
+#[test]
+fn chip_regions_carry_a_side_and_a_box() {
+    // dbChipRegion::Side is the second enum with no getString(), so the generator maps it too.
+    // The two regions carry DIFFERENT sides on purpose — see the ChipType note above.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(get(&db, "dbChipRegion", "get_side", &["top_die", "front"]), serde_json::json!("FRONT"));
+    assert_eq!(get(&db, "dbChipRegion", "get_side", &["base_die", "back"]), serde_json::json!("BACK"));
+
+    assert_eq!(get(&db, "dbChipRegion", "get_box_x_max", &["top_die", "front"]), serde_json::json!(50000));
+    assert_eq!(get(&db, "dbChipRegion", "get_chip", &["top_die", "front"]), serde_json::json!("top_die"));
+    // a region names the layer it bonds on, which is how it ties back to the die's own tech
+    assert_eq!(get(&db, "dbChipRegion", "get_layer", &["top_die", "front"]), serde_json::json!("nwell"));
+}
+
+#[test]
+fn region_insts_are_derived_per_chip_inst() {
+    // dbChipInst::create builds a dbChipRegionInst for every region on the master chip — we never
+    // create these directly. Keyed by (chip, inst, region): the region name comes from the MASTER,
+    // the inst from the parent.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(
+        get(&db, "dbChipRegionInst", "get_chip_inst", &["stack", "u_top", "front"]),
+        serde_json::json!("u_top")
+    );
+    assert_eq!(
+        get(&db, "dbChipRegionInst", "get_chip_region", &["stack", "u_top", "front"]),
+        serde_json::json!("front")
+    );
+}
+
+#[test]
+fn a_bump_ties_a_region_back_to_the_dies_netlist() {
+    // This is what dbChipBump is for: the bump wraps a placed dbInst in the die's own block, so a
+    // bonding surface can be resolved to the design underneath it. Addressed by position, since
+    // a bump has neither a name nor a find*.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(get(&db, "dbChipBump", "get_inst", &["top_die", "front", "0"]), serde_json::json!("bump_pad0"));
+    assert_eq!(get(&db, "dbChipBump", "get_chip", &["top_die", "front", "0"]), serde_json::json!("top_die"));
+    assert_eq!(get(&db, "dbChipBump", "get_chip_region", &["top_die", "front", "0"]), serde_json::json!("front"));
+    // unassigned net/bterm come back blank rather than erroring
+    assert_eq!(get(&db, "dbChipBump", "get_net", &["top_die", "front", "0"]), serde_json::json!(""));
+}
+
+#[test]
+fn a_connection_carries_thickness_and_its_region_paths() {
+    // dbChipConn is the physical bond between two regions. Thickness is what the linter checks
+    // the mating-surface gap against, and the region paths are how a conn addresses regions that
+    // may sit several chip-insts deep.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(get(&db, "dbChipConn", "get_name", &["stack", "bond0"]), serde_json::json!("bond0"));
+    assert_eq!(get(&db, "dbChipConn", "get_thickness", &["stack", "bond0"]), serde_json::json!(25));
+    assert_eq!(get(&db, "dbChipConn", "get_parent_chip", &["stack", "bond0"]), serde_json::json!("stack"));
+    // std::vector<dbChipInst*> marshals as a list of names, like a dbSet
+    assert_eq!(
+        get(&db, "dbChipConn", "get_top_region_path", &["stack", "bond0"]),
+        serde_json::json!(["u_top"])
+    );
+}
+
+#[test]
+fn chip_nets_and_paths_are_addressable() {
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(get(&db, "dbChipNet", "get_name", &["stack", "vdd_3d"]), serde_json::json!("vdd_3d"));
+    assert_eq!(get(&db, "dbChipNet", "get_chip", &["stack", "vdd_3d"]), serde_json::json!("stack"));
+    assert_eq!(get(&db, "dbChipPath", "get_name", &["stack", "path0"]), serde_json::json!("path0"));
+}
+
+// ---- the unfolded model -----------------------------------------------------------------------
+
+#[test]
+fn the_unfolded_model_is_rebuilt_on_read() {
+    // The unfolded tables are DERIVED, never serialised — _dbDatabase::operator>> calls
+    // constructUnfoldedModel() on read whenever the database holds more than one chip. So these
+    // answer from a plain Db::open with nothing else called. A top-level inst unfolds to a path
+    // that is just its own name.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(get(&db, "dbUnfoldedChipInst", "get_name", &["u_top"]), serde_json::json!("u_top"));
+    assert_eq!(
+        get(&db, "dbUnfoldedChipInst", "get_chip_inst_path", &["u_top"]),
+        serde_json::json!(["u_top"])
+    );
+    // and the flat db-level sets map back to the folded, named objects
+    assert_eq!(get(&db, "dbUnfoldedChipConn", "get_chip_conn", &["0"]), serde_json::json!("bond0"));
+    assert_eq!(get(&db, "dbUnfoldedChipNet", "get_chip_net", &["0"]), serde_json::json!("vdd_3d"));
+}
+
+#[test]
+fn effective_side_is_computed_not_copied() {
+    // The strongest evidence the unfolded model actually resolves geometry rather than copying
+    // it: top_die's region is declared FRONT on the master, but u_top is mirrored in Z (MZ_R90),
+    // so its EFFECTIVE side in the assembled stack is BOTTOM. A binding that merely echoed the
+    // folded value would report FRONT here.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(get(&db, "dbChipRegion", "get_side", &["top_die", "front"]), serde_json::json!("FRONT"));
+    assert_eq!(
+        get(&db, "dbUnfoldedChipRegionInst", "get_effective_side", &["u_top", "0"]),
+        serde_json::json!("BOTTOM")
+    );
+    assert_eq!(get(&db, "dbUnfoldedChipRegionInst", "is_bottom", &["u_top", "0"]), serde_json::json!(true));
+    assert_eq!(get(&db, "dbUnfoldedChipRegionInst", "is_top", &["u_top", "0"]), serde_json::json!(false));
+
+    // the bonding surface's absolute Z in the assembled stack
+    assert_eq!(get(&db, "dbUnfoldedChipRegionInst", "get_surface_z", &["u_top", "0"]), serde_json::json!(3000));
+    assert_eq!(
+        get(&db, "dbUnfoldedChipRegionInst", "get_parent_chip", &["u_top", "0"]),
+        serde_json::json!("u_top")
+    );
+}
+
+#[test]
+fn bumps_resolve_to_absolute_positions() {
+    // getGlobalPosition() is the payoff of the whole unfolded model — a bump's coordinates in the
+    // assembled stack, with the parent chip inst's rotation and Z offset already applied. The X
+    // here is NOT the bump's position in top_die's own frame; it has been rotated through R90.
+    let db = Db::open(FIXTURE).unwrap();
+    assert_eq!(
+        get(&db, "dbUnfoldedChipBumpInst", "get_global_position_x", &["u_top", "0", "0"]),
+        serde_json::json!(39640)
+    );
+    assert_eq!(
+        get(&db, "dbUnfoldedChipBumpInst", "get_global_position_y", &["u_top", "0", "0"]),
+        serde_json::json!(3840)
+    );
+    // Z lands on the parent's bonding surface
+    assert_eq!(
+        get(&db, "dbUnfoldedChipBumpInst", "get_global_position_z", &["u_top", "0", "0"]),
+        serde_json::json!(3000)
+    );
 }

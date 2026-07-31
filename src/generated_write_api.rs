@@ -250,4 +250,5 @@ impl Db {
     pub fn chip_set_scribe_line_north(&mut self, chip: &str, scribe_line_north: i32) -> crate::Result<()> { Ok(sys::chip_set_scribe_line_north(self.r(), chip, scribe_line_north)?) }
     pub fn chip_set_scribe_line_south(&mut self, chip: &str, scribe_line_south: i32) -> crate::Result<()> { Ok(sys::chip_set_scribe_line_south(self.r(), chip, scribe_line_south)?) }
     pub fn chip_set_tsv(&mut self, chip: &str, tsv: bool) -> crate::Result<()> { Ok(sys::chip_set_tsv(self.r(), chip, tsv)?) }
+    pub fn chipconn_set_thickness(&mut self, chip: &str, conn: &str, thickness: i32) -> crate::Result<()> { Ok(sys::chipconn_set_thickness(self.r(), chip, conn, thickness)?) }
 }

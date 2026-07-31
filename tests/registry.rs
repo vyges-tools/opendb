@@ -28,8 +28,14 @@ fn registry_covers_the_new_target_classes() {
               "dbTech", "dbLib", "dbCapNode", "dbRSeg", "dbCCSeg", "dbSBox", "dbBPin", "dbMPin",
               "dbTechViaRule", "dbTechViaGenerateRule", "dbTechViaLayerRule",
               "dbTechLayerAntennaRule",
-              // 3D / chiplet (ODB 3D-IC) — chip-level, above dbBlock
-              "dbChip", "dbChipInst"] {
+              // 3D / chiplet (ODB 3D-IC) — chip-level, above dbBlock. dbChipBumpInst is
+              // deliberately absent: every accessor it has returns an unnameable type, so it
+              // would contribute no fields; reach the same data via dbChipBump or the
+              // unfolded bump insts.
+              "dbChip", "dbChipInst", "dbChipRegion", "dbChipRegionInst", "dbChipBump",
+              "dbChipConn", "dbChipNet", "dbChipPath",
+              "dbUnfoldedChipInst", "dbUnfoldedChipRegionInst", "dbUnfoldedChipBumpInst",
+              "dbUnfoldedChipConn", "dbUnfoldedChipNet"] {
         // (dbTechAntennaPinModel is setter-only -> WRITE_FIELDS, not the read FIELDS below)
         assert!(classes.contains(c), "{c} should be exposed in the registry");
     }
