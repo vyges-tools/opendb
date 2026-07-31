@@ -237,4 +237,18 @@ impl Db {
     pub fn layerantenna_set_diff_c_a_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_c_a_r(self.r(), layer, ratio)?) }
     pub fn layerantenna_set_diff_p_s_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_p_s_r(self.r(), layer, ratio)?) }
     pub fn layerantenna_set_diff_c_s_r(&mut self, layer: &str, ratio: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_diff_c_s_r(self.r(), layer, ratio)?) }
+    pub fn chip_set_width(&mut self, chip: &str, width: i32) -> crate::Result<()> { Ok(sys::chip_set_width(self.r(), chip, width)?) }
+    pub fn chip_set_height(&mut self, chip: &str, height: i32) -> crate::Result<()> { Ok(sys::chip_set_height(self.r(), chip, height)?) }
+    pub fn chip_set_thickness(&mut self, chip: &str, thickness: i32) -> crate::Result<()> { Ok(sys::chip_set_thickness(self.r(), chip, thickness)?) }
+    pub fn chip_set_shrink(&mut self, chip: &str, shrink: f32) -> crate::Result<()> { Ok(sys::chip_set_shrink(self.r(), chip, shrink)?) }
+    pub fn chip_set_seal_ring_east(&mut self, chip: &str, seal_ring_east: i32) -> crate::Result<()> { Ok(sys::chip_set_seal_ring_east(self.r(), chip, seal_ring_east)?) }
+    pub fn chip_set_seal_ring_west(&mut self, chip: &str, seal_ring_west: i32) -> crate::Result<()> { Ok(sys::chip_set_seal_ring_west(self.r(), chip, seal_ring_west)?) }
+    pub fn chip_set_seal_ring_north(&mut self, chip: &str, seal_ring_north: i32) -> crate::Result<()> { Ok(sys::chip_set_seal_ring_north(self.r(), chip, seal_ring_north)?) }
+    pub fn chip_set_seal_ring_south(&mut self, chip: &str, seal_ring_south: i32) -> crate::Result<()> { Ok(sys::chip_set_seal_ring_south(self.r(), chip, seal_ring_south)?) }
+    pub fn chip_set_scribe_line_east(&mut self, chip: &str, scribe_line_east: i32) -> crate::Result<()> { Ok(sys::chip_set_scribe_line_east(self.r(), chip, scribe_line_east)?) }
+    pub fn chip_set_scribe_line_west(&mut self, chip: &str, scribe_line_west: i32) -> crate::Result<()> { Ok(sys::chip_set_scribe_line_west(self.r(), chip, scribe_line_west)?) }
+    pub fn chip_set_scribe_line_north(&mut self, chip: &str, scribe_line_north: i32) -> crate::Result<()> { Ok(sys::chip_set_scribe_line_north(self.r(), chip, scribe_line_north)?) }
+    pub fn chip_set_scribe_line_south(&mut self, chip: &str, scribe_line_south: i32) -> crate::Result<()> { Ok(sys::chip_set_scribe_line_south(self.r(), chip, scribe_line_south)?) }
+    pub fn chip_set_tsv(&mut self, chip: &str, tsv: bool) -> crate::Result<()> { Ok(sys::chip_set_tsv(self.r(), chip, tsv)?) }
+    pub fn chipinst_set_orient(&mut self, chip: &str, inst: &str, orient: &str) -> crate::Result<()> { Ok(sys::chipinst_set_orient(self.r(), chip, inst, orient)?) }
 }

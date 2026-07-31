@@ -27,7 +27,9 @@ fn registry_covers_the_new_target_classes() {
               // tech / lib / parasitics / pins / tech-rules (core classes)
               "dbTech", "dbLib", "dbCapNode", "dbRSeg", "dbCCSeg", "dbSBox", "dbBPin", "dbMPin",
               "dbTechViaRule", "dbTechViaGenerateRule", "dbTechViaLayerRule",
-              "dbTechLayerAntennaRule"] {
+              "dbTechLayerAntennaRule",
+              // 3D / chiplet (ODB 3D-IC) — chip-level, above dbBlock
+              "dbChip", "dbChipInst"] {
         // (dbTechAntennaPinModel is setter-only -> WRITE_FIELDS, not the read FIELDS below)
         assert!(classes.contains(c), "{c} should be exposed in the registry");
     }
@@ -63,6 +65,44 @@ fn registry_marker_reads_are_graceful_when_absent() {
     assert_eq!(n, serde_json::json!(0));
     let name = registry::get(&db, "dbMarker", "get_name", &["nope".into(), "0".into()]).unwrap();
     assert_eq!(name, serde_json::json!(""));
+}
+
+#[test]
+fn registry_exposes_the_3d_chiplet_surface() {
+    // ODB 3D-IC: dbChip/dbChipInst sit ABOVE dbBlock, so they are the first registry entries
+    // whose resolvers key off the database rather than the block. Assert both the addressing
+    // shape and the two new type marshallings, which are what make this schema reachable at all.
+    let by = |cls: &str, field: &str| {
+        registry::FIELDS.iter().find(|f| f.class == cls && f.field == field)
+            .unwrap_or_else(|| panic!("{cls}::{field} missing from the registry"))
+    };
+
+    // dbChip is addressed by chip name alone; dbChipInst by (parent chip, inst) — inst names are
+    // only unique within their parent chip, so dropping the parent would be ambiguous.
+    assert_eq!(by("dbChip", "get_name").keys, &["str:chip"]);
+    assert_eq!(by("dbChipInst", "get_name").keys, &["str:chip", "str:inst"]);
+
+    // Point3D expands to three scalar sub-fields, mirroring how Point/Rect already expand.
+    for (f, v) in [("get_loc_x", "i32"), ("get_loc_y", "i32"), ("get_loc_z", "i32")] {
+        assert_eq!(by("dbChipInst", f).value, v);
+    }
+    // dbOrientType3D marshals as a string via getString(), like the six 2D enum types.
+    assert_eq!(by("dbChipInst", "get_orient").value, "string");
+    // per-chip dbTech is the load-bearing fact of the 3D model — the chip must expose its stack.
+    assert_eq!(by("dbChip", "get_thickness").value, "i32");
+}
+
+#[test]
+fn registry_3d_reads_are_graceful_on_a_2d_design() {
+    // the fixture is a flat 2D design with no chiplet hierarchy. Reads over an absent chip must
+    // return typed defaults, never panic — the same contract the DRC-marker reads hold to.
+    let db = Db::open(FIXTURE).unwrap();
+    let t = registry::get(&db, "dbChip", "get_thickness", &["nope".into()]).unwrap();
+    assert_eq!(t, serde_json::json!(0));
+    let z = registry::get(&db, "dbChipInst", "get_loc_z", &["nope".into(), "nope".into()]).unwrap();
+    assert_eq!(z, serde_json::json!(0));
+    let o = registry::get(&db, "dbChipInst", "get_orient", &["nope".into(), "nope".into()]).unwrap();
+    assert_eq!(o, serde_json::json!(""));
 }
 
 #[test]

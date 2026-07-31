@@ -680,4 +680,47 @@ impl Db {
     pub fn via_params_get_top_layer(&self, via: &str) -> String { sys::via_params_get_top_layer(self.r(), via) }
     pub fn via_params_get_cut_layer(&self, via: &str) -> String { sys::via_params_get_cut_layer(self.r(), via) }
     pub fn via_params_get_bottom_layer(&self, via: &str) -> String { sys::via_params_get_bottom_layer(self.r(), via) }
+    pub fn chip_get_name(&self, chip: &str) -> String { sys::chip_get_name(self.r(), chip) }
+    pub fn chip_get_offset_x(&self, chip: &str) -> i32 { sys::chip_get_offset_x(self.r(), chip) }
+    pub fn chip_get_offset_y(&self, chip: &str) -> i32 { sys::chip_get_offset_y(self.r(), chip) }
+    pub fn chip_get_width(&self, chip: &str) -> i32 { sys::chip_get_width(self.r(), chip) }
+    pub fn chip_get_height(&self, chip: &str) -> i32 { sys::chip_get_height(self.r(), chip) }
+    pub fn chip_get_thickness(&self, chip: &str) -> i32 { sys::chip_get_thickness(self.r(), chip) }
+    pub fn chip_get_shrink(&self, chip: &str) -> f32 { sys::chip_get_shrink(self.r(), chip) }
+    pub fn chip_get_seal_ring_east(&self, chip: &str) -> i32 { sys::chip_get_seal_ring_east(self.r(), chip) }
+    pub fn chip_get_seal_ring_west(&self, chip: &str) -> i32 { sys::chip_get_seal_ring_west(self.r(), chip) }
+    pub fn chip_get_seal_ring_north(&self, chip: &str) -> i32 { sys::chip_get_seal_ring_north(self.r(), chip) }
+    pub fn chip_get_seal_ring_south(&self, chip: &str) -> i32 { sys::chip_get_seal_ring_south(self.r(), chip) }
+    pub fn chip_get_scribe_line_east(&self, chip: &str) -> i32 { sys::chip_get_scribe_line_east(self.r(), chip) }
+    pub fn chip_get_scribe_line_west(&self, chip: &str) -> i32 { sys::chip_get_scribe_line_west(self.r(), chip) }
+    pub fn chip_get_scribe_line_north(&self, chip: &str) -> i32 { sys::chip_get_scribe_line_north(self.r(), chip) }
+    pub fn chip_get_scribe_line_south(&self, chip: &str) -> i32 { sys::chip_get_scribe_line_south(self.r(), chip) }
+    pub fn chip_is_tsv(&self, chip: &str) -> bool { sys::chip_is_tsv(self.r(), chip) }
+    pub fn chip_get_chip_regions(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_regions(self.r(), chip)).map(|i| sys::nth_chip_get_chip_regions(self.r(), chip, i)).collect() }
+    pub fn chip_get_marker_categories(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_marker_categories(self.r(), chip)).map(|i| sys::nth_chip_get_marker_categories(self.r(), chip, i)).collect() }
+    pub fn chip_get_chip_paths(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_paths(self.r(), chip)).map(|i| sys::nth_chip_get_chip_paths(self.r(), chip, i)).collect() }
+    pub fn chip_get_block(&self, chip: &str) -> String { sys::chip_get_block(self.r(), chip) }
+    pub fn chip_get_chip_insts(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_insts(self.r(), chip)).map(|i| sys::nth_chip_get_chip_insts(self.r(), chip, i)).collect() }
+    pub fn chip_get_chip_conns(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_conns(self.r(), chip)).map(|i| sys::nth_chip_get_chip_conns(self.r(), chip, i)).collect() }
+    pub fn chip_get_chip_nets(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_nets(self.r(), chip)).map(|i| sys::nth_chip_get_chip_nets(self.r(), chip, i)).collect() }
+    pub fn chip_get_tech(&self, chip: &str) -> String { sys::chip_get_tech(self.r(), chip) }
+    pub fn chip_get_b_box_x_min(&self, chip: &str) -> i32 { sys::chip_get_b_box_x_min(self.r(), chip) }
+    pub fn chip_get_b_box_y_min(&self, chip: &str) -> i32 { sys::chip_get_b_box_y_min(self.r(), chip) }
+    pub fn chip_get_b_box_x_max(&self, chip: &str) -> i32 { sys::chip_get_b_box_x_max(self.r(), chip) }
+    pub fn chip_get_b_box_y_max(&self, chip: &str) -> i32 { sys::chip_get_b_box_y_max(self.r(), chip) }
+    pub fn chip_get_b_box_dx(&self, chip: &str) -> i32 { sys::chip_get_b_box_dx(self.r(), chip) }
+    pub fn chip_get_b_box_dy(&self, chip: &str) -> i32 { sys::chip_get_b_box_dy(self.r(), chip) }
+    pub fn chipinst_get_name(&self, chip: &str, inst: &str) -> String { sys::chipinst_get_name(self.r(), chip, inst) }
+    pub fn chipinst_get_orient(&self, chip: &str, inst: &str) -> String { sys::chipinst_get_orient(self.r(), chip, inst) }
+    pub fn chipinst_get_master_chip(&self, chip: &str, inst: &str) -> String { sys::chipinst_get_master_chip(self.r(), chip, inst) }
+    pub fn chipinst_get_parent_chip(&self, chip: &str, inst: &str) -> String { sys::chipinst_get_parent_chip(self.r(), chip, inst) }
+    pub fn chipinst_get_loc_x(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_loc_x(self.r(), chip, inst) }
+    pub fn chipinst_get_loc_y(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_loc_y(self.r(), chip, inst) }
+    pub fn chipinst_get_loc_z(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_loc_z(self.r(), chip, inst) }
+    pub fn chipinst_get_b_box_x_min(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_x_min(self.r(), chip, inst) }
+    pub fn chipinst_get_b_box_y_min(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_y_min(self.r(), chip, inst) }
+    pub fn chipinst_get_b_box_x_max(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_x_max(self.r(), chip, inst) }
+    pub fn chipinst_get_b_box_y_max(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_y_max(self.r(), chip, inst) }
+    pub fn chipinst_get_b_box_dx(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_dx(self.r(), chip, inst) }
+    pub fn chipinst_get_b_box_dy(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_dy(self.r(), chip, inst) }
 }
