@@ -198,6 +198,26 @@ impl Db {
     /// with markers and never modifies the design. Errors if there is no top chip.
     pub fn check_3dblox(&self) -> Result<usize> { Ok(sys::check_3dblox(self.r())?) }
 
+    /// Replace an instance's library cell in place — the resize / Vt-swap move.
+    ///
+    /// Returns `false` when OpenDB refuses because the instance is bound to a block hierarchy.
+    /// **Errors** when the instance or master is unknown, and when the instance is marked
+    /// don't-touch — OpenDB raises there rather than returning `false`, and a don't-touch
+    /// instance being quietly resized is precisely what that flag exists to prevent.
+    ///
+    /// OpenDB **does** check pin compatibility — the new master must carry the same number of
+    /// pins with exactly the same names, else the swap is refused with `false`. A resize
+    /// therefore cannot silently strand connections.
+    ///
+    /// It does **not** check *logical* equivalence: same pins is not same function. Picking a
+    /// replacement that actually computes the same thing is the caller's job, which is why a
+    /// planner needs library equivalence classes before it can drive this move.
+    ///
+    /// The swap is journaled, so it rolls back with [`eco_undo`](Self::eco_undo).
+    pub fn swap_master(&mut self, inst: &str, master: &str) -> Result<bool> {
+        Ok(sys::swap_master(self.r(), inst, master)?)
+    }
+
     // ---- ECO journal: try an edit, keep it or put it back ----
 
     /// Start recording block edits so they can be rolled back.

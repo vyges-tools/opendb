@@ -128,17 +128,54 @@ fn a_plan_that_fails_partway_leaves_nothing_behind() {
 
 #[test]
 fn an_unsupported_op_is_refused_loudly_not_skipped_silently() {
-    // `resize` needs dbInst::swapMaster, which is not bound yet. Skipping it quietly would
-    // leave the design inconsistent with the plan's predicted timing.
+    // A quietly skipped fix would leave the design inconsistent with the plan's predicted
+    // timing, which is worse than failing.
     let mut db = Db::open(FIXTURE).unwrap();
     let before = db.num_insts();
     let plan = format!(
-        r#"{{"schema":"{PLAN_SCHEMA}","design":"{}","fixes":[{{"op":"resize","target":"x","inst":"x","cell":"BUFX4"}}]}}"#,
+        r#"{{"schema":"{PLAN_SCHEMA}","design":"{}","fixes":[{{"op":"teleport","target":"x","inst":"x","cell":"BUFX4"}}]}}"#,
         db.block_name()
     );
     let err = apply_eco_plan(&mut db, &plan, true).unwrap_err().to_string();
-    assert!(err.contains("resize"), "the error should name the op: {err}");
+    assert!(err.contains("teleport"), "the error should name the op: {err}");
     assert_eq!(db.num_insts(), before);
+}
+
+#[test]
+fn a_resize_plan_replaces_the_cell() {
+    // The setup-repair move, now that swapMaster is bound. A resize replaces in place — no new
+    // instance — so it is invisible to an instance count and has to be checked by master.
+    let mut db = Db::open(DEMO).unwrap();
+    assert_eq!(db.inst_master("g1"), "INV");
+    let before = db.num_insts();
+    let plan = format!(
+        r#"{{"schema":"{PLAN_SCHEMA}","design":"eco_demo","fixes":[{{"op":"resize","target":"g1","inst":"g1","cell":"BUF"}}]}}"#
+    );
+
+    let applied = apply_eco_plan(&mut db, &plan, true).unwrap();
+
+    assert_eq!(applied.applied, 1);
+    assert_eq!(applied.resized, vec!["g1".to_string()]);
+    assert!(applied.inserted.is_empty(), "a resize inserts nothing");
+    assert_eq!(db.inst_master("g1"), "BUF");
+    assert_eq!(db.num_insts(), before);
+}
+
+#[test]
+fn a_refused_resize_fails_the_whole_plan_rather_than_being_skipped() {
+    // OpenDB refuses a pin-incompatible swap by returning false. Carrying on would leave the
+    // design inconsistent with a plan whose predicted timing assumed the swap happened — so the
+    // refusal has to fail the plan, and the mixed insertion before it must roll back too.
+    let mut db = Db::open(DEMO).unwrap();
+    let before = (db.num_insts(), db.inst_master("g1"));
+    let plan = format!(
+        r#"{{"schema":"{PLAN_SCHEMA}","design":"eco_demo","fixes":[{{"op":"insert_delay","target":"r1/D","inst":"r1","pin":"D","cell":"BUF","name":"vy_mix0"}},{{"op":"resize","target":"g1","inst":"g1","cell":"DFF"}}]}}"#
+    );
+
+    let err = apply_eco_plan(&mut db, &plan, true).unwrap_err().to_string();
+    assert!(err.contains("g1"), "the error should name the instance it could not resize: {err}");
+    assert_eq!((db.num_insts(), db.inst_master("g1")), before, "everything must roll back");
+    assert!(!db.inst_names().contains(&"vy_mix0".to_string()));
 }
 
 #[test]

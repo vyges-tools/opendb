@@ -238,9 +238,12 @@ pub struct EcoPlan {
 /// What replaying a plan did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppliedPlan {
+    /// Total fixes applied — insertions plus resizes.
     pub applied: usize,
     /// Instance names of the cells this created, in plan order.
     pub inserted: Vec<String>,
+    /// Instances whose library cell was replaced, in plan order.
+    pub resized: Vec<String>,
 }
 
 /// Replay a timing-repair plan into the database, **all or nothing**.
@@ -277,6 +280,7 @@ pub fn apply_eco_plan(db: &mut Db, plan_json: &str, strict_design: bool) -> Resu
     }
 
     let mut inserted = Vec::new();
+    let mut resized = Vec::new();
     let fixes = plan.fixes.clone();
     db.eco_try(|db| {
         for (i, fix) in fixes.iter().enumerate() {
@@ -296,8 +300,19 @@ pub fn apply_eco_plan(db: &mut Db, plan_json: &str, strict_design: bool) -> Resu
                     db.insert_buffer(inst, pin, &fix.cell, &name, x, y)?;
                     inserted.push(name);
                 }
-                // Resize needs dbInst::swapMaster, which is not bound yet. Refuse loudly: a
-                // silently skipped fix would leave the design timing-inconsistent with the plan.
+                "resize" => {
+                    // Replace the cell in place. A refusal (hierarchy-bound) is an ERROR here
+                    // rather than a skip: the plan's predicted timing assumed the swap happened,
+                    // so carrying on would leave the design inconsistent with its own plan.
+                    if !db.swap_master(&fix.inst, &fix.cell)? {
+                        return Err(Error::Odb(format!(
+                            "ECO plan fix #{i}: refused to resize '{}' to '{}' \
+                             (instance is bound to a block hierarchy)",
+                            fix.inst, fix.cell
+                        )));
+                    }
+                    resized.push(fix.inst.clone());
+                }
                 other => {
                     return Err(Error::Odb(format!(
                         "ECO plan fix #{i}: unsupported op '{other}'"
@@ -308,5 +323,5 @@ pub fn apply_eco_plan(db: &mut Db, plan_json: &str, strict_design: bool) -> Resu
         Ok(true)
     })?;
 
-    Ok(AppliedPlan { applied: inserted.len(), inserted })
+    Ok(AppliedPlan { applied: inserted.len() + resized.len(), inserted, resized })
 }
