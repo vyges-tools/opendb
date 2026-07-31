@@ -90,6 +90,9 @@ fn registry_exposes_the_3d_chiplet_surface() {
     assert_eq!(by("dbChipInst", "get_orient").value, "string");
     // per-chip dbTech is the load-bearing fact of the 3D model — the chip must expose its stack.
     assert_eq!(by("dbChip", "get_thickness").value, "i32");
+    // ChipType is a nested enum with no getString(); odb leaves the mapping to callers, so the
+    // generator emits one. Without it a caller cannot tell a DIE from a SUBSTRATE.
+    assert_eq!(by("dbChip", "get_chip_type").value, "string");
 }
 
 #[test]
@@ -103,6 +106,21 @@ fn registry_3d_reads_are_graceful_on_a_2d_design() {
     assert_eq!(z, serde_json::json!(0));
     let o = registry::get(&db, "dbChipInst", "get_orient", &["nope".into(), "nope".into()]).unwrap();
     assert_eq!(o, serde_json::json!(""));
+    let ty = registry::get(&db, "dbChip", "get_chip_type", &["nope".into()]).unwrap();
+    assert_eq!(ty, serde_json::json!(""));
+}
+
+#[test]
+fn chip_type_is_addressed_like_any_other_chip_field() {
+    // Discovery-level only: that get_chip_type exists, marshals as a string and is keyed by chip
+    // name. The VOCABULARY it produces (UPPERCASE "DIE"/"SUBSTRATE"/"HIER", matching our other
+    // enums and OpenROAD's own Python typemap, NOT the 3Dblox file format's lowercase) is
+    // asserted functionally against populated data in tests/chiplet3d.rs — this fixture is flat
+    // 2D and has no addressable chip, so it cannot prove the mapping here.
+    let f = registry::FIELDS.iter().find(|f| f.class == "dbChip" && f.field == "get_chip_type")
+        .expect("dbChip::get_chip_type missing");
+    assert_eq!(f.value, "string");
+    assert_eq!(f.keys, &["str:chip"]);
 }
 
 #[test]

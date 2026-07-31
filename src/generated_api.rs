@@ -699,6 +699,7 @@ impl Db {
     pub fn chip_get_chip_regions(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_regions(self.r(), chip)).map(|i| sys::nth_chip_get_chip_regions(self.r(), chip, i)).collect() }
     pub fn chip_get_marker_categories(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_marker_categories(self.r(), chip)).map(|i| sys::nth_chip_get_marker_categories(self.r(), chip, i)).collect() }
     pub fn chip_get_chip_paths(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_paths(self.r(), chip)).map(|i| sys::nth_chip_get_chip_paths(self.r(), chip, i)).collect() }
+    pub fn chip_get_chip_type(&self, chip: &str) -> String { sys::chip_get_chip_type(self.r(), chip) }
     pub fn chip_get_block(&self, chip: &str) -> String { sys::chip_get_block(self.r(), chip) }
     pub fn chip_get_chip_insts(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_insts(self.r(), chip)).map(|i| sys::nth_chip_get_chip_insts(self.r(), chip, i)).collect() }
     pub fn chip_get_chip_conns(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_conns(self.r(), chip)).map(|i| sys::nth_chip_get_chip_conns(self.r(), chip, i)).collect() }
