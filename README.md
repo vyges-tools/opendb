@@ -63,13 +63,12 @@ Three behaviours worth knowing before you rely on them:
   stored — OpenDB rebuilds them on read whenever the database holds more than one chip. They
   come back empty if the database's top chip is not the assembly, since that is where the
   builder starts.
-- **`dbChipInst` is read-only, on purpose.** `dbChipInst::setLoc` is orientation-dependent: it
-  stores a delta computed against the orientation current at the time of the call, and
-  `get_loc_*` re-applies whatever the orientation is now. Re-orienting a placed chip inst
-  silently moves it, and the location setter is not marshallable, so a caller could not undo
-  it. Rather than ship half of a coupled pair, the write surface withholds both. See the 3D
-  section of the [`vyges-opendb-lib` README](https://github.com/vyges-tools/opendb-lib) for
-  the full detail and the TODO to expose them together.
+- **Place chip insts with `place_chip_inst`, not the raw setters.** `dbChipInst::setLoc` is
+  orientation-dependent: it stores a delta computed against the orientation current at the time
+  of the call, and `get_loc_*` re-applies whatever the orientation is now — so placing a chip
+  and *then* re-orienting it silently moves it, with no error.
+  `db.place_chip_inst(chip, inst, orient, x, y, z)` orients first and then places, so the
+  location reads back exactly as passed. (Under `--features gen-write`.)
 
 ## 3D structural sign-off
 

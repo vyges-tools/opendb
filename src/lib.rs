@@ -363,3 +363,35 @@ pub mod registry {
 // Machine-generated setters — a third `impl Db` block, gated behind `gen-write` (L2/write).
 #[cfg(all(unix, feature = "gen-write"))]
 include!("generated_write_api.rs");
+
+// Hand-written compositions over the generated setters, where calling them individually has a
+// trap the generator cannot know about.
+#[cfg(all(unix, feature = "gen-write"))]
+impl Db {
+    /// Place a chip instance in the 3D stack: set its orientation, then its location.
+    ///
+    /// **Use this rather than calling `chipinst_set_orient` and `chipinst_set_loc` yourself.**
+    /// The two are coupled and order-dependent. `dbChipInst::setLoc` does not store the point it
+    /// is given — it orients the master chip's cuboid and stores the *delta* that lands that
+    /// cuboid's lower-left-lower corner on the requested point, and the location you read back is
+    /// derived by re-applying the **current** orientation. So placing first and re-orienting
+    /// afterwards silently moves the chip, with no error and no warning.
+    ///
+    /// Calling them in this order is the whole point of this method: after it returns,
+    /// `chipinst_get_loc_{x,y,z}` reads back exactly the `(x, y, z)` passed in.
+    ///
+    /// `orient` is a `dbOrientType3D` string — a 2D orientation with an optional `MZ_` prefix
+    /// for the Z mirror, e.g. `R0`, `R90`, `MZ` , `MZ_R90`.
+    pub fn place_chip_inst(
+        &mut self,
+        chip: &str,
+        inst: &str,
+        orient: &str,
+        x: i32,
+        y: i32,
+        z: i32,
+    ) -> Result<()> {
+        self.chipinst_set_orient(chip, inst, orient)?;
+        self.chipinst_set_loc(chip, inst, x, y, z)
+    }
+}

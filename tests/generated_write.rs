@@ -47,24 +47,58 @@ fn generated_setter_errs_on_missing_object() {
     assert!(db.net_set_weight("no_such_net", 1).is_err());
 }
 
+const CHIPLET: &str = "tests/fixtures/chiplet3d.odb";
+
 #[test]
-fn chip_inst_exposes_no_setters_while_set_loc_is_unmarshallable() {
-    // Deliberate withholding, not an oversight. dbChipInst::setOrient and setLoc are COUPLED:
-    // setLoc does not store the point it is given — it orients the master chip's cuboid and
-    // stores the delta that lands its lower-left-lower corner on that point, and getLoc() is
-    // getCuboid().lll(), which re-applies the CURRENT orientation. Re-orienting an already-placed
-    // chip inst therefore silently MOVES it. setLoc takes a Point3D, which is not a marshallable
-    // setter param, so a caller who tripped that could not put the chip back. Exposing only the
-    // destructive half of the pair is worse than exposing neither, so the generator withholds it
-    // (see `skip_setters` in TARGETS).
-    //
-    // This test pins the decision: a regeneration must not silently hand the footgun back.
-    assert!(
-        !vyges_opendb::registry::WRITE_FIELDS.iter().any(|f| f.class == "dbChipInst"),
-        "dbChipInst must expose no setters while setLoc is unmarshallable"
-    );
-    // dbChip's setters are unaffected — independent scalars, not a coupled pair.
+fn point3d_expands_into_scalar_setter_args() {
+    // STRUCT_IN mirrors STRUCT_FIELDS on the write side: a geometry struct param becomes one
+    // scalar arg per constructor component, reassembled at the call. `setLoc(const Point3D&)`
+    // is the reason it exists — without it the location setter was unmarshallable, which is
+    // what forced dbChipInst to expose no setters at all.
+    let f = vyges_opendb::registry::WRITE_FIELDS
+        .iter()
+        .find(|f| f.class == "dbChipInst" && f.field == "set_loc")
+        .expect("dbChipInst::set_loc missing from the write registry");
+    assert_eq!(f.values, ["i32", "i32", "i32"], "Point3D should expand to x/y/z");
+
+    // the 2D Point expands the same way
     assert!(vyges_opendb::registry::WRITE_FIELDS
         .iter()
-        .any(|f| f.class == "dbChip" && f.field == "set_thickness"));
+        .any(|f| f.class == "dbChip" && f.field == "set_offset" && f.values.len() == 2));
+}
+
+#[test]
+fn place_chip_inst_orders_the_coupled_setters_correctly() {
+    // dbChipInst::setOrient and setLoc are COUPLED and order-dependent: setLoc does not store
+    // the point given — it orients the master chip's cuboid and stores the DELTA that lands its
+    // lower-left-lower corner there — and the location read back re-applies the CURRENT
+    // orientation. Place-then-rotate therefore silently moves the chip.
+    //
+    // place_chip_inst exists to get that order right. After it returns, the location must read
+    // back exactly as passed.
+    let mut db = Db::open(CHIPLET).unwrap();
+    db.place_chip_inst("stack", "u_top", "MZ_R90", 4000, 5000, 6000).unwrap();
+    assert_eq!(db.chipinst_get_loc_x("stack", "u_top"), 4000);
+    assert_eq!(db.chipinst_get_loc_y("stack", "u_top"), 5000);
+    assert_eq!(db.chipinst_get_loc_z("stack", "u_top"), 6000);
+    assert_eq!(db.chipinst_get_orient("stack", "u_top"), "MZ_R90");
+}
+
+#[test]
+fn the_wrong_order_really_does_move_the_chip() {
+    // Proves the hazard is real rather than theoretical — and therefore that place_chip_inst is
+    // earning its keep. Setting the location BEFORE re-orienting leaves the chip somewhere other
+    // than where it was put, silently.
+    let mut db = Db::open(CHIPLET).unwrap();
+    db.chipinst_set_orient("stack", "u_top", "R0").unwrap();
+    db.chipinst_set_loc("stack", "u_top", 4000, 5000, 6000).unwrap();
+    assert_eq!(db.chipinst_get_loc_x("stack", "u_top"), 4000); // correct so far
+
+    db.chipinst_set_orient("stack", "u_top", "MZ_R90").unwrap(); // re-orient AFTER placing
+    assert_ne!(
+        db.chipinst_get_loc_x("stack", "u_top"),
+        4000,
+        "re-orienting a placed chip inst should move it — if this ever passes, odb changed \
+         and place_chip_inst's ordering guarantee needs revisiting"
+    );
 }
