@@ -150,3 +150,65 @@ fn a_malformed_plan_is_rejected_without_touching_the_design() {
         assert_eq!(db.num_insts(), before);
     }
 }
+
+// ---- the shared fixture: both halves of the loop on ONE design ------------------------------
+
+/// `eco_demo.odb` and sta-si's `eco_demo.v` are emitted by the SAME generator
+/// (opendb-lib `test/make-eco-fixture.cpp`), so instance, pin and cell names agree by
+/// construction rather than by maintenance. `eco_demo.plan.json` is the real output of
+/// `vyges-sta-si`'s hold planner run against that netlist — not a hand-written approximation.
+const DEMO: &str = "tests/fixtures/eco_demo.odb";
+const DEMO_PLAN: &str = "tests/fixtures/eco_demo.plan.json";
+
+#[test]
+fn the_planners_own_plan_applies_to_the_matching_design() {
+    // This is the end-to-end the loop existed for: sta-si times the .v, decides, and emits a
+    // plan; this applies that plan, unmodified, to the .odb of the same design.
+    let mut db = Db::open(DEMO).unwrap();
+    let plan = std::fs::read_to_string(DEMO_PLAN).unwrap();
+    let before = (db.num_insts(), db.num_nets());
+
+    let applied = apply_eco_plan(&mut db, &plan, true).unwrap();
+
+    assert_eq!(applied.applied, 2, "the plan has two fixes");
+    assert_eq!(db.num_insts(), before.0 + 2, "one buffer per fix");
+    assert_eq!(db.num_nets(), before.1 + 2, "each insertion splits a net");
+    assert_eq!(applied.inserted, vec!["vy_hold0".to_string(), "vy_hold1".to_string()]);
+}
+
+#[test]
+fn an_inserted_buffer_is_actually_spliced_into_the_path() {
+    // Presence is not correctness. The repair only works if the buffer sits BETWEEN the old
+    // driver and the sink: sink now reads a new net, and that net is driven by the buffer whose
+    // input is the original net. A buffer merely dangling on the side would insert no delay at
+    // all while looking, by instance count, exactly like success.
+    let mut db = Db::open(DEMO).unwrap();
+    // r1/D is the first fix's target; capture the net it sits on beforehand
+    let original_net = db.net_of("r1", "D");
+    assert!(!original_net.is_empty());
+
+    let plan = std::fs::read_to_string(DEMO_PLAN).unwrap();
+    apply_eco_plan(&mut db, &plan, true).unwrap();
+
+    let new_net = db.net_of("r1", "D");
+    assert_ne!(new_net, original_net, "the sink must have been re-pointed at a new net");
+
+    // the buffer drives the sink's new net and is fed by the original one
+    let buf_out = db.output_pin("vy_hold0");
+    let buf_in = db.input_pin("vy_hold0");
+    assert_eq!(db.net_of("vy_hold0", &buf_out), new_net, "buffer must drive the sink's net");
+    assert_eq!(db.net_of("vy_hold0", &buf_in), original_net, "buffer must be fed by the old net");
+    assert_eq!(db.inst_master("vy_hold0"), "BUF", "must use the cell the plan named");
+}
+
+#[test]
+fn the_inserted_cell_lands_where_its_target_is() {
+    // Inserted cells inherit the target instance's location — they overlap it, deliberately, and
+    // legalization is a separate step. Asserting it here keeps that contract visible: a cell at
+    // (0,0) by accident would be a placement bug hiding behind correct connectivity.
+    let mut db = Db::open(DEMO).unwrap();
+    let target = db.inst_location("r1");
+    let plan = std::fs::read_to_string(DEMO_PLAN).unwrap();
+    apply_eco_plan(&mut db, &plan, true).unwrap();
+    assert_eq!(db.inst_location("vy_hold0"), target);
+}
