@@ -198,6 +198,60 @@ impl Db {
     /// with markers and never modifies the design. Errors if there is no top chip.
     pub fn check_3dblox(&self) -> Result<usize> { Ok(sys::check_3dblox(self.r())?) }
 
+    // ---- ECO journal: try an edit, keep it or put it back ----
+
+    /// Start recording block edits so they can be rolled back.
+    ///
+    /// Pair with [`eco_commit`](Self::eco_commit) or [`eco_undo`](Self::eco_undo). Prefer
+    /// [`eco_try`](Self::eco_try) when the decision is local; use these directly when the
+    /// verdict needs work in between — re-timing, for instance — which is the whole point of
+    /// the mechanism.
+    ///
+    /// Only edits OpenDB journals can be undone: object create/delete, connect/disconnect,
+    /// swaps and field updates. Anything outside the database (a file you wrote, state you
+    /// cached) is *not* rolled back.
+    pub fn eco_begin(&mut self) -> Result<()> { Ok(sys::eco_begin(self.r())?) }
+
+    /// Keep the changes recorded since [`eco_begin`](Self::eco_begin).
+    pub fn eco_commit(&mut self) -> Result<()> { Ok(sys::eco_commit(self.r())?) }
+
+    /// Roll back the changes recorded since [`eco_begin`](Self::eco_begin).
+    pub fn eco_undo(&mut self) -> Result<()> { Ok(sys::eco_undo(self.r())?) }
+
+    /// Whether the current ECO has recorded nothing — i.e. the attempt was a no-op.
+    pub fn eco_is_empty(&self) -> Result<bool> { Ok(sys::eco_empty(self.r())?) }
+
+    /// Apply `f` speculatively: **keep** its edits if it returns `Ok(true)`, **roll them back**
+    /// if it returns `Ok(false)` — or if it fails.
+    ///
+    /// The error case is the one that matters. A fix that half-applies and then errors would
+    /// leave the design in a state neither the caller nor the timer can reason about, so the
+    /// rollback happens on the way out regardless. The original error is returned; if the
+    /// rollback *itself* fails, that error is returned instead, because at that point the
+    /// database state is the more urgent problem.
+    ///
+    /// Returns whether the edits were kept.
+    pub fn eco_try(&mut self, f: impl FnOnce(&mut Db) -> Result<bool>) -> Result<bool> {
+        self.eco_begin()?;
+        let verdict = f(self);
+        match verdict {
+            Ok(true) => {
+                self.eco_commit()?;
+                Ok(true)
+            }
+            Ok(false) => {
+                self.eco_undo()?;
+                Ok(false)
+            }
+            Err(e) => {
+                // roll back first, and let a rollback failure win — a corrupt database is worse
+                // news than whatever `f` was complaining about
+                self.eco_undo()?;
+                Err(e)
+            }
+        }
+    }
+
     /// Run `f` with OpenDB's diagnostics captured instead of written to its default **stdout**
     /// sink, returning `f`'s value alongside the captured text.
     ///
