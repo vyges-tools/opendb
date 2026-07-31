@@ -198,6 +198,24 @@ impl Db {
     /// with markers and never modifies the design. Errors if there is no top chip.
     pub fn check_3dblox(&self) -> Result<usize> { Ok(sys::check_3dblox(self.r())?) }
 
+    /// Rebuild the derived 3D tables (unfolded chip insts, regions, bumps) from the folded
+    /// chip hierarchy.
+    ///
+    /// **Call this after moving or reorienting a `dbChipInst`, before reading any unfolded
+    /// query.** The unfolded tables are derived and never serialised — the reader builds them
+    /// on open — so nothing rebuilds them when a chip moves, and [`Db::unfoldedregion_get_surface_z`]
+    /// and friends keep answering from the previous placement: no error, no warning, just a
+    /// stale number.
+    ///
+    /// [`Db::check_3dblox`] rebuilds the model itself, so the linter does **not** need this —
+    /// measured, because assuming otherwise is the natural mistake. Pinned by a test, since a
+    /// change upstream would otherwise turn every lint-after-move into a silently stale answer.
+    ///
+    /// Errors if there is no top chip.
+    pub fn construct_unfolded_model(&mut self) -> Result<()> {
+        Ok(sys::construct_unfolded_model(self.r())?)
+    }
+
     /// Replace an instance's library cell in place — the resize / Vt-swap move.
     ///
     /// Returns `false` when OpenDB refuses because the instance is bound to a block hierarchy.
