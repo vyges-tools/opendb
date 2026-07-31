@@ -246,6 +246,16 @@ fn every_cell_the_plan_names_exists_in_the_design_library() {
     }
 }
 
+/// A minimal, deterministic insertion plan for the demo design — built here rather than taken
+/// from the checked-in plan, because the tests below are about SPLICING MECHANICS and must not
+/// depend on which fixes the planner currently favours. (It favoured insertions once and now
+/// prefers cell swaps; the mechanics did not change.)
+fn demo_insert_plan(inst: &str, pin: &str, name: &str) -> String {
+    format!(
+        r#"{{"schema":"{PLAN_SCHEMA}","design":"eco_demo","fixes":[{{"op":"insert_delay","target":"{inst}/{pin}","inst":"{inst}","pin":"{pin}","cell":"BUF","name":"{name}"}}]}}"#
+    )
+}
+
 #[test]
 fn an_inserted_buffer_is_actually_spliced_into_the_path() {
     // Presence is not correctness. The repair only works if the buffer sits BETWEEN the old
@@ -253,12 +263,10 @@ fn an_inserted_buffer_is_actually_spliced_into_the_path() {
     // input is the original net. A buffer merely dangling on the side would insert no delay at
     // all while looking, by instance count, exactly like success.
     let mut db = Db::open(DEMO).unwrap();
-    // r1/D is the first fix's target; capture the net it sits on beforehand
     let original_net = db.net_of("r1", "D");
     assert!(!original_net.is_empty());
 
-    let plan = std::fs::read_to_string(DEMO_PLAN).unwrap();
-    apply_eco_plan(&mut db, &plan, true).unwrap();
+    apply_eco_plan(&mut db, &demo_insert_plan("r1", "D", "vy_hold0"), true).unwrap();
 
     let new_net = db.net_of("r1", "D");
     assert_ne!(new_net, original_net, "the sink must have been re-pointed at a new net");
@@ -278,7 +286,6 @@ fn the_inserted_cell_lands_where_its_target_is() {
     // (0,0) by accident would be a placement bug hiding behind correct connectivity.
     let mut db = Db::open(DEMO).unwrap();
     let target = db.inst_location("r1");
-    let plan = std::fs::read_to_string(DEMO_PLAN).unwrap();
-    apply_eco_plan(&mut db, &plan, true).unwrap();
+    apply_eco_plan(&mut db, &demo_insert_plan("r1", "D", "vy_hold0"), true).unwrap();
     assert_eq!(db.inst_location("vy_hold0"), target);
 }
