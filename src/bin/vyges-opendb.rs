@@ -68,6 +68,9 @@ commands:
   check-3dblox              --input <f.odb>
                       3D/chiplet structural sign-off lint; reports violations as JSON (check).
 
+  apply-eco-plan            --input <in.odb> --plan <plan.json> --output <out.odb>
+                      Replay a timing-repair plan (all-or-nothing) into the design.
+
   custom-io-placement       --input <in.odb> --output <out.odb> [--config <cfg.json>]
                       Place I/O port pins (CUSTOM_IO_PLACEMENT in the config).
 
@@ -125,6 +128,7 @@ fn run() -> Result<(), Fail> {
         "write-verilog-header" => write_verilog_header(args),
         "report-wire-length" => report_wire_length(args),
         "check-3dblox" => check_3dblox(args),
+        "apply-eco-plan" => apply_eco_plan(args),
         "report-connectivity" => report_connectivity(args),
         "custom-io-placement" => custom_io_placement(args),
         "write-def" => write_def(args),
@@ -740,6 +744,64 @@ fn write_verilog_header(mut args: impl Iterator<Item = String>) -> Result<(), Fa
     Ok(())
 }
 
+const APPLY_ECO_PLAN_DESCRIBE: &str = r#"{
+  "step": "apply-eco-plan",
+  "summary": "Replay a timing-repair ECO plan (vyges-eco-plan-v1, as emitted by vyges-sta-si) into the design. All-or-nothing: any failing fix rolls the whole plan back. Does NOT legalize — run detailed placement, re-extract parasitics and re-time afterwards.",
+  "librelane_equivalent": null,
+  "unix_only": true,
+  "args": [
+    { "name": "--input", "kind": "input", "type": "path", "required": true, "description": "input .odb design" },
+    { "name": "--plan", "kind": "input", "type": "path", "required": true, "description": "ECO plan JSON (vyges-eco-plan-v1)" },
+    { "name": "--output", "kind": "output", "type": "path", "required": true, "description": "output .odb" },
+    { "name": "--any-design", "kind": "flag", "type": "bool", "required": false, "description": "skip the plan/design name check" }
+  ],
+  "output": "JSON { applied, inserted: [names] } on stdout"
+}"#;
+
+/// `apply-eco-plan --input <in.odb> --plan <p.json> --output <out.odb> | --describe`.
+fn apply_eco_plan(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut plan, mut output) = (None, None, None);
+    let mut strict = true;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--plan" | "-p" => plan = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--any-design" => strict = false,
+            "--describe" => {
+                println!("{APPLY_ECO_PLAN_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!("usage: vyges-opendb apply-eco-plan --input <in.odb> --plan <plan.json> --output <out.odb> [--any-design]");
+                return Ok(());
+            }
+            other => return Err(format!("apply-eco-plan: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("apply-eco-plan: --input <in.odb> required")?;
+    let plan_path = plan.ok_or("apply-eco-plan: --plan <plan.json> required")?;
+    let output = output.ok_or("apply-eco-plan: --output <out.odb> required")?;
+
+    let plan_json = std::fs::read_to_string(&plan_path)
+        .map_err(|e| format!("apply-eco-plan: cannot read {plan_path}: {e}"))?;
+    let mut db = Db::open(&input)?;
+    // OpenDB logs to stdout; keep this subcommand's stdout parseable.
+    let (res, logs) = db.with_captured_logs(|db| {
+        vyges_opendb::eco::apply_eco_plan(db, &plan_json, strict)
+    });
+    if !logs.is_empty() {
+        eprint!("{logs}");
+    }
+    let applied = res?;
+    db.write(&output)?;
+    println!(
+        "{}",
+        serde_json::json!({ "applied": applied.applied, "inserted": applied.inserted })
+    );
+    Ok(())
+}
+
 const CHECK_3DBLOX_DESCRIBE: &str = r#"{
   "step": "check-3dblox",
   "summary": "3D/chiplet structural sign-off lint over a multi-die assembly: logical connectivity, floating chips, overlapping dies, unused internal_ext regions, connection-region overlap and mating-surface gap vs connection thickness, bump alignment, and alignment markers. Read-only: reports violations as markers, never modifies the design.",
@@ -769,7 +831,7 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         }
     }
     let input = input.ok_or("check-3dblox: --input <f.odb> required")?;
-    let db = Db::open(&input)?;
+    let mut db = Db::open(&input)?;
     // OpenDB writes its human-readable warnings to stdout, which would interleave with the JSON
     // below and make this subcommand unparseable. Capture them and re-emit on stderr, where
     // diagnostics belong when stdout is a data channel.

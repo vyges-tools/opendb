@@ -23,7 +23,9 @@ pub struct EcoBuffer {
 /// downstream `grt` incremental-route + `dpl` legalization is a separate engine step.
 pub fn insert_eco_buffers(db: &mut Db, specs: &[EcoBuffer]) -> Result<usize> {
     for (i, spec) in specs.iter().enumerate() {
-        let (inst, pin) = spec.target.split_once('/').ok_or_else(|| {
+        // rsplit: a hierarchical instance name contains '/', and pin names do not — splitting
+        // at the FIRST separator would silently target a wrong (or nonexistent) instance.
+        let (inst, pin) = spec.target.rsplit_once('/').ok_or_else(|| {
             Error::Odb(format!("bad target '{}' (expected inst/pin)", spec.target))
         })?;
         let (x, y) = db.inst_location(inst);
@@ -49,7 +51,9 @@ pub struct EcoDiode {
 /// existing net (no rewiring, unlike a buffer). Downstream legalization is a separate engine step.
 pub fn insert_eco_diodes(db: &mut Db, specs: &[EcoDiode]) -> Result<usize> {
     for (i, spec) in specs.iter().enumerate() {
-        let (inst, pin) = spec.target.split_once('/').ok_or_else(|| {
+        // rsplit: a hierarchical instance name contains '/', and pin names do not — splitting
+        // at the FIRST separator would silently target a wrong (or nonexistent) instance.
+        let (inst, pin) = spec.target.rsplit_once('/').ok_or_else(|| {
             Error::Odb(format!("bad target '{}' (expected inst/pin)", spec.target))
         })?;
         let (x, y) = db.inst_location(inst);
@@ -193,4 +197,116 @@ pub fn diodes_on_ports(db: &mut Db, spec: &DiodesOnPorts) -> Result<usize> {
         n += 1;
     }
     Ok(n)
+}
+
+// ---- ECO plan: replay what the timer decided -----------------------------------------------
+
+/// Schema tag this applier understands. A plan carrying anything else is refused rather than
+/// interpreted — a mis-read plan edits a design, so guessing is not an acceptable failure mode.
+pub const PLAN_SCHEMA: &str = "vyges-eco-plan-v1";
+
+/// One fix from an ECO plan, as emitted by the timing planner.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlanFix {
+    /// `"insert_delay"` or `"resize"`.
+    pub op: String,
+    /// `"inst/pin"` for an insertion; the instance name for a resize.
+    pub target: String,
+    pub inst: String,
+    #[serde(default)]
+    pub pin: String,
+    pub cell: String,
+    /// Instance name the planner chose for the new cell. Honoured verbatim so a plan is
+    /// deterministic and its effects are traceable back to it.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// An ECO plan produced by the timing planner.
+///
+/// The planner and this applier are joined by a **file**, not a library call: one lives in the
+/// timer and one in the database layer, and neither should have to link the other. It also
+/// makes the plan reviewable before it touches a design.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EcoPlan {
+    pub schema: String,
+    pub design: String,
+    #[serde(default)]
+    pub fixes: Vec<PlanFix>,
+}
+
+/// What replaying a plan did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppliedPlan {
+    pub applied: usize,
+    /// Instance names of the cells this created, in plan order.
+    pub inserted: Vec<String>,
+}
+
+/// Replay a timing-repair plan into the database, **all or nothing**.
+///
+/// The whole plan is applied inside a single ECO journal: if any fix fails, everything already
+/// applied is rolled back and the error is returned. A partially-applied plan is the one
+/// outcome worth ruling out — the design would no longer match either the plan or the timing
+/// that justified it, while looking like it worked.
+///
+/// `strict_design` refuses a plan whose `design` does not match the block. Plans are files and
+/// files get moved around; applying one to the wrong block would be silent corruption.
+///
+/// Legalization is **not** performed and never is here: inserted cells sit at their target's
+/// location and overlap it. Run detailed placement, re-extract parasitics and re-time before
+/// believing any number — the plan's predicted slacks were estimates against the pre-repair
+/// parasitics.
+pub fn apply_eco_plan(db: &mut Db, plan_json: &str, strict_design: bool) -> Result<AppliedPlan> {
+    let plan: EcoPlan = serde_json::from_str(plan_json)
+        .map_err(|e| Error::Odb(format!("cannot parse ECO plan: {e}")))?;
+    if plan.schema != PLAN_SCHEMA {
+        return Err(Error::Odb(format!(
+            "unsupported ECO plan schema '{}' (expected '{PLAN_SCHEMA}')",
+            plan.schema
+        )));
+    }
+    if strict_design {
+        let block = db.block_name();
+        if !plan.design.is_empty() && plan.design != block {
+            return Err(Error::Odb(format!(
+                "plan targets design '{}' but this database holds '{block}'",
+                plan.design
+            )));
+        }
+    }
+
+    let mut inserted = Vec::new();
+    let fixes = plan.fixes.clone();
+    db.eco_try(|db| {
+        for (i, fix) in fixes.iter().enumerate() {
+            match fix.op.as_str() {
+                "insert_delay" => {
+                    // rsplit for the same reason as above: hierarchical instance names contain '/'
+                    let (inst, pin) = match fix.target.rsplit_once('/') {
+                        Some(v) => v,
+                        None => (fix.inst.as_str(), fix.pin.as_str()),
+                    };
+                    let name = if fix.name.is_empty() {
+                        format!("vy_eco_{i}")
+                    } else {
+                        fix.name.clone()
+                    };
+                    let (x, y) = db.inst_location(inst);
+                    db.insert_buffer(inst, pin, &fix.cell, &name, x, y)?;
+                    inserted.push(name);
+                }
+                // Resize needs dbInst::swapMaster, which is not bound yet. Refuse loudly: a
+                // silently skipped fix would leave the design timing-inconsistent with the plan.
+                other => {
+                    return Err(Error::Odb(format!(
+                        "ECO plan fix #{i}: unsupported op '{other}'"
+                    )))
+                }
+            }
+        }
+        Ok(true)
+    })?;
+
+    Ok(AppliedPlan { applied: inserted.len(), inserted })
 }

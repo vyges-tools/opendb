@@ -104,7 +104,7 @@ fn diagnostics_can_be_captured_off_stdout() {
     // OpenDB logs "[WARNING ODB-nnnn] …" to STDOUT by default, which would corrupt any caller
     // emitting JSON there — the check-3dblox subcommand being the immediate one. Capture must
     // return that text rather than letting it escape.
-    let db = Db::open(FIXTURE).unwrap();
+    let mut db = Db::open(FIXTURE).unwrap();
     let (violations, logs) = db.with_captured_logs(|db| db.check_3dblox().unwrap());
     assert_eq!(violations, 2);
     assert!(logs.contains("ODB-"), "expected OpenDB diagnostics to be captured, got: {logs:?}");

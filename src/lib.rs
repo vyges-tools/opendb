@@ -262,7 +262,7 @@ impl Db {
     /// Capture detaches the events forwarder for the duration and restores it afterwards, so
     /// messages emitted inside `f` reach the events trail only through what the caller does with
     /// the returned text.
-    pub fn with_captured_logs<T>(&self, f: impl FnOnce(&Self) -> T) -> (T, String) {
+    pub fn with_captured_logs<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> (T, String) {
         sys::log_capture_begin(self.r());
         let out = f(self);
         (out, sys::log_capture_end(self.r()))
