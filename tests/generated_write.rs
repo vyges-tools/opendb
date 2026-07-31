@@ -46,3 +46,25 @@ fn generated_setter_errs_on_missing_object() {
     // addressing a non-existent net must surface a typed error, not a panic or silent no-op
     assert!(db.net_set_weight("no_such_net", 1).is_err());
 }
+
+#[test]
+fn chip_inst_exposes_no_setters_while_set_loc_is_unmarshallable() {
+    // Deliberate withholding, not an oversight. dbChipInst::setOrient and setLoc are COUPLED:
+    // setLoc does not store the point it is given — it orients the master chip's cuboid and
+    // stores the delta that lands its lower-left-lower corner on that point, and getLoc() is
+    // getCuboid().lll(), which re-applies the CURRENT orientation. Re-orienting an already-placed
+    // chip inst therefore silently MOVES it. setLoc takes a Point3D, which is not a marshallable
+    // setter param, so a caller who tripped that could not put the chip back. Exposing only the
+    // destructive half of the pair is worse than exposing neither, so the generator withholds it
+    // (see `skip_setters` in TARGETS).
+    //
+    // This test pins the decision: a regeneration must not silently hand the footgun back.
+    assert!(
+        !vyges_opendb::registry::WRITE_FIELDS.iter().any(|f| f.class == "dbChipInst"),
+        "dbChipInst must expose no setters while setLoc is unmarshallable"
+    );
+    // dbChip's setters are unaffected — independent scalars, not a coupled pair.
+    assert!(vyges_opendb::registry::WRITE_FIELDS
+        .iter()
+        .any(|f| f.class == "dbChip" && f.field == "set_thickness"));
+}
