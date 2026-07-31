@@ -197,20 +197,53 @@ fn a_malformed_plan_is_rejected_without_touching_the_design() {
 const DEMO: &str = "tests/fixtures/eco_demo.odb";
 const DEMO_PLAN: &str = "tests/fixtures/eco_demo.plan.json";
 
+/// How many fixes of each op the checked-in plan carries. Derived from the file rather than
+/// hard-coded, so improving the planner cannot silently invalidate the applier's tests — it was
+/// hard-coded once, and a better plan promptly broke it.
+fn plan_op_counts() -> (usize, usize) {
+    let text = std::fs::read_to_string(DEMO_PLAN).unwrap();
+    (
+        text.matches(r#""op":"insert_delay""#).count(),
+        text.matches(r#""op":"resize""#).count(),
+    )
+}
+
 #[test]
 fn the_planners_own_plan_applies_to_the_matching_design() {
     // This is the end-to-end the loop existed for: sta-si times the .v, decides, and emits a
     // plan; this applies that plan, unmodified, to the .odb of the same design.
     let mut db = Db::open(DEMO).unwrap();
     let plan = std::fs::read_to_string(DEMO_PLAN).unwrap();
+    let (inserts, resizes) = plan_op_counts();
+    assert!(inserts + resizes > 0, "the checked-in plan should not be empty");
     let before = (db.num_insts(), db.num_nets());
 
     let applied = apply_eco_plan(&mut db, &plan, true).unwrap();
 
-    assert_eq!(applied.applied, 2, "the plan has two fixes");
-    assert_eq!(db.num_insts(), before.0 + 2, "one buffer per fix");
-    assert_eq!(db.num_nets(), before.1 + 2, "each insertion splits a net");
-    assert_eq!(applied.inserted, vec!["vy_hold0".to_string(), "vy_hold1".to_string()]);
+    assert_eq!(applied.applied, inserts + resizes, "every fix should apply");
+    assert_eq!(applied.inserted.len(), inserts);
+    assert_eq!(applied.resized.len(), resizes);
+    // insertions add an instance and split a net; resizes replace in place
+    assert_eq!(db.num_insts(), before.0 + inserts, "one new cell per insertion");
+    assert_eq!(db.num_nets(), before.1 + inserts, "each insertion splits a net");
+}
+
+#[test]
+fn every_cell_the_plan_names_exists_in_the_design_library() {
+    // The invariant the shared fixture is supposed to guarantee, asserted directly. The planner
+    // may propose any cell its Liberty offers; if the database's library does not hold that
+    // master the plan cannot apply — and the failure surfaces here, in the applier, a long way
+    // from the cause. This caught exactly that after the timing library grew drive ladders the
+    // fixture generator had not been taught about.
+    let db = Db::open(DEMO).unwrap();
+    let text = std::fs::read_to_string(DEMO_PLAN).unwrap();
+    for chunk in text.split(r#""cell":""#).skip(1) {
+        let cell = chunk.split('"').next().unwrap();
+        assert!(
+            !db.find_master(cell).is_empty(),
+            "plan names cell '{cell}', which the design library does not hold"
+        );
+    }
 }
 
 #[test]
