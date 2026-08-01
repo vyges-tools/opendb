@@ -1,0 +1,31 @@
+Header:
+  version: "1.0"
+  unit: "micron"
+  precision: 2000
+  include:
+    - dies.3dbv
+
+Design:
+  name: "d2d_stack"
+
+ChipletInst:
+  u_logic:
+    reference: logic
+  u_mem:
+    reference: mem
+
+Stack:
+  u_logic:
+    loc: [0.0, 0.0]
+    z: 0.0
+    orient: R0
+  u_mem:
+    loc: [0.0, 0.0]
+    z: 250.0
+    orient: MZ_MY
+
+Connection:
+  d2d_bond:
+    top: u_mem.regions.front
+    bot: u_logic.regions.front
+    thickness: 0.0

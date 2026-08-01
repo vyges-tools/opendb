@@ -1,0 +1,32 @@
+Header:
+  version: 2.5
+  unit: "micron"
+  precision: 2000
+
+ChipletDef:
+  logic:
+    type: die
+    design_area: [200, 200]
+    thickness: 250
+    regions:
+      front:
+        side: front
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: logic_front.bmap
+  mem:
+    type: die
+    design_area: [200, 200]
+    thickness: 180
+    regions:
+      front:
+        side: front
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: mem_front.bmap

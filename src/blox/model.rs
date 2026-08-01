@@ -63,6 +63,12 @@ pub struct Region {
     /// Polygon outline in microns. The database stores a `Rect`, so a non-rectangular outline
     /// loses shape — see `bounding_box`.
     pub coords: Vec<(f64, f64)>,
+    /// `bmap` — the bump map for this bonding surface, relative to the `.3dbv` that named it.
+    ///
+    /// Held as a path rather than loaded here: the geometry reader has no business doing file
+    /// I/O for a leg of the format it does not otherwise use, and the die-to-die check wants the
+    /// file itself. Absent on regions that carry no bumps, which is most `internal` ones.
+    pub bmap: Option<String>,
 }
 
 impl Region {
@@ -187,7 +193,7 @@ mod tests {
     use super::*;
 
     fn region(coords: &[(f64, f64)]) -> Region {
-        Region { name: "r".into(), side: "front".into(), coords: coords.to_vec() }
+        Region { name: "r".into(), side: "front".into(), coords: coords.to_vec(), bmap: None }
     }
 
     #[test]

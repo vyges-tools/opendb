@@ -130,3 +130,109 @@ fn the_command_describes_itself() {
         .iter()
         .any(|l| l.as_str().unwrap().contains("NOT inferred")));
 }
+
+// ── Assembly mode: the frame comes from the file ────────────────────────────────────────────
+
+const STACK: &str = "tests/fixtures/3dblox/d2d/stack.3dbx";
+
+/// Copy the fixture assembly to a scratch dir so a test can perturb it without touching the
+/// checked-in one. Bump maps are resolved relative to the `.3dbv`, so the whole directory moves.
+fn scratch(tag: &str) -> std::path::PathBuf {
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("d2d_{tag}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in std::fs::read_dir("tests/fixtures/3dblox/d2d").unwrap() {
+        let f = f.unwrap().path();
+        if f.is_file() {
+            std::fs::copy(&f, dir.join(f.file_name().unwrap())).unwrap();
+        }
+    }
+    dir
+}
+
+#[test]
+fn an_assembly_is_checked_without_any_geometry_on_the_command_line() {
+    // The whole point of reading the .3dbx: no --offset, no --flip-x, nothing to get wrong.
+    let (ok, j, err) = run(&["--input", STACK]);
+    assert!(ok, "{err}");
+    assert_eq!(j["violations"], 0, "{j}");
+    assert_eq!(j["interfaces_checked"], 1);
+
+    let i = &j["interfaces"][0];
+    assert_eq!(i["connection"], "d2d_bond");
+    assert_eq!(i["top"], "u_mem.front");
+    assert_eq!(i["bottom"], "u_logic.front");
+    assert_eq!(i["matched"], 4);
+    // The frame has to be reported, and it has to name the placements it came from.
+    let frame = i["frame"].as_str().unwrap();
+    assert!(frame.contains("MZ_MY") && frame.contains("R0"), "{frame}");
+}
+
+#[test]
+fn a_defect_in_a_bump_map_reaches_the_assembly_level_report() {
+    let dir = scratch("broken");
+    std::fs::copy(dir.join("mem_front_broken.bmap"), dir.join("mem_front.bmap")).unwrap();
+    let (ok, j, err) = run(&["--input", dir.join("stack.3dbx").to_str().unwrap()]);
+    assert!(ok, "{err}");
+    assert_eq!(j["violations"], 5);
+    let k = &j["interfaces"][0]["by_kind"];
+    assert_eq!(k["unmated"], 1);
+    assert_eq!(k["misaligned"], 1);
+    assert_eq!(k["net-mismatch"], 2);
+    assert_eq!(k["cell-mismatch"], 1);
+}
+
+#[test]
+fn the_wrong_orientation_is_loud_rather_than_silent() {
+    // MZ flips the die's face and leaves X alone; MZ_MY also mirrors it. Using MZ where MZ_MY was
+    // meant compares two dies in mirrored frames — which is precisely the mistake reading the
+    // assembly is meant to make impossible, and it must not look clean when someone writes it.
+    let dir = scratch("badorient");
+    let p = dir.join("stack.3dbx");
+    let text = std::fs::read_to_string(&p).unwrap().replace("orient: MZ_MY", "orient: MZ");
+    std::fs::write(&p, text).unwrap();
+
+    let (ok, j, _) = run(&["--input", p.to_str().unwrap()]);
+    assert!(ok);
+    assert_eq!(j["violations"], 4, "the whole interface should read as reversed");
+    assert_eq!(j["interfaces"][0]["by_kind"]["net-mismatch"], 4);
+}
+
+#[test]
+fn an_orientation_the_mapping_has_not_been_verified_for_is_refused() {
+    // odb silently treats an unrecognised orientation as R0. Inheriting that would place a die
+    // wrongly and then report the interface clean, so this has to fail loudly instead.
+    let dir = scratch("unknownorient");
+    let p = dir.join("stack.3dbx");
+    let text = std::fs::read_to_string(&p).unwrap().replace("orient: MZ_MY", "orient: SIDEWAYS");
+    std::fs::write(&p, text).unwrap();
+
+    let (ok, _, err) = run(&["--input", p.to_str().unwrap()]);
+    assert!(!ok, "an unknown orientation must not be silently treated as R0");
+    assert!(err.contains("SIDEWAYS"), "{err}");
+}
+
+#[test]
+fn a_bond_with_no_bump_map_is_listed_as_unchecked_not_as_clean() {
+    // The difference between "we looked and found nothing" and "we did not look" is the whole
+    // value of the report.
+    let dir = scratch("nobmap");
+    let p = dir.join("dies.3dbv");
+    let text = std::fs::read_to_string(&p).unwrap().replace("        bmap: mem_front.bmap\n", "");
+    std::fs::write(&p, text).unwrap();
+
+    let (ok, j, err) = run(&["--input", dir.join("stack.3dbx").to_str().unwrap()]);
+    assert!(ok, "{err}");
+    assert_eq!(j["interfaces_checked"], 0);
+    assert_eq!(j["violations"], 0);
+    let skipped = j["interfaces_skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1, "the unchecked bond must be named");
+    assert!(skipped[0].as_str().unwrap().contains("d2d_bond"));
+}
+
+#[test]
+fn mixing_the_two_input_forms_is_refused() {
+    let (ok, _, err) = run(&["--input", STACK, "--top", TOP]);
+    assert!(!ok);
+    assert!(err.contains("--top"), "{err}");
+}

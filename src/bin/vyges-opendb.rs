@@ -73,7 +73,7 @@ commands:
                             [--top <chip>] [--scale <n>]
                       Draw the assembly: cross-section + plan, with any check-3dblox
                       findings listed on it. Format follows the output extension.
-  check-d2d                 --top <a.bmap> --bottom <b.bmap>
+  check-d2d                 --input <stack.3dbx> | --top <a.bmap> --bottom <b.bmap>
                             [--offset-x <um>] [--offset-y <um>] [--flip-x]
                             [--tolerance <um>]
                       Check a die-to-die interface: unmated bumps, misalignment, net
@@ -1127,16 +1127,18 @@ const VIEW_3DBLOX_DESCRIBE: &str = r#"{
 /// either die is placed into an assembly.
 #[cfg(unix)]
 fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
-    use vyges_opendb::d2d::{check, BumpMap, Transform};
+    use vyges_opendb::d2d::{check, check_placed, BumpMap, Placement, Transform};
     let (mut top, mut bottom, mut tol) = (None, None, None);
+    let mut input = None;
     let mut tf = Transform::default();
-    let mut num = |a: Option<String>, what: &str| -> Result<f64, Fail> {
+    let num = |a: Option<String>, what: &str| -> Result<f64, Fail> {
         let v = a.ok_or_else(|| format!("check-d2d: {what} needs a number"))?;
         v.parse::<f64>()
             .map_err(|_| format!("check-d2d: {what}: not a number: {v}").into())
     };
     while let Some(a) = args.next() {
         match a.as_str() {
+            "--input" | "-i" => input = args.next(),
             "--top" => top = args.next(),
             "--bottom" => bottom = args.next(),
             "--offset-x" => tf.dx = num(args.next(), "--offset-x")?,
@@ -1149,7 +1151,8 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: vyges-opendb check-d2d --top <a.bmap> --bottom <b.bmap> \
+                    "usage: vyges-opendb check-d2d --input <stack.3dbx>\n   \
+                     or: vyges-opendb check-d2d --top <a.bmap> --bottom <b.bmap> \
                      [--offset-x <um>] [--offset-y <um>] [--flip-x] [--tolerance <um>]"
                 );
                 return Ok(());
@@ -1157,7 +1160,76 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             other => return Err(format!("check-d2d: unknown argument: {other}").into()),
         }
     }
-    let top = top.ok_or("check-d2d: --top <a.bmap> required")?;
+    // Assembly mode. The placement comes from the file, so nothing about how the dies sit has
+    // to be asserted on the command line — which is where the two-file form is easiest to get
+    // wrong, and where getting it wrong reports a dead interface as clean.
+    if let Some(input) = input {
+        if top.is_some() || bottom.is_some() {
+            return Err("check-d2d: --input reads both sides from the assembly; \
+                        drop --top/--bottom"
+                .into());
+        }
+        let pairs = vyges_opendb::blox::bonded_pairs(&input)?;
+        let mut interfaces = Vec::new();
+        let mut violations = 0usize;
+        let mut skipped = Vec::new();
+        for p in &pairs {
+            let load = |s: &vyges_opendb::blox::BondedSide| -> Result<Option<(BumpMap, Placement)>, Fail> {
+                let (Some(bmap), Some((w, h))) = (&s.bmap, s.design_area) else {
+                    return Ok(None);
+                };
+                Ok(Some((
+                    BumpMap::load(bmap).map_err(|e| format!("check-d2d: {bmap}: {e}"))?,
+                    Placement {
+                        orient: s.orient.clone(),
+                        loc_x: s.loc.0,
+                        loc_y: s.loc.1,
+                        die_w: w,
+                        die_h: h,
+                    },
+                )))
+            };
+            // A bond whose surfaces declare no bump map is not a failure — most `internal`
+            // regions carry none — but it is also not checked, and saying so is the difference
+            // between "clean" and "not looked at".
+            let (Some((tm, tp)), Some((bm, bp))) = (load(&p.top)?, load(&p.bottom)?) else {
+                skipped.push(format!(
+                    "{}: no bump map on {} or {}{}",
+                    p.connection,
+                    p.top.region,
+                    p.bottom.region,
+                    if p.top.design_area.is_none() || p.bottom.design_area.is_none() {
+                        " (or the chiplet declares no design_area)"
+                    } else {
+                        ""
+                    }
+                ));
+                continue;
+            };
+            let r = check_placed(&tm, &tp, &bm, &bp, tol).map_err(|e| format!("check-d2d: {e}"))?;
+            violations += r.violations();
+            let mut j = r.to_json();
+            j["connection"] = serde_json::json!(p.connection);
+            j["top"] = serde_json::json!(format!("{}.{}", p.top.inst, p.top.region));
+            j["bottom"] = serde_json::json!(format!("{}.{}", p.bottom.inst, p.bottom.region));
+            interfaces.push(j);
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "violations": violations,
+                "interfaces_checked": interfaces.len(),
+                "interfaces_skipped": skipped,
+                "interfaces": interfaces,
+            }))?
+        );
+        for s in &skipped {
+            eprintln!("check-d2d: not checked — {s}");
+        }
+        return Ok(());
+    }
+
+    let top = top.ok_or("check-d2d: --input <stack.3dbx>, or --top and --bottom, required")?;
     let bottom = bottom.ok_or("check-d2d: --bottom <b.bmap> required")?;
 
     let report = check(
@@ -1183,13 +1255,16 @@ const CHECK_D2D_DESCRIBE: &str = r#"{
   "summary": "check a die-to-die interface from two bump maps: unmated bumps, misalignment, net and cell mismatch",
   "maturity": "experimental",
   "provenance_limitations": [
-      "The relative placement of the two dies is NOT inferred — pass --offset-x/--offset-y/--flip-x. The transform used is echoed in the report.",
+      "With --input the frame comes from the assembly. In the two-file form the relative placement is NOT inferred — pass --offset-x/--offset-y/--flip-x. Either way the frame used is echoed in the report.",
+      "A bonded pair whose regions declare no bmap is listed under interfaces_skipped, not counted as clean.",
       "Compares bump maps, not extracted layout: it checks what the maps claim, not what was fabricated.",
       "Default tolerance is half the smaller bump pitch, derived from the maps; --tolerance overrides."
   ],
   "invocation": {
-    "args_template": ["check-d2d", "--top", "{top}", "--bottom", "{bottom}"],
+    "args_template": ["check-d2d", "--input", "{input}"],
     "optional": [
+      { "arg": "top",      "flag": "--top" },
+      { "arg": "bottom",   "flag": "--bottom" },
       { "arg": "offset_x", "flag": "--offset-x" },
       { "arg": "offset_y", "flag": "--offset-y" },
       { "arg": "flip_x",   "flag": "--flip-x", "kind": "flag" },
@@ -1199,8 +1274,8 @@ const CHECK_D2D_DESCRIBE: &str = r#"{
   },
   "inputs": {
     "type": "object",
-    "required": ["top", "bottom"],
     "properties": {
+      "input":     { "type": "string", "description": "3Dblox assembly (.3dbx) — checks every bonded pair, deriving each die's frame from its placement" },
       "top":       { "type": "string", "description": "bump map of the upper die (.bmap)" },
       "bottom":    { "type": "string", "description": "bump map of the lower die (.bmap)" },
       "offset_x":  { "type": "number", "description": "shift the bottom map, microns" },

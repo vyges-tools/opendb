@@ -185,9 +185,15 @@ same signals. `check-d2d` compares two **bump maps** — the `.bmap` files a 3Db
 at — and reports what does not agree.
 
 ```sh
-vyges-opendb check-d2d --top logic.bmap --bottom interposer.bmap \
-    --offset-x -120.5 --flip-x
+vyges-opendb check-d2d --input stack.3dbx          # every bonded pair in the assembly
+vyges-opendb check-d2d --top logic.bmap --bottom mem.bmap --offset-x -120.5 --flip-x
 ```
+
+With `--input` the bump maps and the placements both come out of the 3Dblox assembly, so
+**nothing about how the dies sit has to be stated on the command line** — which is where the
+two-file form is easiest to get wrong. Every bonded pair is checked; a pair whose regions declare
+no `bmap` is listed under `interfaces_skipped` rather than counted as clean, because "we did not
+look" and "we looked and found nothing" are different answers.
 
 ```json
 { "violations": 5,
@@ -240,11 +246,28 @@ Both sides are walked, so an unmated *bottom* bump is reported too — it is jus
 
 ### Two things it deliberately does not do
 
-**It does not infer the placement.** Two bump maps are each in their own die's coordinates, and
-nothing in the files says how the dies sit relative to each other. Pass `--offset-x` / `--offset-y`
-(microns) and `--flip-x` for a face-to-face bond. The transform used is echoed in every report,
-because "no violations" means nothing without knowing what frame it was computed in — and a
+**In the two-file form it does not infer the placement.** Two bump maps are each in their own
+die's coordinates, and nothing in the files says how the dies sit. Pass `--offset-x` / `--offset-y`
+(microns) and `--flip-x` for a face-to-face bond. Either way the frame used is echoed in every
+report, because "no violations" means nothing without knowing what frame produced it — and a
 checker that guessed an alignment and then declared everything matched would be worse than none.
+
+This is exactly why `--input` is the better entry point. **`MZ` does not mirror X.** It flips the
+die's *face* and leaves the bump field's handedness alone; the mirror people expect from "flipped"
+comes from the `MY` component, so a face-to-face die is usually `MZ_MY`. That was measured against
+odb's own `dbUnfoldedChipBumpInst` global positions, not read off the names — and writing `MZ`
+where `MZ_MY` was meant turns a correct interface into four net mismatches:
+
+```text
+mm_rx0 carries d2d_tx0 but mates with lg_tx3 carrying d2d_tx3
+mm_rx1 carries d2d_tx1 but mates with lg_tx2 carrying d2d_tx2
+...
+```
+
+Loud, which is what it should be. Reading the assembly means nobody has to make that call by hand.
+An orientation the mapping has *not* been verified against is refused outright rather than
+processed, because odb silently treats an unrecognised orientation as `R0` — inheriting that would
+place a die wrongly and then report the interface clean.
 
 **It does not pick a tolerance out of the air.** The default match radius is half the smaller of
 the two bump pitches, derived from the maps themselves: anything nearer to a bump than that is

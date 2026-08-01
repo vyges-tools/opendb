@@ -26,6 +26,80 @@ use preprocess::expand_glob;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+/// One bonded pair of surfaces, resolved from an assembly: which two regions mate, where their
+/// bump maps are, and how each die is placed.
+///
+/// This is what turns the die-to-die check from "tell me how these dies sit" into "read it from
+/// the assembly". The placement is the assembly's, so the caller no longer has to know whether a
+/// flipped die mirrors in X — a question whose wrong answer reports a dead interface as clean.
+#[derive(Debug, Clone)]
+pub struct BondedPair {
+    pub connection: String,
+    pub top: BondedSide,
+    pub bottom: BondedSide,
+}
+
+#[derive(Debug, Clone)]
+pub struct BondedSide {
+    /// Chip-instance path, joined with `/` for a nested assembly.
+    pub inst: String,
+    pub chiplet: String,
+    pub region: String,
+    /// Resolved path to this surface's `.bmap`, if the definition named one.
+    pub bmap: Option<String>,
+    pub orient: String,
+    pub loc: (f64, f64),
+    /// The die's own extent in microns, which mirrors are taken about. `None` when the chiplet
+    /// definition omits `design_area` — a mirrored orientation cannot be resolved without it.
+    pub design_area: Option<(f64, f64)>,
+}
+
+/// Every bonded surface pair in an assembly, with bump maps and placements resolved.
+///
+/// Connections with no bottom (`bot: ~`, a virtual bond) are skipped: there is no second surface
+/// to check against, and reporting one as a defect would be wrong.
+pub fn bonded_pairs(dbx_path: &str) -> Result<Vec<BondedPair>> {
+    let asm = read_assembly(dbx_path)?;
+    let mut out = Vec::new();
+    for conn in &asm.dbx.connections {
+        let Some(bot) = &conn.bot else { continue };
+        let side = |r: &RegionRef| -> Option<BondedSide> {
+            // The last element of the path is the instance carrying the region; anything before
+            // it is a nested assembly, which this does not resolve placements through yet.
+            let leaf = r.inst_path.last()?;
+            let inst = asm.dbx.insts.iter().find(|i| &i.name == leaf)?;
+            let def = asm.defs.get(&inst.reference)?;
+            let region = def.regions.iter().find(|g| g.name == r.region)?;
+            Some(BondedSide {
+                inst: r.inst_path.join("/"),
+                chiplet: inst.reference.clone(),
+                region: region.name.clone(),
+                bmap: region.bmap.clone(),
+                orient: inst.placement.orient.clone(),
+                loc: inst.placement.loc,
+                design_area: def.design_area,
+            })
+        };
+        let (Some(top), Some(bottom)) = (side(&conn.top), side(bot)) else {
+            event(
+                vyges_events::Severity::Warn,
+                "BLOX-CONN-UNRESOLVED",
+                format!(
+                    "connection {}: could not resolve both surfaces; skipped",
+                    conn.name
+                ),
+            );
+            continue;
+        };
+        out.push(BondedPair {
+            connection: conn.name.clone(),
+            top,
+            bottom,
+        });
+    }
+    Ok(out)
+}
+
 /// Report through the same causal trail every other engine writes to, rather than only through
 /// a return value a caller may not look at. What was skipped matters as much as what was read:
 /// the whole class of defect this reader is arranged against is a file that appears to load.

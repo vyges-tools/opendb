@@ -250,3 +250,54 @@ fn a_tech_file_that_matches_nothing_is_reported_not_ignored() {
     assert_eq!(db.check_3dblox().unwrap(), 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── bmap: the leg of the format the reader used to skip ─────────────────────────────────────
+
+#[test]
+fn a_regions_bump_map_is_read_and_resolved_against_the_definition_file() {
+    // `bmap:` was previously ignored along with the rest of the external collateral. It is the
+    // one piece the die-to-die check needs, and a path that resolves against the wrong directory
+    // fails at open time rather than at parse time — much further from the cause.
+    let a = blox::read_assembly(DBX).unwrap();
+    let soc = a.defs.get("SoC").unwrap();
+    let back = soc.regions.iter().find(|r| r.name == "back_reg").unwrap();
+    let bmap = back.bmap.as_deref().expect("back_reg declares a bmap");
+    assert!(bmap.ends_with("example.bmap"), "{bmap}");
+    assert!(
+        bmap.contains("fixtures/3dblox"),
+        "resolved against the .3dbv that named it, not the cwd: {bmap}"
+    );
+
+    // A region that declares none must stay None rather than becoming an empty path that would
+    // then fail to open.
+    let front = soc.regions.iter().find(|r| r.name == "front_reg").unwrap();
+    assert_eq!(front.bmap, None);
+}
+
+#[test]
+fn an_assemblys_bonded_pairs_resolve_to_maps_and_placements() {
+    // What `check-d2d --input` walks: which surfaces mate, where their bump maps are, and how
+    // each die is placed — all from the file, so none of it has to be asserted by a caller.
+    let pairs = blox::bonded_pairs("tests/fixtures/3dblox/d2d/stack.3dbx").unwrap();
+    assert_eq!(pairs.len(), 1);
+    let p = &pairs[0];
+    assert_eq!(p.connection, "d2d_bond");
+    assert_eq!(p.top.inst, "u_mem");
+    assert_eq!(p.top.orient, "MZ_MY");
+    assert_eq!(p.bottom.orient, "R0");
+    assert_eq!(p.top.design_area, Some((200.0, 200.0)));
+    assert!(p.top.bmap.as_deref().unwrap().ends_with("mem_front.bmap"));
+    assert!(p.bottom.bmap.as_deref().unwrap().ends_with("logic_front.bmap"));
+}
+
+#[test]
+fn a_virtual_bond_is_not_offered_as_a_pair_to_check() {
+    // `bot: ~` has no second surface. Reporting it as a defective interface would be wrong —
+    // it is deliberately virtual.
+    let pairs = blox::bonded_pairs(DBX).unwrap();
+    assert!(
+        pairs.iter().all(|p| p.connection != "soc_to_virtual"),
+        "the virtual bond must be skipped, not checked"
+    );
+    assert_eq!(pairs.len(), 1, "only the real bond remains");
+}

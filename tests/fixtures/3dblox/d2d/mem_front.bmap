@@ -1,0 +1,5 @@
+# The matching counterpart. mem is placed MZ_MY, so these X values mirror about the 200 um die.
+mm_rx0 MICROBUMP 160.0 40.0 rx[0] d2d_tx0
+mm_rx1 MICROBUMP 120.0 40.0 rx[1] d2d_tx1
+mm_rx2 MICROBUMP 80.0 40.0 rx[2] d2d_tx2
+mm_rx3 MICROBUMP 40.0 40.0 rx[3] d2d_tx3

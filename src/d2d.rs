@@ -183,6 +183,82 @@ impl Transform {
     }
 }
 
+/// Where a die sits in the assembly, so its bump map can be brought into the global frame.
+///
+/// The XY mapping per orientation was **measured** against `dbUnfoldedChipBumpInst`'s own global
+/// positions rather than derived from the name, because the names do not mean what they look
+/// like: `MZ` flips the die's *face* and leaves X and Y alone. The X mirror people expect from
+/// "flipped" comes from the `MY` component, so a face-to-face die is usually `MZ_MY`, not `MZ`.
+/// Assuming otherwise silently compares two dies in mirrored frames and reports a dead interface
+/// as clean.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    pub orient: String,
+    /// Instance location in the assembly, microns.
+    pub loc_x: f64,
+    pub loc_y: f64,
+    /// The die's own extent, microns — mirrors are taken about it.
+    pub die_w: f64,
+    pub die_h: f64,
+}
+
+impl Placement {
+    /// Map a point in the die's own frame to the assembly frame.
+    ///
+    /// `None` for an orientation string this has not been verified against. odb silently treats
+    /// an unrecognised orientation as `R0`, so guessing here would place a die wrongly and then
+    /// report the interface as clean — refusing is the only safe answer.
+    pub fn map_point(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        let (w, h) = (self.die_w, self.die_h);
+        // `MZ` is the face flip; it does not touch XY, so the XY mapping is that of its base.
+        let base = self.orient.strip_prefix("MZ_").unwrap_or(&self.orient);
+        let base = if base == "MZ" { "R0" } else { base };
+        let (lx, ly) = match base {
+            "R0" => (x, y),
+            "R90" => (h - y, x),
+            "R180" => (w - x, h - y),
+            "R270" => (y, w - x),
+            "MX" => (x, h - y),
+            "MY" => (w - x, y),
+            "MXR90" => (y, x),
+            "MYR90" => (h - y, w - x),
+            _ => return None,
+        };
+        Some((lx + self.loc_x, ly + self.loc_y))
+    }
+
+    /// Whether this orientation is one the mapping has been verified for.
+    pub fn is_supported(&self) -> bool {
+        self.map_point(0.0, 0.0).is_some()
+    }
+
+    /// Bring a bump map into the assembly frame.
+    pub fn apply(&self, m: &BumpMap) -> Option<BumpMap> {
+        let bumps = m
+            .bumps
+            .iter()
+            .map(|b| {
+                self.map_point(b.x, b.y).map(|(x, y)| Bump {
+                    x,
+                    y,
+                    ..b.clone()
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(BumpMap {
+            bumps,
+            errors: m.errors.clone(),
+        })
+    }
+
+    pub fn describe(&self) -> String {
+        format!(
+            "{} at ({:.3}, {:.3}) um, die {:.3} x {:.3} um",
+            self.orient, self.loc_x, self.loc_y, self.die_w, self.die_h
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Top,
@@ -284,6 +360,10 @@ pub struct D2dReport {
     /// Where the tolerance came from: `derived` from the bump pitch, or `specified`.
     pub tolerance_source: &'static str,
     pub transform: Transform,
+    /// How the two maps were brought into a common frame, in words. A clean result is
+    /// uninterpretable without it, so it is carried in the report rather than left to the caller
+    /// to remember what it passed.
+    pub frame: String,
     pub findings: Vec<Finding>,
     /// Parse errors from either file, as `(side, line, message)`.
     pub parse_errors: Vec<(Side, usize, String)>,
@@ -312,6 +392,7 @@ impl D2dReport {
             "matched": self.matched,
             "tolerance_um": self.tolerance_um,
             "tolerance_source": self.tolerance_source,
+            "frame": self.frame,
             "transform": {
                 "dx_um": self.transform.dx,
                 "dy_um": self.transform.dy,
@@ -468,10 +549,49 @@ pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Optio
         matched: pairs.len(),
         tolerance_um: tolerance,
         tolerance_source: source,
+        frame: format!(
+            "bottom map shifted by ({:.3}, {:.3}) um{}",
+            tf.dx,
+            tf.dy,
+            if tf.flip_x { ", mirrored in X" } else { "" }
+        ),
         transform: tf,
         findings,
         parse_errors,
     }
+}
+
+/// Check an interface whose two sides are **placed in an assembly**.
+///
+/// This is the form that removes the tool's largest caveat. In the two-file form the caller has to
+/// know and pass how the dies sit relative to each other; here the assembly already says, so the
+/// frame is derived rather than asserted — and a wrong guess about, say, whether a flipped die
+/// mirrors in X stops being possible.
+///
+/// `Err` names the orientation if either side carries one the mapping has not been verified for.
+/// odb treats an unrecognised orientation as `R0`, so proceeding would place a die wrongly and
+/// then report the interface clean.
+pub fn check_placed(
+    top: &BumpMap,
+    top_at: &Placement,
+    bottom: &BumpMap,
+    bottom_at: &Placement,
+    tolerance_um: Option<f64>,
+) -> std::result::Result<D2dReport, String> {
+    let tg = top_at
+        .apply(top)
+        .ok_or_else(|| format!("unsupported orientation `{}` on the top die", top_at.orient))?;
+    let bg = bottom_at.apply(bottom).ok_or_else(|| {
+        format!("unsupported orientation `{}` on the bottom die", bottom_at.orient)
+    })?;
+    // Both sides are already global, so no further transform is applied.
+    let mut r = check(&tg, &bg, Transform::default(), tolerance_um);
+    r.frame = format!(
+        "assembly frame — top {} ; bottom {}",
+        top_at.describe(),
+        bottom_at.describe()
+    );
+    Ok(r)
 }
 
 #[cfg(test)]
@@ -648,6 +768,100 @@ bb2 MICROBUMP 90.0 10.0 rx[2] d2d_tx2
         assert_eq!(tight.count("misaligned"), 0);
         assert_eq!(tight.count("unmated"), 2);
         assert_eq!(tight.tolerance_source, "specified");
+    }
+
+    // ── Placement ──────────────────────────────────────────────────────────────────────────
+
+    fn die(orient: &str) -> Placement {
+        Placement {
+            orient: orient.into(),
+            loc_x: 0.0,
+            loc_y: 0.0,
+            die_w: 50.0,
+            die_h: 40.0,
+        }
+    }
+
+    #[test]
+    fn the_orientation_mapping_matches_what_odb_actually_does() {
+        // These expectations are not derived from the names — they were read out of
+        // `dbUnfoldedChipBumpInst::getGlobalPosition` for a die of 50 x 40 with a bump at
+        // (2.84, 3.36). See examples/probe_orient.rs. Deriving them from the names is exactly
+        // how you conclude that MZ mirrors X, which it does not.
+        let (x, y) = (2.84, 3.36);
+        for (orient, want) in [
+            ("R0", (2.84, 3.36)),
+            ("R90", (36.64, 2.84)),
+            ("R180", (47.16, 36.64)),
+            ("R270", (3.36, 47.16)),
+            ("MX", (2.84, 36.64)),
+            ("MY", (47.16, 3.36)),
+            ("MXR90", (3.36, 2.84)),
+            ("MYR90", (36.64, 47.16)),
+        ] {
+            let got = die(orient).map_point(x, y).expect(orient);
+            assert!(
+                (got.0 - want.0).abs() < 1e-9 && (got.1 - want.1).abs() < 1e-9,
+                "{orient}: got {got:?}, odb gives {want:?}"
+            );
+            // MZ is the face flip and must not change XY at all.
+            let mz = die(&format!("MZ_{orient}")).map_point(x, y).expect(orient);
+            assert_eq!(mz, got, "MZ_{orient} must have the same XY as {orient}");
+        }
+        assert_eq!(die("MZ").map_point(x, y), Some((x, y)), "MZ alone leaves XY alone");
+    }
+
+    #[test]
+    fn an_unverified_orientation_is_refused_rather_than_treated_as_r0() {
+        // odb silently falls back to R0 for an unrecognised orientation — measured. Inheriting
+        // that would place a die wrongly and then call the interface clean.
+        assert!(die("SIDEWAYS").map_point(1.0, 1.0).is_none());
+        assert!(!die("SIDEWAYS").is_supported());
+        assert!(die("MZ_MY").is_supported());
+    }
+
+    #[test]
+    fn a_placement_offset_lands_the_die_where_the_assembly_puts_it() {
+        let p = Placement { orient: "R0".into(), loc_x: 100.0, loc_y: 5.0, die_w: 50.0, die_h: 40.0 };
+        assert_eq!(p.map_point(1.0, 2.0), Some((101.0, 7.0)));
+    }
+
+    #[test]
+    fn a_face_to_face_pair_checks_clean_in_the_assembly_frame() {
+        // The logic die R0, the memory die MZ_MY above it — the real face-to-face case. The
+        // memory map's X values mirror about its own die, and the check has to undo that.
+        let logic = BumpMap::parse("l0 MB 10.0 10.0 t0 n0
+l1 MB 40.0 10.0 t1 n1
+");
+        let mem = BumpMap::parse("m0 MB 40.0 10.0 r0 n0
+m1 MB 10.0 10.0 r1 n1
+");
+        let r = check_placed(&mem, &die("MZ_MY"), &logic, &die("R0"), None).unwrap();
+        assert_eq!(r.violations(), 0, "{:?}", r.findings.iter().map(|f| f.message()).collect::<Vec<_>>());
+        assert!(r.frame.contains("MZ_MY"), "the frame must name the placements it used");
+    }
+
+    #[test]
+    fn using_mz_where_mz_my_was_meant_is_loud() {
+        // The single most likely modelling mistake, and it must not look clean.
+        let logic = BumpMap::parse("l0 MB 10.0 10.0 t0 n0
+l1 MB 40.0 10.0 t1 n1
+");
+        let mem = BumpMap::parse("m0 MB 40.0 10.0 r0 n0
+m1 MB 10.0 10.0 r1 n1
+");
+        let r = check_placed(&mem, &die("MZ"), &logic, &die("R0"), None).unwrap();
+        assert_eq!(r.count("net-mismatch"), 2, "the interface reads as reversed");
+    }
+
+    #[test]
+    fn an_unsupported_orientation_names_itself_in_the_error() {
+        let m = BumpMap::parse("b0 MB 1.0 1.0 p n
+");
+        let e = check_placed(&m, &die("SIDEWAYS"), &m, &die("R0"), None).unwrap_err();
+        assert!(e.contains("SIDEWAYS") && e.contains("top"), "{e}");
+        let e = check_placed(&m, &die("R0"), &m, &die("SIDEWAYS"), None).unwrap_err();
+        assert!(e.contains("bottom"), "{e}");
     }
 
     // ── Degenerate input ───────────────────────────────────────────────────────────────────

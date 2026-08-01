@@ -114,7 +114,11 @@ pub fn parse_dbv(file: &str, raw: &str) -> Result<Dbv, BloxError> {
                         coords.push(pair(file, &format!("{rat}.coords[{i}]"), c)?);
                     }
                 }
-                regions.push(Region { name: rname, side, coords });
+                // Resolved against the .3dbv that named it, like every other external path in
+                // the format — a bump map is nearly always a sibling of the definition file.
+                let bmap = scalar_text(&rv["bmap"])
+                    .map(|b| relative_to(Path::new(file), &b).to_string_lossy().into_owned());
+                regions.push(Region { name: rname, side, coords, bmap });
             }
         }
         chiplets.push(ChipletDef {
