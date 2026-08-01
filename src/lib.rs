@@ -19,6 +19,8 @@ use cxx::UniquePtr;
 use vyges_opendb_lib as sys;
 
 #[cfg(unix)]
+pub mod blox;
+#[cfg(unix)]
 pub mod eco;
 #[cfg(unix)]
 pub mod report;
@@ -112,6 +114,10 @@ impl Db {
         let inner = sys::open_db(&path_str(path)?)?;
         Ok(Db { inner })
     }
+
+    /// An empty database — the starting point when a design is being **built** rather than read,
+    /// such as loading a 3Dblox assembly, which brings its own precision and its own chips.
+    pub fn new() -> Db { Db { inner: sys::new_db() } }
 
     /// Serialize the database to a `.odb` file.
     pub fn write(&self, path: impl AsRef<Path>) -> Result<()> {
@@ -294,6 +300,23 @@ impl Db {
     /// unfolded table reads empty — and nothing says why.
     pub fn set_top_chip(&mut self, chip: &str) -> Result<()> {
         Ok(sys::set_top_chip(self.r(), chip)?)
+    }
+
+    /// Create the database's technology, carrying only the precision already set.
+    ///
+    /// odb refuses to create a `DIE` chip without a technology; a geometry-only 3Dblox read has
+    /// no LEF to build a real one from, so this is the placeholder that lets the model exist.
+    pub fn create_tech(&mut self, name: &str) -> Result<()> {
+        Ok(sys::tech_create(self.r(), name)?)
+    }
+
+    /// Database precision, in DBU per micron (0 when unset).
+    pub fn dbu_per_micron(&self) -> i32 { sys::dbu_per_micron(self.r()) }
+
+    /// Set the database precision. A 3Dblox header declares the precision its micron
+    /// coordinates are written at, and reading one has to reconcile the two.
+    pub fn set_dbu_per_micron(&mut self, dbu: i32) {
+        sys::set_dbu_per_micron(self.r(), dbu)
     }
 
     /// Rebuild the derived 3D tables (unfolded chip insts, regions, bumps) from the folded

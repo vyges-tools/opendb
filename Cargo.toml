@@ -17,6 +17,9 @@ vyges-opendb-lib = { git = "https://github.com/vyges-tools/opendb-lib.git" }
 cxx = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 3Dblox interchange files are YAML (plus a macro preprocessor of their own). Pure Rust: no C,
+# no build system, no version pin — the opposite of the dependency this reader exists to avoid.
+yaml-rust2 = "0.10"
 # Structured events (vyges-events/1.0) for the MCP causal trail — centralizes odb's Rust-side
 # diagnostics (get/set API misses) with the rest of the Loom suite. Core-only (no tracing bridge).
 vyges-events = { git = "https://github.com/vyges-tools/events", branch = "main", default-features = false }
