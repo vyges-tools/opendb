@@ -211,3 +211,149 @@ fn a_rust_built_assembly_survives_a_write_and_reopen() {
     );
     let _ = std::fs::remove_file(&path);
 }
+
+// ---- the checks that needed bumps, nets and rules to exist at all -------------------------------
+
+fn marker_comment(db: &Db, category: &str) -> String {
+    registry::get(
+        db,
+        "dbMarker",
+        "get_comment",
+        &[category.to_string(), "0".to_string()],
+    )
+    .unwrap()
+    .as_str()
+    .unwrap_or_default()
+    .to_string()
+}
+
+/// The clean stack, plus bumps on both dice, logical nets, and an alignment-marker rule.
+///
+/// Three of the linter's seven checks were inert before this: two need bump instances to exist,
+/// and the alignment-marker check returns immediately unless a rule is defined — so a design
+/// without one is not clean so much as unexamined.
+///
+/// Note how instances are added to a *die's* block. `dbDatabase::getChip()` is what the
+/// block-level accessors resolve through, so re-rooting is how you reach a die's own design;
+/// the assembly is rooted again at the end. That is not a trick, it is the addressing model,
+/// but it is not obvious from the API either.
+fn stack_with_bumps() -> (Db, String) {
+    let mut db = Db::open("tests/fixtures/counter.odb").unwrap();
+    let master = db.find_master("");
+    db.create_chip("stack", "", "HIER").unwrap();
+    db.create_chip_block("stack", "stack_blk").unwrap();
+    db.create_chip("base", "", "SUBSTRATE").unwrap();
+    db.create_chip("upper", "", "DIE").unwrap();
+    for (c, w, h, t) in [("base", 60000, 50000, 1500), ("upper", 50000, 40000, 700)] {
+        db.chip_set_width(c, w).unwrap();
+        db.chip_set_height(c, h).unwrap();
+        db.chip_set_thickness(c, t).unwrap();
+    }
+    db.create_chip_region("base", "up", "FRONT", "").unwrap();
+    db.set_chip_region_box("base", "up", 0, 0, 60000, 50000)
+        .unwrap();
+    db.create_chip_region("upper", "down", "BACK", "").unwrap();
+    db.set_chip_region_box("upper", "down", 0, 0, 50000, 40000)
+        .unwrap();
+
+    // upper: one pad inside its region and one far outside it
+    db.create_chip_block("upper", "upper_blk").unwrap();
+    db.set_top_chip("upper").unwrap();
+    db.create_inst(&master, "pad_in").unwrap();
+    db.set_inst_location("pad_in", 1000, 1000).unwrap();
+    db.create_inst(&master, "pad_out").unwrap();
+    db.set_inst_location("pad_out", 900_000, 900_000).unwrap();
+    // base: one pad directly beneath pad_in, so the pair aligns physically
+    db.create_chip_block("base", "base_blk").unwrap();
+    db.set_top_chip("base").unwrap();
+    db.create_inst(&master, "pad_lo").unwrap();
+    db.set_inst_location("pad_lo", 1000, 1000).unwrap();
+    db.set_top_chip("stack").unwrap();
+
+    db.create_chip_bump("upper", "down", "pad_in").unwrap();
+    db.create_chip_bump("upper", "down", "pad_out").unwrap();
+    db.create_chip_bump("base", "up", "pad_lo").unwrap();
+    db.create_alignment_marker_rule(&master, &master, 10)
+        .unwrap();
+
+    db.create_chip_inst("stack", "base", "u_base").unwrap();
+    db.create_chip_inst("stack", "upper", "u_upper").unwrap();
+    db.place_chip_inst("stack", "u_base", "R0", 0, 0, 0)
+        .unwrap();
+    db.place_chip_inst("stack", "u_upper", "R0", 0, 0, 1500)
+        .unwrap();
+    db.create_chip_conn("bond", "stack", "u_upper", "down", "u_base", "up", 0)
+        .unwrap();
+
+    // the physically aligned pair is put on DIFFERENT logical nets, deliberately
+    db.create_chip_net("stack", "net_a").unwrap();
+    db.create_chip_net("stack", "net_b").unwrap();
+    db.add_chip_net_bump("stack", "net_a", "u_upper", "down", 0)
+        .unwrap();
+    db.add_chip_net_bump("stack", "net_b", "u_base", "up", 0)
+        .unwrap();
+
+    db.set_top_chip("stack").unwrap();
+    db.construct_unfolded_model().unwrap();
+    (db, master)
+}
+
+#[test]
+fn a_bump_outside_its_region_is_reported_and_one_inside_is_not() {
+    let (db, _) = stack_with_bumps();
+    db.check_3dblox().unwrap();
+    assert_eq!(
+        markers(&db, "3DBlox/Bump Alignment"),
+        1,
+        "exactly the out-of-bounds pad, not both pads"
+    );
+    assert!(
+        marker_comment(&db, "3DBlox/Bump Alignment").contains("outside its parent region"),
+        "got: {}",
+        marker_comment(&db, "3DBlox/Bump Alignment")
+    );
+}
+
+#[test]
+fn aligned_bumps_on_different_nets_are_reported() {
+    // The check that is silently inert on any design with no net associations: it compares the
+    // nets of physically aligned bump pairs, so with nothing associated it always agrees.
+    let (db, _) = stack_with_bumps();
+    db.check_3dblox().unwrap();
+    assert_eq!(markers(&db, "3DBlox/Logical Connectivity"), 1);
+    let c = marker_comment(&db, "3DBlox/Logical Connectivity");
+    assert!(c.contains("align physically"), "got: {c}");
+    assert!(
+        c.contains("net_a") && c.contains("net_b"),
+        "names both nets: {c}"
+    );
+}
+
+#[test]
+fn an_alignment_marker_with_no_counterpart_is_reported() {
+    let (db, _) = stack_with_bumps();
+    db.check_3dblox().unwrap();
+    assert_eq!(markers(&db, "3DBlox/Alignment Markers"), 1);
+    assert!(
+        marker_comment(&db, "3DBlox/Alignment Markers").contains("no counterpart"),
+        "got: {}",
+        marker_comment(&db, "3DBlox/Alignment Markers")
+    );
+}
+
+#[test]
+fn the_three_bump_checks_fire_independently_of_the_geometric_ones() {
+    // Attribution: the stack is still well-formed, so the four checks exercised elsewhere stay
+    // clean. Without this, three violations on a design could just as easily be one defect
+    // reported three times.
+    let (db, _) = stack_with_bumps();
+    assert_eq!(db.check_3dblox().unwrap(), 3);
+    for clean in [
+        "3DBlox/Connection regions",
+        "3DBlox/Floating chips",
+        "3DBlox/Overlapping chips",
+        "3DBlox/Unused internal_ext",
+    ] {
+        assert_eq!(markers(&db, clean), 0, "{clean} must stay clean");
+    }
+}

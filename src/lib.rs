@@ -270,6 +270,23 @@ impl Db {
         Ok(sys::chip_path_create(self.r(), chip, name)?)
     }
 
+    /// Associate a bump instance with a logical 3D net.
+    ///
+    /// The bump is addressed by its position in `(chip_inst, region)`. Needed because the
+    /// logical-connectivity check compares the nets of physically aligned bump pairs — without
+    /// any net associations it has nothing to disagree about and passes on any design.
+    pub fn add_chip_net_bump(&mut self, chip: &str, net: &str, chip_inst: &str, region: &str, bump_index: usize) -> Result<()> {
+        Ok(sys::chip_net_add_bump(self.r(), chip, net, chip_inst, region, bump_index)?)
+    }
+
+    /// Declare an alignment-marker rule between two masters, with a tolerance in DBU.
+    ///
+    /// The alignment-marker check returns immediately when no rule exists, so a design without
+    /// one is not so much clean as unexamined.
+    pub fn create_alignment_marker_rule(&mut self, master_a: &str, master_b: &str, tolerance: i32) -> Result<()> {
+        Ok(sys::alignment_marker_rule_create(self.r(), master_a, master_b, tolerance)?)
+    }
+
     /// Root the assembly at `chip`.
     ///
     /// **Required before any unfolded query or lint.** The unfolded builder starts from the top
