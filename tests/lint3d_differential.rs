@@ -13,18 +13,18 @@
 //! into our libodb). So a disagreement here is a defect in our bindings or in how we drive
 //! them — which is exactly what a conformance test should be sensitive to.
 //!
-//! **Their floating-chip situations are not reproduced here, deliberately.** Their scenario
-//! walks floating sets 0 -> 1 -> 2 by pulling a die away and adding a third; ours cannot start
-//! from zero, because this fixture's connection is defective by construction and `u_base` is
-//! therefore an isolated set in every placement. Measured, and worth writing down because it
-//! was not obvious: `Floating chips` and `Connection regions` stay at 1 under every orientation
-//! and Z offset tried, *including* a perfectly mated pair (both surfaces at z=1500, facing each
-//! other, gap 0 against a connection thickness of 25). So that check keys off something other
-//! than facing or mating gap, and no amount of moving this fixture will clear it. Covering the
-//! floating progression needs a purpose-built clean multi-die fixture — generator work in
-//! `vyges-opendb-lib/test/`, tracked separately. Their third situation additionally needs
-//! `dbChipInst::create`, which is not bound; a three-inst fixture reaches the same states by
-//! moving rather than creating.
+//! **Their floating-chip situations live in `chip_create.rs`, not here.** They need an assembly
+//! that starts clean, and this fixture cannot: its connection is defective by construction, so
+//! one chip is an isolated set in every placement. That was originally recorded here as a gap
+//! needing C++ fixture work — it turned out to need the `dbChip*::create` bindings instead, and
+//! once those landed the progression reproduced from a design built entirely in Rust.
+//!
+//! The cause is now known, and it was not what this fixture's generator claims. Bonding roles,
+//! not orientation: the lower chip must present the **FRONT** face (which points TOP) and the
+//! upper chip the **BACK** face (which points BOTTOM). This fixture bonds them the other way
+//! round, which no orientation or offset can rescue — which is why `Connection regions` stayed
+//! at 1 here under every geometry tried, including a perfectly mated pair.
+//!
 #![cfg(feature = "gen-write")]
 use vyges_opendb::{registry, Db};
 

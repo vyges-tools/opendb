@@ -198,6 +198,87 @@ impl Db {
     /// with markers and never modifies the design. Errors if there is no top chip.
     pub fn check_3dblox(&self) -> Result<usize> { Ok(sys::check_3dblox(self.r())?) }
 
+    // ---- 3D / chiplet construction ------------------------------------------
+    // Until these, the 3D surface was read-only in practice: a chiplet assembly could be
+    // inspected and its chips moved, but the only way to bring one into existence was a
+    // separate C++ program. These are odb's own `dbChip*::create` statics, hand-bound because
+    // their signatures are heterogeneous enough that the generator cannot reach them.
+    //
+    // Order matters twice, and neither is enforceable by types:
+    //   * a master chip's regions and bumps must exist BEFORE any `dbChipInst` of it is
+    //     created — `create` derives the region/bump instances from the master as it stands,
+    //     and anything added later is silently not instantiated for that inst;
+    //   * [`Db::set_top_chip`] must name the assembly, or every unfolded table reads empty.
+
+    /// Create a `dbChip`. `chip_type` is `DIE` | `RDL` | `IP` | `SUBSTRATE` | `HIER`.
+    ///
+    /// `tech` selects the chip's own `dbTech` by name — the per-chip tech is what lets dies
+    /// from different processes coexist in one database. Empty selects the database default,
+    /// which is the single-process case.
+    pub fn create_chip(&mut self, name: &str, tech: &str, chip_type: &str) -> Result<()> {
+        Ok(sys::chip_create(self.r(), name, tech, chip_type)?)
+    }
+
+    /// Give a chip its own `dbBlock` — the die's design. The top chip needs one for the
+    /// block-level accessors to resolve through it; a die needs one to hold the instances its
+    /// bumps wrap.
+    pub fn create_chip_block(&mut self, chip: &str, name: &str) -> Result<()> {
+        Ok(sys::chip_block_create(self.r(), chip, name)?)
+    }
+
+    /// Instantiate `master_chip` inside `parent_chip`. See the ordering note above: the
+    /// master's regions and bumps must already exist.
+    pub fn create_chip_inst(&mut self, parent_chip: &str, master_chip: &str, name: &str) -> Result<()> {
+        Ok(sys::chip_inst_create(self.r(), parent_chip, master_chip, name)?)
+    }
+
+    /// Create a bonding region on a chip. `side` is `FRONT` | `BACK` | `INTERNAL` |
+    /// `INTERNAL_EXT`; `layer` is a tech-layer name, or empty for none.
+    pub fn create_chip_region(&mut self, chip: &str, name: &str, side: &str, layer: &str) -> Result<()> {
+        Ok(sys::chip_region_create(self.r(), chip, name, side, layer)?)
+    }
+
+    /// Set a region's footprint. Without it the region has no extent, and the checks that
+    /// reason about footprints have nothing to test.
+    pub fn set_chip_region_box(&mut self, chip: &str, region: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
+        Ok(sys::chip_region_set_box(self.r(), chip, region, x1, y1, x2, y2)?)
+    }
+
+    /// Place a bump on a region, wrapping an instance in that chip's own block.
+    pub fn create_chip_bump(&mut self, chip: &str, region: &str, inst: &str) -> Result<()> {
+        Ok(sys::chip_bump_create(self.r(), chip, region, inst)?)
+    }
+
+    /// Bond two region instances together with a physical thickness.
+    ///
+    /// odb takes a *path* of chip instances on each side, to name a region inside a nested
+    /// assembly. This binds the direct case — one hop per side — which covers a bond between
+    /// two chips in the same parent. Deeper paths are expressible upstream and not here yet.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_chip_conn(&mut self, name: &str, parent_chip: &str, top_inst: &str, top_region: &str,
+                            bottom_inst: &str, bottom_region: &str, thickness: i32) -> Result<()> {
+        Ok(sys::chip_conn_create(self.r(), name, parent_chip, top_inst, top_region, bottom_inst, bottom_region, thickness)?)
+    }
+
+    /// Create a logical net spanning bump instances across chips.
+    pub fn create_chip_net(&mut self, chip: &str, name: &str) -> Result<()> {
+        Ok(sys::chip_net_create(self.r(), chip, name)?)
+    }
+
+    /// Create a named traversal route through the assembly.
+    pub fn create_chip_path(&mut self, chip: &str, name: &str) -> Result<()> {
+        Ok(sys::chip_path_create(self.r(), chip, name)?)
+    }
+
+    /// Root the assembly at `chip`.
+    ///
+    /// **Required before any unfolded query or lint.** The unfolded builder starts from the top
+    /// chip and walks its chip instances, so with it left pointing at a flat design every
+    /// unfolded table reads empty — and nothing says why.
+    pub fn set_top_chip(&mut self, chip: &str) -> Result<()> {
+        Ok(sys::set_top_chip(self.r(), chip)?)
+    }
+
     /// Rebuild the derived 3D tables (unfolded chip insts, regions, bumps) from the folded
     /// chip hierarchy.
     ///
