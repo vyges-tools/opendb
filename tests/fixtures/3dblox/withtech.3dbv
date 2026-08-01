@@ -1,0 +1,22 @@
+#!define TECH_DIR .
+
+Header:
+  version: 2.5
+  unit: micron
+  precision: 2000
+
+ChipletDef:
+  Die:
+    type: die
+    design_area: [100, 80]
+    thickness: 50
+    regions:
+      up:
+        side: front
+        coords:
+          - [0, 0]
+          - [100, 0]
+          - [100, 80]
+          - [0, 80]
+    external:
+      APR_tech_file: [TECH_DIR/*_tech.lef]

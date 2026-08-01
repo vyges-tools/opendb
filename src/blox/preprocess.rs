@@ -82,3 +82,82 @@ mod tests {
         assert_eq!(relative_to(Path::new("/a/b/top.3dbx"), "/x/y.3dbv"), Path::new("/x/y.3dbv"));
     }
 }
+
+/// Expand a `*`/`?` glob in the final path component.
+///
+/// `.3dbv` files name collateral like `NG45_PATH/*_tech.lef` — a real pattern, not decoration.
+/// Only the file name is matched; a glob in a directory component is not something the format's
+/// own examples use, and quietly half-supporting it would be worse than not.
+pub(crate) fn expand_glob(pattern: &Path) -> Vec<PathBuf> {
+    let Some(name) = pattern.file_name().and_then(|n| n.to_str()) else {
+        return vec![pattern.to_path_buf()];
+    };
+    if !name.contains('*') && !name.contains('?') {
+        return vec![pattern.to_path_buf()];
+    }
+    let dir = pattern.parent().unwrap_or(Path::new("."));
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut out: Vec<PathBuf> = rd
+        .flatten()
+        .filter(|e| {
+            e.file_name().to_str().map(|f| glob_match(name, f)).unwrap_or(false)
+        })
+        .map(|e| e.path())
+        .collect();
+    out.sort(); // directory order is not stable; a build that depends on it is not reproducible
+    out
+}
+
+/// `*` (any run) and `?` (one char), which is all these files use.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let (p, t): (Vec<char>, Vec<char>) = (pattern.chars().collect(), text.chars().collect());
+    let (mut pi, mut ti, mut star, mut mark) = (0usize, 0usize, usize::MAX, 0usize);
+    while ti < t.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == t[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = pi;
+            mark = ti;
+            pi += 1;
+        } else if star != usize::MAX {
+            pi = star + 1;
+            mark += 1;
+            ti = mark;
+        } else {
+            return false;
+        }
+    }
+    while pi < p.len() && p[pi] == '*' {
+        pi += 1;
+    }
+    pi == p.len()
+}
+
+#[cfg(test)]
+mod glob_tests {
+    use super::glob_match;
+
+    #[test]
+    fn the_pattern_these_files_actually_use_matches() {
+        assert!(glob_match("*_tech.lef", "Nangate45_tech.lef"));
+        assert!(!glob_match("*_tech.lef", "Nangate45.lef"));
+        assert!(glob_match("a?c", "abc"));
+        assert!(!glob_match("a?c", "ac"));
+    }
+
+    #[test]
+    fn a_star_can_match_nothing_and_backtracks() {
+        // The case a naive left-to-right matcher gets wrong: the first `*` must give ground so
+        // the tail can line up.
+        assert!(glob_match("*.lef", ".lef"));
+        assert!(glob_match("*a*b", "xxayyb"));
+        assert!(!glob_match("*a*b", "xxayy"));
+    }
+
+    #[test]
+    fn a_name_with_no_wildcard_is_returned_unchanged() {
+        assert!(glob_match("tech.lef", "tech.lef"));
+        assert!(!glob_match("tech.lef", "other.lef"));
+    }
+}

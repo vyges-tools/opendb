@@ -182,3 +182,71 @@ fn a_reference_to_an_undefined_chiplet_is_an_error_with_the_name_in_it() {
     assert!(e.to_string().contains("NoSuchDie"), "got: {e}");
     let _ = std::fs::remove_file(&tmp);
 }
+
+// ---- Phase 2: the technology a chiplet brings with it -------------------------------------------
+
+const WITHTECH: &str = "tests/fixtures/3dblox/withtech.3dbx";
+
+#[test]
+fn a_chiplets_apr_tech_file_is_globbed_and_read() {
+    // `APR_tech_file: [TECH_DIR/*_tech.lef]` exercises three things at once that are separately
+    // easy to get wrong: the `#!define` is expanded, the path resolves against the .3dbv that
+    // named it, and the `*` is a real pattern rather than a literal.
+    let a = blox::read_assembly(WITHTECH).unwrap();
+    let die = a.defs.get("Die").unwrap();
+    assert_eq!(die.apr_tech_files.len(), 1);
+    let p = &die.apr_tech_files[0];
+    assert!(
+        p.ends_with("*_tech.lef"),
+        "the pattern survives parsing: {p}"
+    );
+    assert!(!p.contains("TECH_DIR"), "the macro must be expanded: {p}");
+}
+
+#[test]
+fn the_technology_comes_from_the_lef_rather_than_a_placeholder() {
+    // The difference Phase 2 exists to make. Before this, every chip shared a placeholder tech
+    // with no layers; now the precision and the layers come from the chiplet's own LEF.
+    let mut db = Db::new();
+    db.read_3dblox(WITHTECH).expect("must load");
+    assert_eq!(
+        db.dbu_per_micron(),
+        2000,
+        "precision from the LEF's UNITS block"
+    );
+    assert_eq!(
+        db.check_3dblox().unwrap(),
+        0,
+        "and the stack is still well-formed"
+    );
+}
+
+#[test]
+fn geometry_from_a_lef_backed_read_converts_correctly() {
+    let mut db = Db::new();
+    db.read_3dblox(WITHTECH).unwrap();
+    assert_eq!(db.chip_get_thickness("Die"), 50 * 2000);
+    assert_eq!(db.chip_get_width("Die"), 100 * 2000);
+    // d1 is mirrored and sits directly on d0
+    assert_eq!(db.chipinst_get_loc_z("WithTech", "d1"), 50 * 2000);
+}
+
+#[test]
+fn a_tech_file_that_matches_nothing_is_reported_not_ignored() {
+    // A glob that resolves to no file is a broken reference, and silence about it is how a
+    // design gets timed against a technology nobody noticed was absent.
+    let raw = std::fs::read_to_string("tests/fixtures/3dblox/withtech.3dbv")
+        .unwrap()
+        .replace("*_tech.lef", "*_nonexistent.lef");
+    let dir = std::env::temp_dir().join("blox-notech");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("withtech.3dbv"), raw).unwrap();
+    std::fs::copy(WITHTECH, dir.join("withtech.3dbx")).unwrap();
+
+    let mut db = Db::new();
+    // still loads — a missing tech file must not lose the geometry — but falls back visibly
+    db.read_3dblox(dir.join("withtech.3dbx").to_str().unwrap())
+        .unwrap();
+    assert_eq!(db.check_3dblox().unwrap(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -33,6 +33,15 @@ fn scalar_text(y: &Yaml) -> Option<String> {
     }
 }
 
+/// A YAML value that is either one scalar or a list of them — the format uses both spellings
+/// for the same field (`DEF_file: x` beside `LEF_file: [a, b]`).
+fn string_list(y: &Yaml) -> Vec<String> {
+    match y {
+        Yaml::Array(v) => v.iter().filter_map(scalar_text).collect(),
+        other => scalar_text(other).into_iter().collect(),
+    }
+}
+
 fn pair(file: &str, path: &str, y: &Yaml) -> Result<(f64, f64), BloxError> {
     let v = y.as_vec().ok_or_else(|| err(file, path, "expected a [x, y] pair"))?;
     if v.len() != 2 {
@@ -118,6 +127,10 @@ pub fn parse_dbv(file: &str, raw: &str) -> Result<Dbv, BloxError> {
             thickness: f64_of(&v["thickness"]),
             tsv: v["tsv"].as_bool().unwrap_or(false),
             regions,
+            apr_tech_files: string_list(&v["external"]["APR_tech_file"])
+                .into_iter()
+                .map(|t| relative_to(Path::new(file), &t).to_string_lossy().into_owned())
+                .collect(),
         });
     }
     Ok(Dbv { header, chiplets })

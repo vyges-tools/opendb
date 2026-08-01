@@ -104,6 +104,9 @@ pub struct ChipletDef {
     pub thickness: Option<f64>,
     pub tsv: bool,
     pub regions: Vec<Region>,
+    /// `external.APR_tech_file` — the LEF(s) this chiplet's technology comes from. Entries may
+    /// contain a glob; they are relative to the `.3dbv` that named them.
+    pub apr_tech_files: Vec<String>,
 }
 
 /// A parsed `.3dbv` — chiplet definitions.

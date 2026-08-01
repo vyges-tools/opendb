@@ -302,6 +302,14 @@ impl Db {
         Ok(sys::set_top_chip(self.r(), chip)?)
     }
 
+    /// Build a named technology from a LEF file.
+    ///
+    /// This is how a chiplet gets its **own** technology, from the `APR_tech_file` its `.3dbv`
+    /// names — the mechanism that lets dies from different processes share one database.
+    pub fn tech_from_lef(&mut self, name: &str, lef_path: &str) -> Result<()> {
+        Ok(sys::tech_from_lef(self.r(), name, lef_path)?)
+    }
+
     /// Create the database's technology, carrying only the precision already set.
     ///
     /// odb refuses to create a `DIE` chip without a technology; a geometry-only 3Dblox read has

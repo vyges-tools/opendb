@@ -1,0 +1,31 @@
+Header:
+  version: "1.0"
+  unit: "micron"
+  precision: 2000
+  include:
+    - withtech.3dbv
+
+Design:
+  name: "WithTech"
+
+ChipletInst:
+  d0:
+    reference: Die
+  d1:
+    reference: Die
+
+Stack:
+  d0:
+    loc: [0.0, 0.0]
+    z: 0.0
+    orient: R0
+  d1:
+    loc: [0.0, 0.0]
+    z: 50.0
+    orient: MZ
+
+Connection:
+  bond:
+    top: d1.regions.up
+    bot: d0.regions.up
+    thickness: 0.0

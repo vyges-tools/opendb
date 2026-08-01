@@ -22,7 +22,16 @@ pub use model::{Assembly, BloxError, ChipletDef, Connection, Dbv, Dbx, Header, R
 pub use parse::{parse_dbv, parse_dbx};
 
 use crate::{Db, Error, Result};
+use preprocess::expand_glob;
 use std::collections::BTreeMap;
+use std::path::Path;
+
+/// Report through the same causal trail every other engine writes to, rather than only through
+/// a return value a caller may not look at. What was skipped matters as much as what was read:
+/// the whole class of defect this reader is arranged against is a file that appears to load.
+fn event(sev: vyges_events::Severity, code: &str, msg: String) {
+    vyges_events::emit(&vyges_events::Event::new("vyges-opendb", sev, msg).with_code(code));
+}
 
 impl From<BloxError> for Error {
     fn from(e: BloxError) -> Error {
@@ -100,11 +109,57 @@ impl Db {
         // The design top gets no block and no tech, matching upstream's own
         // `createDesignTopChiplet`: a geometry-only read has no LEF to give it a tech, and
         // manufacturing an empty block here would be inventing structure the file never stated.
-        // odb refuses a DIE chip without a technology, and a geometry-only read has no LEF to
-        // build one from. A placeholder carrying just the precision is what lets the model
-        // exist; Phase 2's per-chiplet APR_tech_file is what replaces it with the real thing.
-        if db_dbu <= 0 {
+        // A chiplet's own technology comes from its `APR_tech_file`. This is the format's
+        // load-bearing claim — it is what lets dies from different processes coexist — so it is
+        // read when present. odb keeps ONE technology per database, so the first chiplet that
+        // names a LEF supplies it and any later one is reported rather than silently ignored;
+        // a genuinely multi-process stack needs more than this layer can currently express.
+        let mut tech_from: Option<String> = None;
+        for def in asm.defs.values() {
+            for pattern in &def.apr_tech_files {
+                let hits = expand_glob(Path::new(pattern));
+                if hits.is_empty() {
+                    event(
+                        vyges_events::Severity::Warn,
+                        "BLOX-TECH-MISSING",
+                        format!("{}: APR_tech_file `{pattern}` matched no file", def.name),
+                    );
+                    continue;
+                }
+                for lef in hits {
+                    let lef = lef.to_string_lossy().into_owned();
+                    match &tech_from {
+                        None => {
+                            self.tech_from_lef(&format!("{}_tech", def.name), &lef)?;
+                            tech_from = Some(def.name.clone());
+                            event(
+                                vyges_events::Severity::Info,
+                                "BLOX-TECH",
+                                format!("technology for `{}` read from {lef}", def.name),
+                            );
+                        }
+                        Some(owner) => {
+                            let note = format!(
+                                "{}: technology from {lef} not applied — odb holds one \
+                                 technology per database and `{owner}` already supplied it",
+                                def.name
+                            );
+                            event(vyges_events::Severity::Warn, "BLOX-TECH-SHARED", note.clone());
+                            asm.lossy_regions.push(note);
+                        }
+                    }
+                }
+            }
+        }
+        if tech_from.is_none() && db_dbu <= 0 {
+            // Nothing named a LEF we could find. A placeholder carrying only the precision is
+            // what lets the model exist at all, since odb refuses a DIE chip without a tech.
             self.create_tech("blox_placeholder")?;
+            event(
+                vyges_events::Severity::Warn,
+                "BLOX-TECH-PLACEHOLDER",
+                "no APR_tech_file resolved; using a placeholder technology with no layers".into(),
+            );
         }
 
         let top = asm.dbx.design_name.clone();
@@ -179,6 +234,25 @@ impl Db {
 
         self.set_top_chip(&top)?;
         self.construct_unfolded_model()?;
+        event(
+            if asm.lossy_regions.is_empty() {
+                vyges_events::Severity::Info
+            } else {
+                vyges_events::Severity::Warn
+            },
+            "BLOX-READ",
+            format!(
+                "read {dbx_path}: design {top}, {} chiplet def(s), {} instance(s), {} \
+                 connection(s), {} not represented",
+                asm.defs.len(),
+                asm.dbx.insts.len(),
+                asm.dbx.connections.len(),
+                asm.lossy_regions.len()
+            ),
+        );
+        for l in &asm.lossy_regions {
+            event(vyges_events::Severity::Warn, "BLOX-UNREPRESENTED", l.clone());
+        }
         Ok(asm.lossy_regions)
     }
 }

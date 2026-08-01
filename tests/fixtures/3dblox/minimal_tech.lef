@@ -1,0 +1,19 @@
+# Minimal technology LEF — ours, written for this test.
+#
+# A .3dbv points each chiplet at an APR_tech_file, and that is where its own dbTech comes from.
+# Something has to be read for that path to be exercised; a real PDK LEF would be megabytes and
+# would drag a third-party licence in for no extra coverage. This declares only what a tech
+# needs to exist: a precision and one routing layer.
+VERSION 5.8 ;
+BUSBITCHARS "[]" ;
+DIVIDERCHAR "/" ;
+UNITS
+  DATABASE MICRONS 2000 ;
+END UNITS
+LAYER metal1
+  TYPE ROUTING ;
+  DIRECTION HORIZONTAL ;
+  PITCH 0.2 ;
+  WIDTH 0.1 ;
+END metal1
+END LIBRARY
