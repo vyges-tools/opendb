@@ -146,7 +146,18 @@ and no GUI toolkit, which opens in a browser, commits to a repo and embeds in a 
 
 ```sh
 vyges-opendb view-3dblox -i stack.3dbx -o stack.svg    # or -i stack.odb --top <chip>
+vyges-opendb view-3dblox -i stack.3dbx -o stack.png --scale 2
 ```
+
+The output extension picks the format. **SVG** is exact and diffable, so it is what belongs in a
+repo or a CI artifact; **PNG** is what you paste into a slide, a web page or a message. Both come
+from the same scene, so they cannot drift into being pictures of different things.
+
+![Example assembly drawing](docs/example-stack.png)
+
+*An interposer, an offset logic die, and a flipped memory die — regenerate with
+`cargo run --features gen-write --example draw_stack`. The memory die sits above the bond plane,
+which is why the linter reports it floating; the drawing is how you see that at a glance.*
 
 It draws two views, because one is not enough. A **plan** view shows footprints and overhang; it
 cannot show stacking order, die thickness, bond gaps, or **which face is bonded** — and those are

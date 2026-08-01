@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="788" viewBox="0 0 900 788" font-family="ui-sans-serif,system-ui,-apple-system,sans-serif">
+<title>stack — chiplet assembly</title>
+<rect width="100%" height="100%" fill="#fbfbfd"/>
+<text x="48.0" y="30.0" font-size="17.0" fill="#111111" text-anchor="start" font-weight="600">stack — chiplet assembly</text>
+<text x="48.0" y="52.0" font-size="12.0" fill="#444444" text-anchor="start" font-weight="600">Cross-section (X-Z) · Z exaggerated 2.49x</text>
+<line x1="48.0" y1="308.0" x2="852.0" y2="308.0" stroke="#999999" stroke-width="1.5" stroke-dasharray="4 2"/>
+<text x="48.0" y="321.0" font-size="10.0" fill="#999999" text-anchor="start">z = 0</text>
+<rect x="48.0" y="269.5" width="804.0" height="38.5" fill="#f28e2b" fill-opacity="0.30" stroke="#f28e2b" stroke-width="1.6"/>
+<line x1="48.0" y1="269.5" x2="852.0" y2="269.5" stroke="#f28e2b" stroke-width="3.4"/>
+<text x="52.0" y="265.5" font-size="9.0" fill="#f28e2b" text-anchor="start">front</text>
+<text x="450.0" y="289.8" font-size="11.0" fill="#111111" text-anchor="middle">u_interposer</text>
+<text x="450.0" y="301.8" font-size="9.0" fill="#666666" text-anchor="middle">interposer · R0 · 100.0 um thick</text>
+<rect x="94.4" y="173.3" width="463.8" height="96.2" fill="#59a14f" fill-opacity="0.30" stroke="#59a14f" stroke-width="1.6"/>
+<line x1="94.4" y1="173.3" x2="558.2" y2="173.3" stroke="#59a14f" stroke-width="3.4"/>
+<text x="98.4" y="169.3" font-size="9.0" fill="#59a14f" text-anchor="start">front</text>
+<text x="326.3" y="222.4" font-size="11.0" fill="#111111" text-anchor="middle">u_logic</text>
+<text x="326.3" y="234.4" font-size="9.0" fill="#666666" text-anchor="middle">logic · R0 · 250.0 um thick</text>
+<rect x="573.7" y="104.0" width="247.4" height="69.3" fill="#4e79a7" fill-opacity="0.30" stroke="#4e79a7" stroke-width="1.6"/>
+<line x1="573.7" y1="173.3" x2="821.1" y2="173.3" stroke="#4e79a7" stroke-width="3.4"/>
+<text x="577.7" y="183.3" font-size="9.0" fill="#4e79a7" text-anchor="start">front</text>
+<text x="697.4" y="139.6" font-size="11.0" fill="#111111" text-anchor="middle">u_hbm</text>
+<text x="697.4" y="151.6" font-size="9.0" fill="#666666" text-anchor="middle">hbm · MZ · 180.0 um thick · flipped</text>
+<line x1="573.7" y1="269.5" x2="821.1" y2="269.5" stroke="#d62728" stroke-width="2.4" stroke-dasharray="4 2"/>
+<text x="816.1" y="265.5" font-size="9.0" fill="#d62728" text-anchor="end">hbm_to_interposer</text>
+<line x1="94.4" y1="269.5" x2="558.2" y2="269.5" stroke="#d62728" stroke-width="2.4" stroke-dasharray="4 2"/>
+<text x="563.2" y="253.5" font-size="9.0" fill="#d62728" text-anchor="start">logic_to_interposer</text>
+<text x="48.0" y="374.0" font-size="12.0" fill="#444444" text-anchor="start" font-weight="600">Plan (X-Y) · to scale</text>
+<rect x="48.0" y="380.0" width="244.0" height="187.7" fill="#f28e2b" fill-opacity="0.18" stroke="#f28e2b" stroke-width="1.4"/>
+<text x="54.0" y="395.0" font-size="10.0" fill="#f28e2b" text-anchor="start">u_interposer  z=0.0um</text>
+<rect x="62.1" y="426.9" width="140.8" height="122.0" fill="#59a14f" fill-opacity="0.18" stroke="#59a14f" stroke-width="1.4"/>
+<text x="68.1" y="454.9" font-size="10.0" fill="#59a14f" text-anchor="start">u_logic  z=100.0um</text>
+<rect x="207.5" y="431.6" width="75.1" height="103.2" fill="#4e79a7" fill-opacity="0.18" stroke="#4e79a7" stroke-width="1.4"/>
+<text x="213.5" y="472.6" font-size="10.0" fill="#4e79a7" text-anchor="start">u_hbm  z=350.0um</text>
+<text x="48.0" y="688.0" font-size="11.0" fill="#d62728" text-anchor="start" font-weight="600">check-3dblox: 1 finding(s)</text>
+<text x="58.0" y="703.0" font-size="10.0" fill="#aa3333" text-anchor="start">Floating chips — u_hbm</text>
+<text x="48.0" y="725.0" font-size="9.0" fill="#999999" text-anchor="start">3 die(s), 2 bond(s) · extent 5200.0 x 4000.0 um, stack 530.0 um · vertical scale is not the horizontal scale</text>
+</svg>

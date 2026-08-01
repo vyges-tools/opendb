@@ -233,3 +233,52 @@ fn a_database_input_without_top_is_refused_rather_than_drawn_empty() {
     assert!(!out_.status.success());
     assert!(String::from_utf8_lossy(&out_.stderr).contains("--top"));
 }
+
+#[test]
+fn the_output_extension_picks_the_format() {
+    // A --format flag that can disagree with the filename is how PNG bytes end up in a file
+    // called .svg, which nothing downstream will open. The name is the single source of truth.
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let run = |name: &str| {
+        let p = dir.join(name);
+        let _ = std::fs::remove_file(&p);
+        let out = Command::new(bin())
+            .args(["view-3dblox", "--input", DBX, "--output"])
+            .arg(&p)
+            .output()
+            .expect("run view-3dblox");
+        (out, p)
+    };
+
+    let (out, png) = run("cli_3dblox_fmt.png");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let bytes = std::fs::read(&png).unwrap();
+    assert_eq!(&bytes[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+
+    let (out, svg) = run("cli_3dblox_fmt.svg");
+    assert!(out.status.success());
+    assert!(std::fs::read_to_string(&svg).unwrap().starts_with("<svg"));
+
+    // An extension neither back-end can produce is an error, not a silent default — writing SVG
+    // into a .jpg would be a file nobody can open and no message saying why.
+    let (out, _) = run("cli_3dblox_fmt.jpg");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains(".jpg"));
+}
+
+#[test]
+fn the_png_scale_reaches_the_image() {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let dims = |scale: &str, name: &str| {
+        let p = dir.join(name);
+        assert!(Command::new(bin())
+            .args(["view-3dblox", "--input", DBX, "--scale", scale, "--output"])
+            .arg(&p)
+            .status()
+            .unwrap()
+            .success());
+        let b = std::fs::read(&p).unwrap();
+        u32::from_be_bytes(b[16..20].try_into().unwrap())
+    };
+    assert_eq!(dims("2", "cli_3dblox_s2.png"), 2 * dims("1", "cli_3dblox_s1.png"));
+}

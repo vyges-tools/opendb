@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Draw a 3D chiplet assembly as a single self-contained **SVG** — cross-section and plan.
+//! Draw a 3D chiplet assembly — cross-section and plan — as **SVG or PNG**.
 //!
 //! The 2D layout viewer is a hard problem: a routed block is millions of polygons, so it needs a
 //! tile server, an R-tree and a raster pyramid. **An assembly is not that.** A stack is a handful
 //! of dies, each a box, with a few bond regions — tens of rectangles. So the thing that is out of
-//! reach at layout scale is a few hundred lines here, with no dependencies and no server: one
-//! file, opens in a browser, commits to a repo, embeds in a report. Same posture as
-//! `vyges-gds-view`, which this deliberately resembles.
+//! reach at layout scale is a few hundred lines here, with no server: one file, opens in a
+//! browser, commits to a repo, embeds in a report.
+//!
+//! **The layout is built once, as a `Scene`,** and handed to `vyges-layout`\'s shared renderer for
+//! either back-end. SVG is exact and diffable, so it is what belongs in a repo; PNG is what goes
+//! into a slide, a web page or a message. A second function that re-derived the coordinates for
+//! the raster path is how the two outputs would drift into being pictures of different things.
 //!
 //! **Two views, because one is not enough.** A plan view (X–Y) shows footprints, overhang and
 //! where the bond regions sit. It cannot show stacking order, die thickness, bond gaps, or which
@@ -24,7 +28,7 @@
 //! `get_effective_side` and `get_surface_z` — the database's own post-orientation answer.
 
 use crate::{registry, Db, Result};
-use std::fmt::Write as _;
+use vyges_layout::render::{text_width, Anchor, Rgb, Scene, Shape};
 
 const DRAW_W: f64 = 900.0;
 const MARGIN: f64 = 48.0;
@@ -32,9 +36,25 @@ const SECTION_H: f64 = 300.0;
 const PLAN_H: f64 = 340.0;
 
 /// Chip fill colours, indexed by master chip so two instances of one die read as the same part.
-const PALETTE: &[&str] = &[
-    "#4e79a7", "#f28e2b", "#59a14f", "#b07aa1", "#76b7b2", "#edc948", "#9c755f", "#e15759",
+const PALETTE: &[Rgb] = &[
+    (78, 121, 167),
+    (242, 142, 43),
+    (89, 161, 79),
+    (176, 122, 161),
+    (118, 183, 178),
+    (237, 201, 72),
+    (156, 117, 95),
+    (225, 87, 89),
 ];
+
+const INK: Rgb = (17, 17, 17);
+const INK_BG: Rgb = (251, 251, 253);
+const SUBHEAD: Rgb = (68, 68, 68);
+const DIM: Rgb = (102, 102, 102);
+const MUTED: Rgb = (153, 153, 153);
+const BOND: Rgb = (214, 39, 40);
+const BOND_DIM: Rgb = (170, 51, 51);
+const OK: Rgb = (34, 119, 85);
 
 /// One placed die, resolved to absolute coordinates.
 #[derive(Debug, Clone)]
@@ -152,7 +172,7 @@ impl Assembly3d {
         self
     }
 
-    fn color(&self, master: &str) -> &'static str {
+    fn color(&self, master: &str) -> Rgb {
         let i = self
             .dies
             .iter()
@@ -178,17 +198,15 @@ impl Assembly3d {
     }
 }
 
-fn esc(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-/// Render the assembly to one self-contained SVG document.
+/// Build the drawing as a renderer-agnostic scene.
+///
+/// Returning a `Scene` rather than a string is what lets one layout serve both SVG and PNG: the
+/// alternative — a second function that re-derives every coordinate for the raster path — is how
+/// the two outputs drift into being pictures of different things.
 ///
 /// `dbu_per_um` converts database units to microns for the dimension labels. Passing the wrong
 /// value mislabels every dimension, so it is a required argument rather than a guess.
-pub fn to_svg(a: &Assembly3d, dbu_per_um: f64) -> String {
+pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
     let (ex, ey, ez) = a.extent();
     let inner = DRAW_W - 2.0 * MARGIN;
 
@@ -201,43 +219,41 @@ pub fn to_svg(a: &Assembly3d, dbu_per_um: f64) -> String {
     let sz = ((SECTION_H - 2.0 * MARGIN) / ez).min(sx * 60.0);
     let z_exag = if sx > 0.0 { sz / sx } else { 1.0 };
 
-    let mut o = String::new();
     let total_h = SECTION_H + PLAN_H + 130.0 + 18.0 * a.findings.len() as f64;
-    let _ = write!(
-        o,
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{DRAW_W:.0}\" height=\"{total_h:.0}\" \
-         viewBox=\"0 0 {DRAW_W:.0} {total_h:.0}\" font-family=\"ui-sans-serif,system-ui,sans-serif\">\n\
-         <rect width=\"100%\" height=\"100%\" fill=\"#fbfbfd\"/>\n\
-         <text x=\"{MARGIN}\" y=\"30\" font-size=\"17\" font-weight=\"600\" fill=\"#111\">\
-         {} — chiplet assembly</text>\n",
-        esc(&a.top)
+    let mut sc = Scene::new(DRAW_W, total_h)
+        .with_background(INK_BG)
+        .with_title(format!("{} — chiplet assembly", a.top));
+    sc.push(
+        Shape::text(MARGIN, 30.0, format!("{} — chiplet assembly", a.top), 17.0, INK).bolded(),
     );
 
     // ── Cross-section: X across, Z up. Z grows upward, so the SVG y axis is inverted. ──
     let sec_top = 56.0;
     let base_y = sec_top + SECTION_H - MARGIN;
-    let _ = write!(
-        o,
-        "<text x=\"{MARGIN}\" y=\"{:.0}\" font-size=\"12\" font-weight=\"600\" fill=\"#444\">\
-         Cross-section (X–Z) · Z {} {:.2}\u{d7}</text>\n",
-        sec_top - 4.0,
-        if z_exag >= 1.0 {
-            "exaggerated"
-        } else {
-            "compressed"
-        },
-        z_exag
+    sc.push(
+        Shape::text(
+            MARGIN,
+            sec_top - 4.0,
+            format!(
+                "Cross-section (X-Z) · Z {} {z_exag:.2}x",
+                if z_exag >= 1.0 { "exaggerated" } else { "compressed" }
+            ),
+            12.0,
+            SUBHEAD,
+        )
+        .bolded(),
     );
     // Substrate datum, so "which way is up" is never ambiguous.
-    let _ = write!(
-        o,
-        "<line x1=\"{MARGIN}\" y1=\"{base_y:.1}\" x2=\"{:.1}\" y2=\"{base_y:.1}\" \
-         stroke=\"#999\" stroke-width=\"1.5\" stroke-dasharray=\"5 3\"/>\n\
-         <text x=\"{:.1}\" y=\"{:.1}\" font-size=\"10\" fill=\"#999\">z = 0</text>\n",
-        DRAW_W - MARGIN,
-        MARGIN,
-        base_y + 13.0
-    );
+    sc.push(Shape::Line {
+        x1: MARGIN,
+        y1: base_y,
+        x2: DRAW_W - MARGIN,
+        y2: base_y,
+        stroke: MUTED,
+        width: 1.5,
+        dashed: true,
+    });
+    sc.push(Shape::text(MARGIN, base_y + 13.0, "z = 0", 10.0, MUTED));
 
     for d in &a.dies {
         let x = MARGIN + d.x * sx;
@@ -245,46 +261,59 @@ pub fn to_svg(a: &Assembly3d, dbu_per_um: f64) -> String {
         let th = (d.thickness * sz).max(2.0);
         let y = base_y - (d.z + d.thickness) * sz;
         let c = a.color(&d.master);
-        // A flipped die is the detail most worth seeing and easiest to miss, so it is hatched
-        // rather than left to the orientation string alone.
+        // A flipped die is the detail most worth seeing and easiest to miss, so it is called out
+        // in the label rather than left to the orientation string alone.
         let flipped = d.orient.contains('M');
-        let _ = write!(
-            o,
-            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{th:.1}\" fill=\"{c}\" \
-             fill-opacity=\"0.30\" stroke=\"{c}\" stroke-width=\"1.6\"/>\n"
-        );
+        sc.push(Shape::rect(x, y, w, th, c, 0.30, 1.6));
+
         // FRONT face: the active side. On an unflipped die it is up; flipped, it is down.
         let front_y = if flipped { y + th } else { y };
+        sc.push(Shape::Line {
+            x1: x,
+            y1: front_y,
+            x2: x + w,
+            y2: front_y,
+            stroke: c,
+            width: 3.4,
+            dashed: false,
+        });
         // Front labels hug the left edge; bond labels use the right. Face-to-face dies put both
         // fronts on the same line, so anything sharing that edge collides.
-        let _ = write!(
-            o,
-            "<line x1=\"{x:.1}\" y1=\"{front_y:.1}\" x2=\"{:.1}\" y2=\"{front_y:.1}\" \
-             stroke=\"{c}\" stroke-width=\"3.4\"/>\n\
-             <text x=\"{:.1}\" y=\"{:.1}\" font-size=\"9\" fill=\"{c}\">front</text>\n",
-            x + w,
+        sc.push(Shape::text(
             x + 4.0,
-            if flipped { front_y + 10.0 } else { front_y - 4.0 }
+            if flipped { front_y + 10.0 } else { front_y - 4.0 },
+            "front",
+            9.0,
+            c,
+        ));
+        sc.push(
+            Shape::text(x + w / 2.0, y + th / 2.0 + 1.0, d.inst.clone(), 11.0, INK)
+                .anchored(Anchor::Middle),
         );
-        let _ = write!(
-            o,
-            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"11\" fill=\"#111\" text-anchor=\"middle\">\
-             {}</text>\n\
-             <text x=\"{:.1}\" y=\"{:.1}\" font-size=\"9\" fill=\"#666\" text-anchor=\"middle\">\
-             {} · {} · {:.1} \u{b5}m thick{}</text>\n",
-            x + w / 2.0,
-            y + th / 2.0 + 1.0,
-            esc(&d.inst),
-            x + w / 2.0,
-            y + th / 2.0 + 13.0,
-            esc(&d.master),
-            esc(&d.orient),
-            d.thickness / dbu_per_um,
-            if flipped { " · flipped" } else { "" }
+        sc.push(
+            Shape::text(
+                x + w / 2.0,
+                y + th / 2.0 + 13.0,
+                format!(
+                    "{} · {} · {:.1} um thick{}",
+                    d.master,
+                    d.orient,
+                    d.thickness / dbu_per_um,
+                    if flipped { " · flipped" } else { "" }
+                ),
+                9.0,
+                DIM,
+            )
+            .anchored(Anchor::Middle),
         );
     }
 
     // Bonds, drawn at the interface between the two dies they name.
+    //
+    // Several bonds landing on one plane is the normal case, not an edge case — every die
+    // mounted on the same interposer bonds at the same Z — so labels have to be stacked or they
+    // print on top of each other and an assembly with three bonds reads as having one.
+    let mut used_label_y: Vec<f64> = Vec::new();
     for b in &a.bonds {
         let find = |p: &str| {
             let leaf = p.rsplit('/').next().unwrap_or(p);
@@ -294,101 +323,122 @@ pub fn to_svg(a: &Assembly3d, dbu_per_um: f64) -> String {
             continue;
         };
         // The mating plane: the top of the lower die, which is where the bond sits.
-        let z_iface = bt.z + bt.thickness;
-        let y = base_y - z_iface * sz;
+        let y = base_y - (bt.z + bt.thickness) * sz;
         let x0 = MARGIN + t.x.max(bt.x) * sx;
         let x1 = MARGIN + ((t.x + t.w).min(bt.x + bt.w)) * sx;
+        sc.push(Shape::Line {
+            x1: x0,
+            y1: y,
+            x2: x1,
+            y2: y,
+            stroke: BOND,
+            width: 2.4,
+            dashed: true,
+        });
         // A bond spanning the full width leaves no room to the right, so the label goes inside
         // the overlap rather than off the edge of the page.
         let outside = x1 + 5.0;
-        let (lx, anchor) = if outside + 8.0 * b.name.len() as f64 > DRAW_W - 4.0 {
-            (x1 - 5.0, "end")
+        let (lx, anchor) = if outside + text_width(&b.name, 9.0) > DRAW_W - 4.0 {
+            (x1 - 5.0, Anchor::End)
         } else {
-            (outside, "start")
+            (outside, Anchor::Start)
         };
-        let _ = write!(
-            o,
-            "<line x1=\"{x0:.1}\" y1=\"{y:.1}\" x2=\"{x1:.1}\" y2=\"{y:.1}\" stroke=\"#d62728\" \
-             stroke-width=\"2.4\" stroke-dasharray=\"4 2\"/>\n\
-             <text x=\"{lx:.1}\" y=\"{:.1}\" font-size=\"9\" fill=\"#d62728\" \
-             text-anchor=\"{anchor}\">{}</text>\n",
-            y - 4.0,
-            esc(&b.name)
-        );
+        let mut ly = y - 4.0;
+        while used_label_y.iter().any(|u| (u - ly).abs() < 11.0) {
+            ly -= 12.0;
+        }
+        used_label_y.push(ly);
+        sc.push(Shape::text(lx, ly, b.name.clone(), 9.0, BOND).anchored(anchor));
     }
 
     // ── Plan: footprints, translucent so overlap and overhang read directly. ──
     let plan_top = sec_top + SECTION_H + 24.0;
-    let ps = ((inner) / ex).min((PLAN_H - 2.0 * MARGIN) / ey);
-    let _ = write!(
-        o,
-        "<text x=\"{MARGIN}\" y=\"{:.0}\" font-size=\"12\" font-weight=\"600\" fill=\"#444\">\
-         Plan (X–Y) · to scale</text>\n",
-        plan_top - 6.0
-    );
+    let ps = inner.min(PLAN_H - 2.0 * MARGIN) / ex.max(ey);
+    let ps = (inner / ex).min((PLAN_H - 2.0 * MARGIN) / ey).min(ps.max(f64::MIN_POSITIVE));
+    sc.push(Shape::text(MARGIN, plan_top - 6.0, "Plan (X-Y) · to scale", 12.0, SUBHEAD).bolded());
     for (i, d) in a.dies.iter().enumerate() {
         let c = a.color(&d.master);
         let x = MARGIN + d.x * ps;
         // Y flipped so up is up, matching every layout tool.
         let y = plan_top + (ey - d.y - d.h) * ps;
+        sc.push(Shape::rect(
+            x,
+            y,
+            (d.w * ps).max(1.0),
+            (d.h * ps).max(1.0),
+            c,
+            0.18,
+            1.4,
+        ));
         // Stacked dies very often share a footprint exactly, and then every label lands on the
         // same pixel and all but the last is invisible — a two-die stack that reads as one die.
         // Step each label down a line so the drawing shows how many there really are.
-        let ly = y + 15.0 + 13.0 * i as f64;
-        let _ = write!(
-            o,
-            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{c}\" \
-             fill-opacity=\"0.18\" stroke=\"{c}\" stroke-width=\"1.4\"/>\n\
-             <text x=\"{:.1}\" y=\"{ly:.1}\" font-size=\"10\" fill=\"{c}\">{} \
-             <tspan fill=\"#888\">z={:.1}\u{b5}m</tspan></text>\n",
-            (d.w * ps).max(1.0),
-            (d.h * ps).max(1.0),
+        sc.push(Shape::text(
             x + 6.0,
-            esc(&d.inst),
-            d.z / dbu_per_um
-        );
+            y + 15.0 + 13.0 * i as f64,
+            format!("{}  z={:.1}um", d.inst, d.z / dbu_per_um),
+            10.0,
+            c,
+        ));
     }
 
     // ── Findings from the linter. The engines say what; this says where. ──
     let mut fy = plan_top + PLAN_H - MARGIN + 16.0;
     if a.findings.is_empty() {
-        let _ = write!(
-            o,
-            "<text x=\"{MARGIN}\" y=\"{fy:.0}\" font-size=\"11\" fill=\"#2a7\">\
-             check-3dblox: no violations</text>\n"
-        );
+        sc.push(Shape::text(MARGIN, fy, "check-3dblox: no violations", 11.0, OK));
     } else {
-        let _ = write!(
-            o,
-            "<text x=\"{MARGIN}\" y=\"{fy:.0}\" font-size=\"11\" font-weight=\"600\" \
-             fill=\"#d62728\">check-3dblox: {} finding(s)</text>\n",
-            a.findings.len()
+        sc.push(
+            Shape::text(
+                MARGIN,
+                fy,
+                format!("check-3dblox: {} finding(s)", a.findings.len()),
+                11.0,
+                BOND,
+            )
+            .bolded(),
         );
         for (cat, name) in &a.findings {
             fy += 15.0;
-            let _ = write!(
-                o,
-                "<text x=\"{:.0}\" y=\"{fy:.0}\" font-size=\"10\" fill=\"#a33\">{} — {}</text>\n",
+            sc.push(Shape::text(
                 MARGIN + 10.0,
-                esc(cat),
-                esc(name)
-            );
+                fy,
+                format!("{cat} — {name}"),
+                10.0,
+                BOND_DIM,
+            ));
         }
     }
 
     fy += 22.0;
-    let _ = write!(
-        o,
-        "<text x=\"{MARGIN}\" y=\"{fy:.0}\" font-size=\"9\" fill=\"#999\">\
-         {} die(s), {} bond(s) · extent {:.1} \u{d7} {:.1} \u{b5}m, stack {:.1} \u{b5}m \
-         · vertical scale is not the horizontal scale</text>\n</svg>\n",
-        a.dies.len(),
-        a.bonds.len(),
-        ex / dbu_per_um,
-        ey / dbu_per_um,
-        ez / dbu_per_um
-    );
-    o
+    sc.push(Shape::text(
+        MARGIN,
+        fy,
+        format!(
+            "{} die(s), {} bond(s) · extent {:.1} x {:.1} um, stack {:.1} um · \
+             vertical scale is not the horizontal scale",
+            a.dies.len(),
+            a.bonds.len(),
+            ex / dbu_per_um,
+            ey / dbu_per_um,
+            ez / dbu_per_um
+        ),
+        9.0,
+        MUTED,
+    ));
+    sc
+}
+
+/// Render to one self-contained SVG document.
+pub fn to_svg(a: &Assembly3d, dbu_per_um: f64) -> String {
+    to_scene(a, dbu_per_um).to_svg()
+}
+
+/// Render to PNG at `scale` device pixels per drawing unit.
+///
+/// 2.0 is the useful default: these drawings are ~900 units wide, and a 1:1 raster of one is too
+/// small to read once it is scaled to fit a slide.
+pub fn to_png(a: &Assembly3d, dbu_per_um: f64, scale: f64) -> Vec<u8> {
+    to_scene(a, dbu_per_um).to_png(scale)
 }
 
 #[cfg(test)]
@@ -475,7 +525,9 @@ mod tests {
         // A stretched axis that does not say so invites someone to measure a bond gap off the
         // picture. The number has to be on the page, not in the docs.
         let svg = to_svg(&two_die_stack(), 1.0);
-        assert!(svg.contains("Z exaggerated"));
+        // Either direction is legitimate — a thin stack is stretched, a tall one compressed —
+        // but the drawing must never be silent about which happened.
+        assert!(svg.contains("Z exaggerated") || svg.contains("Z compressed"));
         assert!(svg.contains("vertical scale is not the horizontal scale"));
     }
 
@@ -497,6 +549,56 @@ mod tests {
         // is a perfectly ordinary thing to point the tool at.
         let svg = to_svg(&Assembly3d::default(), 1.0);
         assert!(svg.starts_with("<svg") && svg.trim_end().ends_with("</svg>"));
+    }
+
+    #[test]
+    fn bonds_sharing_a_plane_do_not_stack_their_labels_on_one_line() {
+        // Every die on one interposer bonds at the same Z, so this is the normal case. Labels
+        // printed on top of each other make a three-bond assembly read as having one.
+        let mut a = two_die_stack();
+        a.bonds.push(Bond {
+            name: "bond1".into(),
+            top: "u_top".into(),
+            bottom: "u_base".into(),
+            thickness: 5.0,
+        });
+        let sc = to_scene(&a, 1.0);
+        let ys: Vec<i64> = sc
+            .shapes
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Text { y, text, .. } if text.starts_with("bond") => Some(*y as i64),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ys.len(), 2, "both bond labels must be drawn");
+        assert_ne!(ys[0], ys[1], "two bonds on one plane must not share a label line");
+    }
+
+    #[test]
+    fn the_png_is_a_valid_image_of_the_same_scene() {
+        // Both back-ends read the SAME scene, so this is really asserting that the shared
+        // renderer is reached at all — a drawing that only ever emits SVG would still pass every
+        // other test in this module.
+        let a = two_die_stack();
+        let png = to_png(&a, 1.0, 2.0);
+        assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        let w = u32::from_be_bytes(png[16..20].try_into().unwrap());
+        assert_eq!(w, (to_scene(&a, 1.0).width * 2.0) as u32, "scale must reach the raster");
+
+        // And it must not be a blank page: an encoder that draws nothing still emits a valid PNG.
+        let empty = to_png(&Assembly3d::default(), 1.0, 2.0);
+        assert_ne!(png, empty);
+    }
+
+    #[test]
+    fn one_layout_feeds_both_back_ends() {
+        // If the two paths ever diverge, the PNG becomes a picture of a different assembly than
+        // the SVG — the failure this whole Scene indirection exists to prevent.
+        let a = two_die_stack();
+        let sc = to_scene(&a, 1.0);
+        assert_eq!(sc.to_svg(), to_svg(&a, 1.0));
+        assert_eq!(sc.to_png(2.0), to_png(&a, 1.0, 2.0));
     }
 
     #[test]

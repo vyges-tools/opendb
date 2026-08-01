@@ -69,9 +69,10 @@ commands:
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
                       database, so it can be linted or queried. Reports anything the
                       format expresses and the database cannot.
-  view-3dblox               --input <f.3dbx|f.odb> --output <out.svg> [--top <chip>]
-                      Draw the assembly: cross-section + plan, one self-contained SVG,
-                      with any check-3dblox findings listed on it.
+  view-3dblox               --input <f.3dbx|f.odb> --output <out.svg|out.png>
+                            [--top <chip>] [--scale <n>]
+                      Draw the assembly: cross-section + plan, with any check-3dblox
+                      findings listed on it. Format follows the output extension.
   check-3dblox              --input <f.odb>
                       3D/chiplet structural sign-off lint; reports violations as JSON (check).
 
@@ -955,21 +956,28 @@ fn blox_findings(db: &Db) -> Vec<(String, String)> {
 /// clean assembly.
 #[cfg(all(unix, feature = "gen-write"))]
 fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
-    use vyges_opendb::view3d::{to_svg, Assembly3d};
+    use vyges_opendb::view3d::{to_png, to_svg, Assembly3d};
     let (mut input, mut output, mut top) = (None, None, None);
+    let mut scale = 2.0f64;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
             "--output" | "-o" => output = args.next(),
             "--top" => top = args.next(),
+            "--scale" => {
+                let v = args.next().ok_or("view-3dblox: --scale needs a number")?;
+                scale = v
+                    .parse()
+                    .map_err(|_| format!("view-3dblox: --scale: not a number: {v}"))?;
+            }
             "--describe" => {
                 println!("{VIEW_3DBLOX_DESCRIBE}");
                 return Ok(());
             }
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: vyges-opendb view-3dblox --input <f.3dbx|f.odb> --output <out.svg> \
-                     [--top <chip>]"
+                    "usage: vyges-opendb view-3dblox --input <f.3dbx|f.odb> \
+                     --output <out.svg|out.png> [--top <chip>] [--scale <n>]"
                 );
                 return Ok(());
             }
@@ -977,7 +985,24 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         }
     }
     let input = input.ok_or("view-3dblox: --input <f.3dbx|f.odb> required")?;
-    let output = output.ok_or("view-3dblox: --output <out.svg> required")?;
+    let output = output.ok_or("view-3dblox: --output <out.svg|out.png> required")?;
+    // Extension picks the format. A --format flag that could disagree with the filename is a
+    // way to write PNG bytes into a file called .svg, which nothing downstream will open.
+    let png = match std::path::Path::new(&output)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => true,
+        Some("svg") | None => false,
+        Some(other) => {
+            return Err(format!(
+                "view-3dblox: unknown output format '.{other}' — use .svg or .png"
+            )
+            .into())
+        }
+    };
 
     let is_dbx = input.ends_with(".3dbx");
     let (mut db, top) = if is_dbx {
@@ -1026,7 +1051,11 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         0 => 1000.0,
         d => f64::from(d),
     };
-    std::fs::write(&output, to_svg(&asm, dbu))?;
+    if png {
+        std::fs::write(&output, to_png(&asm, dbu, scale))?;
+    } else {
+        std::fs::write(&output, to_svg(&asm, dbu))?;
+    }
     eprintln!(
         "view-3dblox: {input} -> {output} ({} die(s), {} bond(s), {} finding(s))",
         asm.dies.len(),
@@ -1059,7 +1088,7 @@ const BLOX_CHECKS: [&str; 7] = [
 
 const VIEW_3DBLOX_DESCRIBE: &str = r#"{
   "name": "view-3dblox",
-  "summary": "draw a chiplet assembly as a self-contained SVG: cross-section, plan, and linter findings",
+  "summary": "draw a chiplet assembly as SVG or PNG: cross-section, plan, and linter findings",
   "maturity": "experimental",
   "provenance_limitations": [
       "The Z axis is exaggerated so the stack is legible; the factor is printed on the drawing and dimensions must not be measured off it.",
@@ -1068,7 +1097,7 @@ const VIEW_3DBLOX_DESCRIBE: &str = r#"{
   ],
   "invocation": {
     "args_template": ["view-3dblox", "--input", "{input}", "--output", "{output}"],
-    "optional": [ { "arg": "top", "flag": "--top" } ],
+    "optional": [ { "arg": "top", "flag": "--top" }, { "arg": "scale", "flag": "--scale" } ],
     "emits_json": false
   },
   "inputs": {
@@ -1076,8 +1105,9 @@ const VIEW_3DBLOX_DESCRIBE: &str = r#"{
     "required": ["input", "output"],
     "properties": {
       "input":  { "type": "string", "description": "3Dblox assembly (.3dbx) or database (.odb)" },
-      "output": { "type": "string", "description": "SVG file to write" },
-      "top":    { "type": "string", "description": "top chip name; required for .odb input" }
+      "output": { "type": "string", "description": "file to write; .svg or .png picks the format" },
+      "top":    { "type": "string", "description": "top chip name; required for .odb input" },
+      "scale":  { "type": "number", "default": 2.0, "description": "PNG device pixels per drawing unit; ignored for SVG" }
     }
   },
   "artifacts": [ { "role": "drawing", "field": "output" } ]
