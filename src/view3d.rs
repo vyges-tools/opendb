@@ -222,7 +222,8 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
     let total_h = SECTION_H + PLAN_H + 130.0 + 18.0 * a.findings.len() as f64;
     let mut sc = Scene::new(DRAW_W, total_h)
         .with_background(INK_BG)
-        .with_title(format!("{} — chiplet assembly", a.top));
+        .with_title(format!("{} — chiplet assembly", a.top))
+        .with_vyges_credit();
     sc.push(
         Shape::text(MARGIN, 30.0, format!("{} — chiplet assembly", a.top), 17.0, INK).bolded(),
     );
@@ -573,6 +574,15 @@ mod tests {
             .collect();
         assert_eq!(ys.len(), 2, "both bond labels must be drawn");
         assert_ne!(ys[0], ys[1], "two bonds on one plane must not share a label line");
+    }
+
+    #[test]
+    fn the_drawing_carries_its_provenance() {
+        // These leave the tool — into a slide, a report, a message — and then nothing else says
+        // where they came from.
+        let svg = to_svg(&two_die_stack(), 1.0);
+        assert!(svg.contains("https://vyges.com"));
+        assert!(svg.contains(&vyges_layout::render::current_year().to_string()));
     }
 
     #[test]
