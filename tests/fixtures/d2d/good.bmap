@@ -1,0 +1,5 @@
+# The matching counterpart to top.bmap — same coordinates, same nets, same cell type.
+bb0 MICROBUMP 10.0 10.0 rx[0] d2d_tx0
+bb1 MICROBUMP 50.0 10.0 rx[1] d2d_tx1
+bb2 MICROBUMP 90.0 10.0 rx[2] d2d_tx2
+bb3 MICROBUMP 10.0 50.0 rx[3] d2d_tx3

@@ -21,6 +21,8 @@ use vyges_opendb_lib as sys;
 #[cfg(unix)]
 pub mod blox;
 #[cfg(unix)]
+pub mod d2d;
+#[cfg(unix)]
 pub mod eco;
 #[cfg(unix)]
 pub mod report;

@@ -73,6 +73,11 @@ commands:
                             [--top <chip>] [--scale <n>]
                       Draw the assembly: cross-section + plan, with any check-3dblox
                       findings listed on it. Format follows the output extension.
+  check-d2d                 --top <a.bmap> --bottom <b.bmap>
+                            [--offset-x <um>] [--offset-y <um>] [--flip-x]
+                            [--tolerance <um>]
+                      Check a die-to-die interface: unmated bumps, misalignment, net
+                      and bump-cell mismatch across the bond. Emits JSON.
   check-3dblox              --input <f.odb>
                       3D/chiplet structural sign-off lint; reports violations as JSON (check).
 
@@ -137,6 +142,7 @@ fn run() -> Result<(), Fail> {
         "report-wire-length" => report_wire_length(args),
         "read-3dblox" => read_3dblox(args),
         "view-3dblox" => view_3dblox(args),
+        "check-d2d" => check_d2d(args),
         "check-3dblox" => check_3dblox(args),
         "apply-eco-plan" => apply_eco_plan(args),
         "report-connectivity" => report_connectivity(args),
@@ -1111,6 +1117,98 @@ const VIEW_3DBLOX_DESCRIBE: &str = r#"{
     }
   },
   "artifacts": [ { "role": "drawing", "field": "output" } ]
+}
+"#;
+
+/// Check one die-to-die interface from two bump maps.
+///
+/// Bump maps rather than a database because that is what a user *has*: two dies hardened in
+/// separate runs produce two `.bmap` files, and "do these interfaces agree?" is answerable before
+/// either die is placed into an assembly.
+#[cfg(unix)]
+fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    use vyges_opendb::d2d::{check, BumpMap, Transform};
+    let (mut top, mut bottom, mut tol) = (None, None, None);
+    let mut tf = Transform::default();
+    let mut num = |a: Option<String>, what: &str| -> Result<f64, Fail> {
+        let v = a.ok_or_else(|| format!("check-d2d: {what} needs a number"))?;
+        v.parse::<f64>()
+            .map_err(|_| format!("check-d2d: {what}: not a number: {v}").into())
+    };
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--top" => top = args.next(),
+            "--bottom" => bottom = args.next(),
+            "--offset-x" => tf.dx = num(args.next(), "--offset-x")?,
+            "--offset-y" => tf.dy = num(args.next(), "--offset-y")?,
+            "--flip-x" => tf.flip_x = true,
+            "--tolerance" => tol = Some(num(args.next(), "--tolerance")?),
+            "--describe" => {
+                println!("{CHECK_D2D_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!(
+                    "usage: vyges-opendb check-d2d --top <a.bmap> --bottom <b.bmap> \
+                     [--offset-x <um>] [--offset-y <um>] [--flip-x] [--tolerance <um>]"
+                );
+                return Ok(());
+            }
+            other => return Err(format!("check-d2d: unknown argument: {other}").into()),
+        }
+    }
+    let top = top.ok_or("check-d2d: --top <a.bmap> required")?;
+    let bottom = bottom.ok_or("check-d2d: --bottom <b.bmap> required")?;
+
+    let report = check(
+        &BumpMap::load(&top).map_err(|e| format!("check-d2d: {top}: {e}"))?,
+        &BumpMap::load(&bottom).map_err(|e| format!("check-d2d: {bottom}: {e}"))?,
+        tf,
+        tol,
+    );
+    println!("{}", serde_json::to_string_pretty(&report.to_json())?);
+    // A malformed line is not a violation, but it does mean the check saw less than the file
+    // holds — silence there would overstate the coverage of a clean result.
+    if !report.parse_errors.is_empty() {
+        eprintln!(
+            "check-d2d: {} unparseable line(s); those bumps were not checked",
+            report.parse_errors.len()
+        );
+    }
+    Ok(())
+}
+
+const CHECK_D2D_DESCRIBE: &str = r#"{
+  "name": "check-d2d",
+  "summary": "check a die-to-die interface from two bump maps: unmated bumps, misalignment, net and cell mismatch",
+  "maturity": "experimental",
+  "provenance_limitations": [
+      "The relative placement of the two dies is NOT inferred — pass --offset-x/--offset-y/--flip-x. The transform used is echoed in the report.",
+      "Compares bump maps, not extracted layout: it checks what the maps claim, not what was fabricated.",
+      "Default tolerance is half the smaller bump pitch, derived from the maps; --tolerance overrides."
+  ],
+  "invocation": {
+    "args_template": ["check-d2d", "--top", "{top}", "--bottom", "{bottom}"],
+    "optional": [
+      { "arg": "offset_x", "flag": "--offset-x" },
+      { "arg": "offset_y", "flag": "--offset-y" },
+      { "arg": "flip_x",   "flag": "--flip-x", "kind": "flag" },
+      { "arg": "tolerance","flag": "--tolerance" }
+    ],
+    "emits_json": true
+  },
+  "inputs": {
+    "type": "object",
+    "required": ["top", "bottom"],
+    "properties": {
+      "top":       { "type": "string", "description": "bump map of the upper die (.bmap)" },
+      "bottom":    { "type": "string", "description": "bump map of the lower die (.bmap)" },
+      "offset_x":  { "type": "number", "description": "shift the bottom map, microns" },
+      "offset_y":  { "type": "number", "description": "shift the bottom map, microns" },
+      "flip_x":    { "type": "boolean", "description": "mirror the bottom map in X (face-to-face bonding)" },
+      "tolerance": { "type": "number", "description": "match radius in microns; default is half the bump pitch" }
+    }
+  }
 }
 "#;
 

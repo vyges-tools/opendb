@@ -178,6 +178,85 @@ difference is saying so on the drawing, so nobody measures a bond gap off the pi
 
 Both 3D construction commands need `--features gen-write`. Released binaries have it.
 
+## Die-to-die interface checking
+
+A 2.5D/3D assembly lives or dies on whether the bumps on two mating faces line up and carry the
+same signals. `check-d2d` compares two **bump maps** — the `.bmap` files a 3Dblox `.3dbv` points
+at — and reports what does not agree.
+
+```sh
+vyges-opendb check-d2d --top logic.bmap --bottom interposer.bmap \
+    --offset-x -120.5 --flip-x
+```
+
+```json
+{ "violations": 5,
+  "by_kind": { "unmated": 1, "misaligned": 1, "net-mismatch": 2, "cell-mismatch": 1 },
+  "top_bumps": 4, "bottom_bumps": 3, "matched": 3,
+  "tolerance_um": 19.9995, "tolerance_source": "derived from bump pitch",
+  "transform": { "dx_um": -120.5, "dy_um": 0.0, "flip_x": true },
+  "findings": [
+    { "kind": "net-mismatch",
+      "message": "bt1 carries d2d_tx1 but mates with bb1 carrying d2d_tx2" },
+    { "kind": "unmated",
+      "message": "top bump bt3 (d2d_tx3) at (10.000, 50.000) has no mating bump on the bottom die" } ] }
+```
+
+### Why this is not already covered
+
+`check-3dblox` has a `Logical Connectivity` check aimed at the same thing, and its inner loop is:
+
+```cpp
+auto it = bot_bumps.find(p);   // std::map<Point,...>, exact integer-DBU equality
+if (it == bot_bumps.end()) {
+    continue;                  // no bump at that exact point -> skipped, silently
+}
+```
+
+It compares only pairs that already coincide exactly, and skips anything without a counterpart.
+Its sibling `checkNetConnectivity` is an empty function body. Measured on assemblies built for the
+purpose — the numbers come from `cargo run --features gen-write --example d2d_gap`, not from
+reading the source:
+
+| interface | `check-3dblox` | `check-d2d` |
+| --- | --- | --- |
+| a top bump with **no mating bump at all** | 0 | **1** |
+| everything mated and exactly aligned | 0 | 0 |
+| a mating pair off by **1 DBU** (1 nm) | 0 | **1** |
+| a mating pair off by **5 µm** | 0 | **2** |
+
+Rows 1, 3 and 4 are dead or mis-wired silicon and all report clean today. Row 2 is the control.
+
+### What it checks
+
+- **unmated** — a bump with no counterpart. A signal that leaves one die and arrives nowhere.
+- **misaligned** — a pair close enough to be intended mates, but not coincident; the distance is
+  reported. These are exactly what upstream skips.
+- **net-mismatch** — mated bumps carrying different net names. The interface is wired to the
+  wrong signal.
+- **cell-mismatch** — a microbump mating with a C4.
+
+Both sides are walked, so an unmated *bottom* bump is reported too — it is just as dead.
+
+### Two things it deliberately does not do
+
+**It does not infer the placement.** Two bump maps are each in their own die's coordinates, and
+nothing in the files says how the dies sit relative to each other. Pass `--offset-x` / `--offset-y`
+(microns) and `--flip-x` for a face-to-face bond. The transform used is echoed in every report,
+because "no violations" means nothing without knowing what frame it was computed in — and a
+checker that guessed an alignment and then declared everything matched would be worse than none.
+
+**It does not pick a tolerance out of the air.** The default match radius is half the smaller of
+the two bump pitches, derived from the maps themselves: anything nearer to a bump than that is
+nearer to it than to its neighbour, so a match cannot be ambiguous. `--tolerance` overrides, and
+the report says which was used. With fewer than two bumps there is no pitch to derive, so it
+requires coincidence and says so.
+
+A malformed line does not abort the file — a bump map is machine-generated but hand-edited often
+enough, and refusing to check 4,095 good bumps because line 812 has five columns would make the
+tool useless exactly when it is most needed. Bad lines are reported, and their bumps are not
+counted as checked.
+
 ## Build & test
 
 ```sh

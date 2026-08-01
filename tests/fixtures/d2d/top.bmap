@@ -1,0 +1,5 @@
+# bumpInstName bumpCellType x y portName netName
+bt0 MICROBUMP 10.0 10.0 tx[0] d2d_tx0
+bt1 MICROBUMP 50.0 10.0 tx[1] d2d_tx1
+bt2 MICROBUMP 90.0 10.0 tx[2] d2d_tx2
+bt3 MICROBUMP 10.0 50.0 tx[3] d2d_tx3
