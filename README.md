@@ -72,11 +72,12 @@ Three behaviours worth knowing before you rely on them:
 
 ## 3D structural sign-off
 
-Two commands, in order: describe an assembly, then check it.
+Three commands: read an assembly, check it, look at it.
 
 ```sh
 vyges-opendb read-3dblox  -i stack.3dbx -o stack.odb   # 3Dblox assembly -> database
 vyges-opendb check-3dblox -i stack.odb                 # database -> findings
+vyges-opendb view-3dblox  -i stack.3dbx -o stack.svg   # -> cross-section + plan drawing
 ```
 
 `read-3dblox` reads a **3Dblox** file — the 2.5D/3D interchange format, `.3dbx` for the assembly
@@ -138,6 +139,34 @@ It is a **checker, not a repairer**: it annotates the in-memory database with ma
 modifies the design, so `Db::check_3dblox` takes `&self` and nothing is persisted unless you
 write the database out. Re-running is idempotent.
 
+### The drawing
+
+The linter says *what* is wrong. `view-3dblox` says *where* — one self-contained SVG, no server
+and no GUI toolkit, which opens in a browser, commits to a repo and embeds in a report.
+
+```sh
+vyges-opendb view-3dblox -i stack.3dbx -o stack.svg    # or -i stack.odb --top <chip>
+```
+
+It draws two views, because one is not enough. A **plan** view shows footprints and overhang; it
+cannot show stacking order, die thickness, bond gaps, or **which face is bonded** — and those are
+the entire subject of an assembly. So the primary view is the **cross-section**, the drawing a
+package engineer reads, with the plan below it and any linter findings listed underneath.
+
+A die at `MZ` is flipped: its FRONT faces down. Drawing it like an `R0` die would be a plausible
+picture of the wrong assembly, so flipped dies are labelled and their front edge drawn on the
+correct side.
+
+**Why this is small when a layout viewer is not.** A routed block is millions of polygons, which
+is why viewing one needs a tile server and a raster pyramid. An assembly is a handful of dies,
+each a box — tens of rectangles. Different problem, three orders of magnitude apart.
+
+The Z axis is scaled to fit the page and **prints its own factor** (`exaggerated 12×` /
+`compressed 0.45×`). Every package cross-section is drawn with a non-uniform Z scale; the
+difference is saying so on the drawing, so nobody measures a bond gap off the picture.
+
+Both 3D construction commands need `--features gen-write`. Released binaries have it.
+
 ## Build & test
 
 ```sh
@@ -150,5 +179,6 @@ pinned OpenROAD subtree and builds it — see that crate for details). Deps: a C
 
 ## Status
 
-Read + ECO write path over the db core (v0). LEF/DEF/GDS I/O and richer traversal follow the
+Read + ECO write path over the db core (v0), plus a 3D/chiplet path: read a 3Dblox assembly,
+lint it, draw it. LEF/DEF/GDS I/O and richer traversal follow the
 `vyges-opendb-lib` roadmap. OpenROAD is BSD-3-Clause; this crate is Apache-2.0 (see NOTICE).
