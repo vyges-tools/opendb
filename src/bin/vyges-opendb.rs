@@ -65,6 +65,10 @@ commands:
   report-connectivity       --input <f.odb>
                       Dump the netlist connectivity graph as JSON (report).
 
+  read-3dblox               --input <f.3dbx> --output <out.odb> [--into <in.odb>]
+                      Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
+                      database, so it can be linted or queried. Reports anything the
+                      format expresses and the database cannot.
   check-3dblox              --input <f.odb>
                       3D/chiplet structural sign-off lint; reports violations as JSON (check).
 
@@ -127,6 +131,7 @@ fn run() -> Result<(), Fail> {
         "remove-obstructions" => remove_obstructions(args),
         "write-verilog-header" => write_verilog_header(args),
         "report-wire-length" => report_wire_length(args),
+        "read-3dblox" => read_3dblox(args),
         "check-3dblox" => check_3dblox(args),
         "apply-eco-plan" => apply_eco_plan(args),
         "report-connectivity" => report_connectivity(args),
@@ -802,6 +807,33 @@ fn apply_eco_plan(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     Ok(())
 }
 
+const READ_3DBLOX_DESCRIBE: &str = r#"{
+  "name": "read-3dblox",
+  "summary": "read a 3Dblox 2.5D/3D assembly description into an OpenDB database",
+  "maturity": "experimental",
+  "provenance_limitations": [
+      "Nested instance paths and virtual bonds (`bot: ~`) are read and reported as unrepresented.",
+      "Polygonal regions collapse to their bounding rectangle; each loss is reported by name.",
+      "One technology per database: a stack whose dies use different processes cannot be fully represented."
+  ],
+  "invocation": {
+    "args_template": ["read-3dblox", "--input", "{input}", "--output", "{output}"],
+    "optional": [ { "arg": "into", "flag": "--into" } ],
+    "emits_json": false
+  },
+  "inputs": {
+    "type": "object",
+    "required": ["input", "output"],
+    "properties": {
+      "input":  { "type": "string", "description": "3Dblox assembly file (.3dbx)" },
+      "output": { "type": "string", "description": "database to write" },
+      "into":   { "type": "string", "description": "start from this database instead of an empty one" }
+    }
+  },
+  "artifacts": [ { "role": "odb", "field": "output" } ]
+}
+"#;
+
 const CHECK_3DBLOX_DESCRIBE: &str = r#"{
   "step": "check-3dblox",
   "summary": "3D/chiplet structural sign-off lint over a multi-die assembly: logical connectivity, floating chips, overlapping dies, unused internal_ext regions, connection-region overlap and mating-surface gap vs connection thickness, bump alignment, and alignment markers. Read-only: reports violations as markers, never modifies the design.",
@@ -814,6 +846,77 @@ const CHECK_3DBLOX_DESCRIBE: &str = r#"{
 }"#;
 
 /// `check-3dblox --input <f.odb> | --describe`.
+/// Read a 3Dblox assembly into a database.
+///
+/// Without this the reader was library-only: everything needed to load a `.3dbx` existed, and no
+/// one holding one could do anything with the shipped binary. `read-3dblox` + `check-3dblox` is
+/// the pipeline — an assembly description in, structural findings out.
+///
+/// `--into` starts from an existing database (so a stack can be read on top of collateral that
+/// is already loaded); without it the read starts from an empty one, which is the common case.
+///
+/// Behind `gen-write` because building an assembly means constructing chips through the generated
+/// setter surface. Release builds enable it; a default build does not, and says so.
+#[cfg(feature = "gen-write")]
+fn read_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut output, mut into) = (None, None, None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--into" => into = args.next(),
+            "--describe" => {
+                println!("{READ_3DBLOX_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!(
+                    "usage: vyges-opendb read-3dblox --input <f.3dbx> --output <out.odb> \
+                     [--into <in.odb>]"
+                );
+                return Ok(());
+            }
+            other => return Err(format!("read-3dblox: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("read-3dblox: --input <f.3dbx> required")?;
+    let output = output.ok_or("read-3dblox: --output <out.odb> required")?;
+    let mut db = match &into {
+        Some(p) => Db::open(p)?,
+        None => Db::new(),
+    };
+    let lossy = db.read_3dblox(&input)?;
+    db.write(&output)?;
+    // What the format said and the database could not hold. Silence here would be the lie: a
+    // polygonal bond region squared off to its bounding box is a different assembly.
+    if !lossy.is_empty() {
+        eprintln!(
+            "read-3dblox: {} element(s) the database cannot represent:",
+            lossy.len()
+        );
+        for l in &lossy {
+            eprintln!("  {l}");
+        }
+    }
+    eprintln!("read-3dblox: {input} -> {output}");
+    Ok(())
+}
+
+#[cfg(not(feature = "gen-write"))]
+fn read_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    // --describe must answer on any build: a caller discovering the command surface should not
+    // have to guess whether it exists from a build flag it cannot see.
+    for a in args.by_ref() {
+        if a == "--describe" {
+            println!("{READ_3DBLOX_DESCRIBE}");
+            return Ok(());
+        }
+    }
+    Err("read-3dblox requires a build with --features gen-write (constructing an assembly \
+         uses the L2/write surface); released binaries have it"
+        .into())
+}
+
 fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut input = None;
     while let Some(a) = args.next() {

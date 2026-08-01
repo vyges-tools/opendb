@@ -72,6 +72,35 @@ Three behaviours worth knowing before you rely on them:
 
 ## 3D structural sign-off
 
+Two commands, in order: describe an assembly, then check it.
+
+```sh
+vyges-opendb read-3dblox  -i stack.3dbx -o stack.odb   # 3Dblox assembly -> database
+vyges-opendb check-3dblox -i stack.odb                 # database -> findings
+```
+
+`read-3dblox` reads a **3Dblox** file — the 2.5D/3D interchange format, `.3dbx` for the assembly
+and `.3dbv` for the chiplet definitions it includes — and builds the corresponding chips, regions
+and die-to-die connections.
+
+What it cannot represent, it **names**:
+
+```
+read-3dblox: 1 element(s) the database cannot represent:
+  connection soc_to_virtual (virtual, no bottom)
+```
+
+Three known losses, all reported rather than dropped: virtual bonds (`bot: ~`) have no bottom die
+to attach to; a non-rectangular region collapses to its bounding rectangle; and a stack whose dies
+are on different processes cannot be fully held, because a database carries **one** technology.
+That last one is upstream's limit, not ours, and it is the reason this is honest about being an
+assembly *description* rather than a heterogeneous stack.
+
+Requires a build with `--features gen-write` — constructing an assembly goes through the L2/write
+surface. Released binaries are built with it.
+
+### The linter
+
 `check-3dblox` runs OpenDB's 3D linter over a chiplet assembly — logical connectivity, floating
 chips, overlapping dies, unused `internal_ext` regions, connection-region overlap and
 mating-surface gap versus connection thickness, bump alignment, and alignment markers.
