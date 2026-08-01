@@ -113,3 +113,123 @@ fn a_missing_output_path_is_refused_rather_than_half_done() {
     assert!(!out.status.success(), "no --output should be an error");
     assert!(String::from_utf8_lossy(&out.stderr).contains("--output"));
 }
+
+// ── The drawing ─────────────────────────────────────────────────────────────────────────────
+
+/// A two-die stack, built here rather than read, so the *violating* variant below differs from
+/// the clean one by exactly one move. Mirrors `chip_create.rs::clean_stack`.
+fn built_stack() -> vyges_opendb::Db {
+    use vyges_opendb::Db;
+    let mut db = Db::open("tests/fixtures/counter.odb").unwrap();
+    db.create_chip("stack", "", "HIER").unwrap();
+    db.create_chip_block("stack", "stack_blk").unwrap();
+    db.create_chip("base", "", "SUBSTRATE").unwrap();
+    db.create_chip("upper", "", "DIE").unwrap();
+    for (c, w, h, t) in [("base", 60000, 50000, 1500), ("upper", 50000, 40000, 700)] {
+        db.chip_set_width(c, w).unwrap();
+        db.chip_set_height(c, h).unwrap();
+        db.chip_set_thickness(c, t).unwrap();
+    }
+    db.create_chip_region("base", "up", "FRONT", "").unwrap();
+    db.set_chip_region_box("base", "up", 0, 0, 60000, 50000).unwrap();
+    db.create_chip_region("upper", "down", "BACK", "").unwrap();
+    db.set_chip_region_box("upper", "down", 0, 0, 50000, 40000).unwrap();
+    db.create_chip_inst("stack", "base", "u_base").unwrap();
+    db.create_chip_inst("stack", "upper", "u_upper").unwrap();
+    db.place_chip_inst("stack", "u_base", "R0", 0, 0, 0).unwrap();
+    db.place_chip_inst("stack", "u_upper", "R0", 0, 0, 1500).unwrap();
+    db.create_chip_conn("bond", "stack", "u_upper", "down", "u_base", "up", 0).unwrap();
+    db.set_top_chip("stack").unwrap();
+    db.construct_unfolded_model().unwrap();
+    db
+}
+
+#[test]
+fn the_drawing_reads_the_placed_geometry_out_of_the_database() {
+    use vyges_opendb::view3d::Assembly3d;
+    let db = built_stack();
+    let a = Assembly3d::read(&db, "stack").unwrap();
+
+    assert_eq!(a.dies.len(), 2);
+    assert_eq!(a.bonds.len(), 1);
+    // Sorted by Z, so the substrate comes first and the drawing's legend is diffable run to run.
+    assert_eq!(a.dies[0].inst, "u_base");
+    assert_eq!(a.dies[1].inst, "u_upper");
+    assert_eq!(a.dies[1].z, 1500.0);
+    assert_eq!(a.dies[0].thickness, 1500.0);
+    assert_eq!(a.dies[0].chip_type, "SUBSTRATE");
+    assert_eq!(a.bonds[0].top, "u_upper");
+    assert_eq!(a.bonds[0].bottom, "u_base");
+}
+
+#[test]
+fn a_violation_reaches_the_drawing() {
+    // The whole reason to draw an assembly is to see where a finding is. If the linter reports
+    // an overlap and the picture does not mention it, the picture is actively misleading.
+    use vyges_opendb::view3d::{to_svg, Assembly3d};
+    let mut db = built_stack();
+    db.place_chip_inst("stack", "u_upper", "R0", 12000, 12000, 1000).unwrap();
+    db.construct_unfolded_model().unwrap();
+    assert!(db.check_3dblox().unwrap() > 0, "the move must violate something");
+
+    let findings: Vec<(String, String)> = ["Overlapping chips"]
+        .iter()
+        .filter_map(|c| {
+            let p = format!("3DBlox/{c}");
+            let n = vyges_opendb::registry::get(&db, "dbMarkerCategory", "get_marker_count",
+                                                &[p.clone()]).ok()?.as_i64()?;
+            (n > 0).then(|| (c.to_string(), format!("{n} marker(s)")))
+        })
+        .collect();
+    assert!(!findings.is_empty());
+
+    let svg = to_svg(&Assembly3d::read(&db, "stack").unwrap().with_findings(findings), 1000.0);
+    assert!(svg.contains("Overlapping chips"), "the finding must appear on the drawing");
+    assert!(!svg.contains("no violations"));
+}
+
+#[test]
+fn the_viewer_turns_an_interchange_file_into_a_drawing_in_one_command() {
+    // The user-facing claim: a .3dbx someone sends you becomes a picture without first
+    // converting it to a database by hand.
+    let svg = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli_3dblox_view.svg");
+    let _ = std::fs::remove_file(&svg);
+    let out = Command::new(bin())
+        .args(["view-3dblox", "--input", DBX, "--output"])
+        .arg(&svg)
+        .output()
+        .expect("run view-3dblox");
+    assert!(
+        out.status.success(),
+        "view-3dblox failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc = std::fs::read_to_string(&svg).expect("svg written");
+    assert!(doc.starts_with("<svg") && doc.trim_end().ends_with("</svg>"));
+    assert!(doc.contains("TopDesign"), "the design name belongs on the drawing");
+    // Both dies, and the flip, must survive the whole path from file to picture.
+    assert!(doc.contains("soc_inst") && doc.contains("soc_inst_duplicate"));
+    assert!(doc.contains("flipped"), "the MZ die is flipped and the drawing must say so");
+}
+
+#[test]
+fn a_database_input_without_top_is_refused_rather_than_drawn_empty() {
+    // An empty page that says "no violations" is the worst possible output here, so a missing
+    // --top has to be an error and not a default.
+    let odb = out("viewtop");
+    assert!(Command::new(bin())
+        .args(["read-3dblox", "--input", DBX, "--output"])
+        .arg(&odb)
+        .status()
+        .unwrap()
+        .success());
+
+    let out_ = Command::new(bin())
+        .args(["view-3dblox", "--input"])
+        .arg(&odb)
+        .args(["--output", "/dev/null"])
+        .output()
+        .unwrap();
+    assert!(!out_.status.success());
+    assert!(String::from_utf8_lossy(&out_.stderr).contains("--top"));
+}

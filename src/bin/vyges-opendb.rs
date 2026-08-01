@@ -69,6 +69,9 @@ commands:
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
                       database, so it can be linted or queried. Reports anything the
                       format expresses and the database cannot.
+  view-3dblox               --input <f.3dbx|f.odb> --output <out.svg> [--top <chip>]
+                      Draw the assembly: cross-section + plan, one self-contained SVG,
+                      with any check-3dblox findings listed on it.
   check-3dblox              --input <f.odb>
                       3D/chiplet structural sign-off lint; reports violations as JSON (check).
 
@@ -132,6 +135,7 @@ fn run() -> Result<(), Fail> {
         "write-verilog-header" => write_verilog_header(args),
         "report-wire-length" => report_wire_length(args),
         "read-3dblox" => read_3dblox(args),
+        "view-3dblox" => view_3dblox(args),
         "check-3dblox" => check_3dblox(args),
         "apply-eco-plan" => apply_eco_plan(args),
         "report-connectivity" => report_connectivity(args),
@@ -916,6 +920,169 @@ fn read_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
          uses the L2/write surface); released binaries have it"
         .into())
 }
+
+/// Collect `check_3dblox` markers as (category, name) pairs.
+///
+/// Shared with `check-3dblox` rather than reimplemented: the seven category names are a list the
+/// linter owns, and two copies of it would drift the moment upstream adds an eighth.
+#[cfg(unix)]
+fn blox_findings(db: &Db) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for check in BLOX_CHECKS {
+        let path = format!("3DBlox/{check}");
+        let count = vyges_opendb::registry::get(db, "dbMarkerCategory", "get_marker_count",
+                                                &[path.clone()])
+            .ok()
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        for i in 0..count {
+            let name = vyges_opendb::registry::get(db, "dbMarker", "get_name",
+                                                   &[path.clone(), i.to_string()])
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            out.push((check.to_string(), name));
+        }
+    }
+    out
+}
+
+/// Draw an assembly. Accepts the interchange file directly, so going from a `.3dbx` someone sent
+/// you to a picture is one command rather than three.
+///
+/// A `.odb` needs `--top` because the database has no getter for the top chip — the name is not
+/// recoverable from the file, so guessing it would mean drawing an empty page and calling it a
+/// clean assembly.
+#[cfg(all(unix, feature = "gen-write"))]
+fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    use vyges_opendb::view3d::{to_svg, Assembly3d};
+    let (mut input, mut output, mut top) = (None, None, None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--top" => top = args.next(),
+            "--describe" => {
+                println!("{VIEW_3DBLOX_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!(
+                    "usage: vyges-opendb view-3dblox --input <f.3dbx|f.odb> --output <out.svg> \
+                     [--top <chip>]"
+                );
+                return Ok(());
+            }
+            other => return Err(format!("view-3dblox: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("view-3dblox: --input <f.3dbx|f.odb> required")?;
+    let output = output.ok_or("view-3dblox: --output <out.svg> required")?;
+
+    let is_dbx = input.ends_with(".3dbx");
+    let (mut db, top) = if is_dbx {
+        // The assembly file names its own design, so --top is redundant here.
+        let raw = std::fs::read_to_string(&input)?;
+        let dbx = vyges_opendb::blox::parse_dbx(&input, &raw).map_err(|e| format!("{e}"))?;
+        let name = dbx.design_name.clone();
+        let mut db = Db::new();
+        let (r, logs) = db.with_captured_logs(|db| db.read_3dblox(&input));
+        if !logs.is_empty() {
+            eprint!("{logs}");
+        }
+        r?;
+        (db, top.unwrap_or(name))
+    } else {
+        let top = top.ok_or(
+            "view-3dblox: --top <chip> required for a .odb input (the database has no top-chip \
+             getter; read-3dblox prints the design name)",
+        )?;
+        (Db::open(&input)?, top)
+    };
+
+    // Lint first so the drawing can carry the findings. Failing to lint is not a reason to
+    // refuse a picture — a malformed assembly is exactly when someone wants to look at it.
+    let (violations, logs) = db.with_captured_logs(|db| db.check_3dblox());
+    if !logs.is_empty() {
+        eprint!("{logs}");
+    }
+    let findings = match violations {
+        Ok(_) => blox_findings(&db),
+        Err(e) => {
+            eprintln!("view-3dblox: lint skipped ({e}); drawing geometry only");
+            Vec::new()
+        }
+    };
+
+    let asm = Assembly3d::read(&db, &top)?.with_findings(findings);
+    if asm.dies.is_empty() {
+        eprintln!(
+            "view-3dblox: warning: no chip instances under top chip '{top}' — the drawing will \
+             be empty. Is --top the assembly rather than a die?"
+        );
+    }
+    // A database with no precision set would divide every dimension by zero and print `inf`.
+    let dbu = match db.dbu_per_micron() {
+        0 => 1000.0,
+        d => f64::from(d),
+    };
+    std::fs::write(&output, to_svg(&asm, dbu))?;
+    eprintln!(
+        "view-3dblox: {input} -> {output} ({} die(s), {} bond(s), {} finding(s))",
+        asm.dies.len(),
+        asm.bonds.len(),
+        asm.findings.len()
+    );
+    Ok(())
+}
+
+#[cfg(all(unix, not(feature = "gen-write")))]
+fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    for a in args.by_ref() {
+        if a == "--describe" {
+            println!("{VIEW_3DBLOX_DESCRIBE}");
+            return Ok(());
+        }
+    }
+    Err("view-3dblox requires a build with --features gen-write; released binaries have it".into())
+}
+
+const BLOX_CHECKS: [&str; 7] = [
+    "Logical Connectivity",
+    "Floating chips",
+    "Overlapping chips",
+    "Unused internal_ext",
+    "Connection regions",
+    "Bump Alignment",
+    "Alignment Markers",
+];
+
+const VIEW_3DBLOX_DESCRIBE: &str = r#"{
+  "name": "view-3dblox",
+  "summary": "draw a chiplet assembly as a self-contained SVG: cross-section, plan, and linter findings",
+  "maturity": "experimental",
+  "provenance_limitations": [
+      "The Z axis is exaggerated so the stack is legible; the factor is printed on the drawing and dimensions must not be measured off it.",
+      "Geometry only: no routing, no bumps drawn individually, no per-die layer stack.",
+      "A .odb input needs --top because the database has no top-chip getter."
+  ],
+  "invocation": {
+    "args_template": ["view-3dblox", "--input", "{input}", "--output", "{output}"],
+    "optional": [ { "arg": "top", "flag": "--top" } ],
+    "emits_json": false
+  },
+  "inputs": {
+    "type": "object",
+    "required": ["input", "output"],
+    "properties": {
+      "input":  { "type": "string", "description": "3Dblox assembly (.3dbx) or database (.odb)" },
+      "output": { "type": "string", "description": "SVG file to write" },
+      "top":    { "type": "string", "description": "top chip name; required for .odb input" }
+    }
+  },
+  "artifacts": [ { "role": "drawing", "field": "output" } ]
+}
+"#;
 
 fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut input = None;

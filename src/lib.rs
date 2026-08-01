@@ -24,6 +24,8 @@ pub mod blox;
 pub mod eco;
 #[cfg(unix)]
 pub mod report;
+#[cfg(unix)]
+pub mod view3d;
 
 /// Errors from the OpenDB layer or path handling.
 #[derive(Debug)]
