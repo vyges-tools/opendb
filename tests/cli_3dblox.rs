@@ -415,3 +415,48 @@ fn a_missing_bump_map_is_reported_rather_than_read_as_no_bumps() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("mem_front.bmap"), "the missing map must be named: {err}");
 }
+
+#[test]
+fn a_drawing_of_a_broken_interface_does_not_caption_itself_clean() {
+    // Found on a RELEASED binary: check-d2d reported 5 violations on an assembly whose drawing
+    // said "no violations". view-3dblox ran only the odb structural lint, which does not look at
+    // whether bumps mate — so the picture captioned a dead interface as clean. A drawing that
+    // lies is worse than no drawing, which is the whole premise of shipping one.
+    let dir = bump_fixture("drawfindings");
+    std::fs::copy(dir.join("mem_front_broken.bmap"), dir.join("mem_front.bmap")).unwrap();
+    let svg = dir.join("broken.svg");
+    let out = Command::new(bin())
+        .args(["view-3dblox", "--input"])
+        .arg(dir.join("stack.3dbx"))
+        .arg("--output")
+        .arg(&svg)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+    let doc = std::fs::read_to_string(&svg).unwrap();
+    assert!(!doc.contains("no violations"), "the drawing captioned a broken interface clean");
+    assert!(doc.contains("checks: 5 finding(s)"));
+    // Every d2d finding kind has to reach the page, each naming its own source.
+    for kind in ["d2d/unmated", "d2d/misaligned", "d2d/net-mismatch", "d2d/cell-mismatch"] {
+        assert!(doc.contains(kind), "{kind} missing from the drawing");
+    }
+}
+
+#[test]
+fn a_clean_assembly_still_draws_clean() {
+    // The other half: adding a second checker must not invent findings.
+    let dir = bump_fixture("drawclean");
+    let svg = dir.join("clean.svg");
+    assert!(Command::new(bin())
+        .args(["view-3dblox", "--input"])
+        .arg(dir.join("stack.3dbx"))
+        .arg("--output")
+        .arg(&svg)
+        .status()
+        .unwrap()
+        .success());
+    let doc = std::fs::read_to_string(&svg).unwrap();
+    assert!(doc.contains("checks: no violations"), "a clean assembly must read clean");
+    assert!(!doc.contains("d2d/"));
+}

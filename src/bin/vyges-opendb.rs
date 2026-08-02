@@ -1047,6 +1047,37 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         }
     };
 
+    // When the input is an assembly file we can also check its die-to-die interfaces, and we
+    // must: `check_3dblox` does not look at whether bumps mate, so a drawing carrying only its
+    // verdict captions a broken interface "no violations". Measured on a released binary —
+    // check-d2d reported 5 violations on an assembly whose drawing said it was clean.
+    let mut findings = findings;
+    if is_dbx {
+        for p in vyges_opendb::blox::bonded_pairs(&input)? {
+            let load = |s: &vyges_opendb::blox::BondedSide| {
+                let (Some(b), Some((w, h))) = (&s.bmap, s.design_area) else { return None };
+                Some((
+                    vyges_opendb::d2d::BumpMap::load(b).ok()?,
+                    vyges_opendb::d2d::Placement {
+                        orient: s.orient.clone(),
+                        loc_x: s.loc.0,
+                        loc_y: s.loc.1,
+                        die_w: w,
+                        die_h: h,
+                    },
+                ))
+            };
+            let (Some((tm, tp)), Some((bm, bp))) = (load(&p.top), load(&p.bottom)) else {
+                continue;
+            };
+            if let Ok(r) = vyges_opendb::d2d::check_placed(&tm, &tp, &bm, &bp, None) {
+                for f in &r.findings {
+                    findings.push((format!("d2d/{}", f.kind()), f.message()));
+                }
+            }
+        }
+    }
+
     let asm = Assembly3d::read(&db, &top)?.with_findings(findings);
     if asm.dies.is_empty() {
         eprintln!(

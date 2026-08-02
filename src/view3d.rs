@@ -385,14 +385,17 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
 
     // ── Findings from the linter. The engines say what; this says where. ──
     let mut fy = plan_top + PLAN_H - MARGIN + 16.0;
+    // Deliberately unattributed: findings reach this list from more than one checker (the odb
+    // structural lint and the die-to-die bump check), and each line names its own source. A
+    // caption crediting one of them would misreport the other.
     if a.findings.is_empty() {
-        sc.push(Shape::text(MARGIN, fy, "check-3dblox: no violations", 11.0, OK));
+        sc.push(Shape::text(MARGIN, fy, "checks: no violations", 11.0, OK));
     } else {
         sc.push(
             Shape::text(
                 MARGIN,
                 fy,
-                format!("check-3dblox: {} finding(s)", a.findings.len()),
+                format!("checks: {} finding(s)", a.findings.len()),
                 11.0,
                 BOND,
             )
@@ -535,13 +538,13 @@ mod tests {
     #[test]
     fn findings_are_listed_and_a_clean_assembly_says_so() {
         let clean = to_svg(&two_die_stack(), 1.0);
-        assert!(clean.contains("no violations"));
+        assert!(clean.contains("checks: no violations"));
 
         let dirty = to_svg(
             &two_die_stack().with_findings(vec![("Floating chips".into(), "u_base".into())]),
             1.0,
         );
-        assert!(dirty.contains("1 finding(s)") && dirty.contains("Floating chips"));
+        assert!(dirty.contains("checks: 1 finding(s)") && dirty.contains("Floating chips"));
     }
 
     #[test]
