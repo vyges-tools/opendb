@@ -52,6 +52,12 @@ const INK_BG: Rgb = (251, 251, 253);
 const SUBHEAD: Rgb = (68, 68, 68);
 const DIM: Rgb = (102, 102, 102);
 const MUTED: Rgb = (153, 153, 153);
+/// Minimum on-screen size of a heat-map sample, in px. A bump is sub-pixel at plan
+/// scale; below this the map is invisible, which is worse than approximate.
+const PLAN_DOT_MIN: f64 = 2.6;
+/// Vertical space reserved for the heat-map legend, in px.
+const LEGEND_BAND: f64 = 22.0;
+
 const BOND: Rgb = (214, 39, 40);
 const BOND_DIM: Rgb = (170, 51, 51);
 const OK: Rgb = (34, 119, 85);
@@ -88,6 +94,72 @@ pub struct Assembly3d {
     pub bonds: Vec<Bond>,
     /// Linter findings, as (category, marker name). Drawn as callouts.
     pub findings: Vec<(String, String)>,
+    /// Per-bump measurements to shade onto the plan view. Empty = no heat map.
+    pub overlay: Overlay,
+}
+
+/// A scalar sampled at points across the interface, drawn as a heat map on the plan view.
+///
+/// Deliberately a *measurement*, not a prediction. The value here is what `check-d2d` observed
+/// — microns of separation between bumps that should be coincident. It is not a yield number
+/// and must not be presented as one: predicting yield needs process inputs (particle density,
+/// Cu recess, surface roughness) that no layout contains. What this shows is the layout-side
+/// input such a model would consume, and on its own it answers a question a count cannot:
+/// *where* on the interface the error is, and whether it is a pattern or scatter.
+#[derive(Debug, Clone, Default)]
+pub struct Overlay {
+    pub points: Vec<OverlayPoint>,
+    /// What the scalar is, for the legend, e.g. "misalignment".
+    pub label: String,
+    pub unit: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OverlayPoint {
+    /// Assembly coordinates, database units — the same frame as `Die::x`/`y`.
+    pub x: f64,
+    pub y: f64,
+    pub value: f64,
+}
+
+impl Overlay {
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
+    /// Value range, for the colour ramp and the legend.
+    fn range(&self) -> (f64, f64) {
+        let mut lo = f64::INFINITY;
+        let mut hi = f64::NEG_INFINITY;
+        for p in &self.points {
+            lo = lo.min(p.value);
+            hi = hi.max(p.value);
+        }
+        (lo, hi)
+    }
+}
+
+/// Cool (in tolerance) to hot (worst observed), through amber.
+///
+/// A single hue ramped by lightness would be honest too, but three stops make a small
+/// cluster of hot bumps findable in a field of thousands, which is the entire point.
+fn heat(t: f64) -> Rgb {
+    let t = t.clamp(0.0, 1.0);
+    let lerp = |a: (f64, f64, f64), b: (f64, f64, f64), u: f64| -> Rgb {
+        (
+            (a.0 + (b.0 - a.0) * u).round() as u8,
+            (a.1 + (b.1 - a.1) * u).round() as u8,
+            (a.2 + (b.2 - a.2) * u).round() as u8,
+        )
+    };
+    let cool = (49.0, 108.0, 186.0);
+    let mid = (240.0, 173.0, 39.0);
+    let hot = (200.0, 30.0, 30.0);
+    if t < 0.5 {
+        lerp(cool, mid, t / 0.5)
+    } else {
+        lerp(mid, hot, (t - 0.5) / 0.5)
+    }
 }
 
 fn s(db: &Db, class: &str, field: &str, keys: &[&str]) -> Option<String> {
@@ -219,7 +291,10 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
     let sz = ((SECTION_H - 2.0 * MARGIN) / ez).min(sx * 60.0);
     let z_exag = if sx > 0.0 { sz / sx } else { 1.0 };
 
-    let total_h = SECTION_H + PLAN_H + 130.0 + 18.0 * a.findings.len() as f64;
+    // The heat-map legend needs its own band. Without it the swatch and the findings list are
+    // laid out at the same y and print on top of each other.
+    let legend_h = if a.overlay.is_empty() { 0.0 } else { LEGEND_BAND };
+    let total_h = SECTION_H + PLAN_H + 130.0 + legend_h + 18.0 * a.findings.len() as f64;
     let mut sc = Scene::new(DRAW_W, total_h)
         .with_background(INK_BG)
         .with_title(format!("{} — chiplet assembly", a.top))
@@ -383,8 +458,65 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
         ));
     }
 
+    // ── Heat map, over the footprints: where on the interface the error actually is. ──
+    if !a.overlay.is_empty() {
+        let (lo, hi) = a.overlay.range();
+        let span = hi - lo;
+        // A bump is a couple of microns across on a die millimetres wide, so at plan scale it
+        // is far under a pixel. Draw a legible minimum instead and let dense fields merge —
+        // the merged blob still shows *where*, which a sub-pixel dot would not.
+        let dot = (PLAN_DOT_MIN).max(0.6 * ps);
+        for p in &a.overlay.points {
+            // Normalising a flat field to 0 would paint every bump "worst"; treat it as best.
+            let t = if span > f64::EPSILON { (p.value - lo) / span } else { 0.0 };
+            let c = heat(t);
+            let x = MARGIN + p.x * ps - dot / 2.0;
+            let y = plan_top + (ey - p.y) * ps - dot / 2.0;
+            sc.push(Shape::Rect {
+                x,
+                y,
+                w: dot,
+                h: dot,
+                fill: Some(c),
+                fill_opacity: 0.95,
+                stroke: None,
+                stroke_width: 0.0,
+            });
+        }
+        // Legend. Without the range and the unit the colours are decoration, not data.
+        let ly = plan_top + PLAN_H - MARGIN + 2.0;
+        let (lw, lh) = (110.0, 8.0);
+        for i in 0..=40 {
+            let u = i as f64 / 40.0;
+            sc.push(Shape::Rect {
+                x: MARGIN + u * lw,
+                y: ly,
+                w: lw / 40.0 + 0.6,
+                h: lh,
+                fill: Some(heat(u)),
+                fill_opacity: 1.0,
+                stroke: None,
+                stroke_width: 0.0,
+            });
+        }
+        sc.push(Shape::text(
+            MARGIN + lw + 8.0,
+            ly + lh,
+            format!(
+                "{} {:.3}–{:.3} {} · {} bump(s) · measured, not predicted",
+                a.overlay.label,
+                lo,
+                hi,
+                a.overlay.unit,
+                a.overlay.points.len()
+            ),
+            9.5,
+            DIM,
+        ));
+    }
+
     // ── Findings from the linter. The engines say what; this says where. ──
-    let mut fy = plan_top + PLAN_H - MARGIN + 16.0;
+    let mut fy = plan_top + PLAN_H - MARGIN + 16.0 + legend_h;
     // Deliberately unattributed: findings reach this list from more than one checker (the odb
     // structural lint and the die-to-die bump check), and each line names its own source. A
     // caption crediting one of them would misreport the other.
@@ -485,6 +617,7 @@ mod tests {
                 thickness: 5.0,
             }],
             findings: vec![],
+            overlay: Overlay::default(),
         }
     }
 
@@ -612,6 +745,69 @@ mod tests {
         let sc = to_scene(&a, 1.0);
         assert_eq!(sc.to_svg(), to_svg(&a, 1.0));
         assert_eq!(sc.to_png(2.0), to_png(&a, 1.0, 2.0));
+    }
+
+    fn overlay_of(vals: &[(f64, f64, f64)]) -> Overlay {
+        Overlay {
+            points: vals
+                .iter()
+                .map(|(x, y, v)| OverlayPoint {
+                    x: *x,
+                    y: *y,
+                    value: *v,
+                })
+                .collect(),
+            label: "misalignment".into(),
+            unit: "um".into(),
+        }
+    }
+
+    #[test]
+    fn the_heat_map_legend_states_the_range_and_that_it_is_measured() {
+        // Colours without a scale are decoration. And the caption has to keep saying this is a
+        // measurement: the moment a heat map is read as predicted yield it is being used to make
+        // a decision no layout can support.
+        let mut a = two_die_stack();
+        a.overlay = overlay_of(&[(0.0, 0.0, 0.0), (10.0, 0.0, 1.6)]);
+        let svg = to_svg(&a, 1.0);
+        assert!(svg.contains("misalignment"));
+        assert!(svg.contains("0.000"), "legend must state the low end");
+        assert!(svg.contains("1.600"), "legend must state the high end");
+        assert!(svg.contains("measured, not predicted"));
+    }
+
+    #[test]
+    fn the_legend_does_not_land_on_the_findings_list() {
+        // Both were laid out from the same baseline and printed on top of each other. A drawing
+        // whose verdict is illegible is worse than one without a heat map.
+        let mut a = two_die_stack();
+        a.findings = vec![("d2d/misaligned".into(), "mm_rx1 and lg_tx1".into())];
+        let without = to_scene(&a, 1.0);
+        a.overlay = overlay_of(&[(0.0, 0.0, 0.0), (10.0, 0.0, 1.6)]);
+        let with = to_scene(&a, 1.0);
+        assert!(
+            with.height > without.height,
+            "the legend must claim its own band, not share the findings' baseline"
+        );
+    }
+
+    #[test]
+    fn a_flat_field_is_not_painted_as_the_worst_case() {
+        // Every bump perfect => span 0. Normalising by a zero span would divide by zero or paint
+        // the whole interface "hot", reporting a clean bond as a catastrophe.
+        let mut a = two_die_stack();
+        a.overlay = overlay_of(&[(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)]);
+        let svg = to_svg(&a, 1.0);
+        assert!(!svg.contains("NaN") && !svg.contains("inf"));
+        let (lo, hi) = a.overlay.range();
+        assert_eq!((lo, hi), (0.0, 0.0));
+    }
+
+    #[test]
+    fn no_overlay_means_no_legend() {
+        let a = two_die_stack();
+        assert!(a.overlay.is_empty());
+        assert!(!to_svg(&a, 1.0).contains("measured, not predicted"));
     }
 
     #[test]

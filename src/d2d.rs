@@ -349,6 +349,57 @@ impl Finding {
             ),
         }
     }
+
+    /// The finding as *data*, not prose.
+    ///
+    /// `message()` is for a person reading a terminal. Everything downstream — an overlay
+    /// heat map, a yield model such as UCLA's YAP, a spreadsheet — needs the coordinates and
+    /// the separation as numbers. Those are computed either way; emitting only the sentence
+    /// meant every consumer had to parse English back into floats, so most did without.
+    ///
+    /// `x`/`y` are the *top* bump where there is a pair, and the lone bump otherwise, so a
+    /// consumer can place every finding on the interface without special-casing the kind.
+    pub fn to_json(&self) -> serde_json::Value {
+        let bump = |b: &Bump| {
+            serde_json::json!({
+                "inst": b.inst, "cell": b.cell, "x_um": b.x, "y_um": b.y,
+                "port": b.port, "net": b.net,
+            })
+        };
+        let mut v = serde_json::json!({ "kind": self.kind(), "message": self.message() });
+        let o = v.as_object_mut().expect("json! built an object");
+        match self {
+            Finding::Unmated { side, bump: b } => {
+                o.insert("side".into(), side.as_str().into());
+                o.insert("x_um".into(), b.x.into());
+                o.insert("y_um".into(), b.y.into());
+                o.insert("bump".into(), bump(b));
+            }
+            Finding::Misaligned {
+                top,
+                bottom,
+                distance_um,
+            } => {
+                o.insert("x_um".into(), top.x.into());
+                o.insert("y_um".into(), top.y.into());
+                o.insert("distance_um".into(), (*distance_um).into());
+                // The signed components, not just the magnitude: a whole field displaced the
+                // same way is a placement error, the same magnitudes scattered is overlay
+                // noise, and the magnitude alone cannot tell those apart.
+                o.insert("dx_um".into(), (top.x - bottom.x).into());
+                o.insert("dy_um".into(), (top.y - bottom.y).into());
+                o.insert("top".into(), bump(top));
+                o.insert("bottom".into(), bump(bottom));
+            }
+            Finding::NetMismatch { top, bottom, .. } | Finding::CellMismatch { top, bottom } => {
+                o.insert("x_um".into(), top.x.into());
+                o.insert("y_um".into(), top.y.into());
+                o.insert("top".into(), bump(top));
+                o.insert("bottom".into(), bump(bottom));
+            }
+        }
+        v
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -365,8 +416,24 @@ pub struct D2dReport {
     /// to remember what it passed.
     pub frame: String,
     pub findings: Vec<Finding>,
+    /// Every matched pair, as `(x, y, separation)` in the report's frame, microns.
+    ///
+    /// Includes the pairs that are *fine* — separation 0. `findings` only carries what is
+    /// wrong, and a map drawn from those alone shows the failures floating in a void, with no
+    /// way to see that the rest of the interface is clean or how large a fraction is affected.
+    /// Kept out of `to_json`: a full field is hundreds of thousands of samples and would bury
+    /// the verdict, so this serves the renderer and any caller that asks for it in Rust.
+    pub samples: Vec<PairSample>,
     /// Parse errors from either file, as `(side, line, message)`.
     pub parse_errors: Vec<(Side, usize, String)>,
+}
+
+/// One mated pair, reduced to what a map or a yield model needs.
+#[derive(Debug, Clone, Copy)]
+pub struct PairSample {
+    pub x: f64,
+    pub y: f64,
+    pub distance_um: f64,
 }
 
 impl D2dReport {
@@ -398,10 +465,7 @@ impl D2dReport {
                 "dy_um": self.transform.dy,
                 "flip_x": self.transform.flip_x,
             },
-            "findings": self.findings.iter().map(|f| serde_json::json!({
-                "kind": f.kind(),
-                "message": f.message(),
-            })).collect::<Vec<_>>(),
+            "findings": self.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),
             "parse_errors": self.parse_errors.iter().map(|(s, l, m)| serde_json::json!({
                 "side": s.as_str(), "line": l, "error": m,
             })).collect::<Vec<_>>(),
@@ -557,6 +621,14 @@ pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Optio
         ),
         transform: tf,
         findings,
+        samples: pairs
+            .iter()
+            .map(|(i, _, d)| PairSample {
+                x: tb[*i].x,
+                y: tb[*i].y,
+                distance_um: *d,
+            })
+            .collect(),
         parse_errors,
     }
 }
@@ -609,6 +681,48 @@ bb0 MICROBUMP 10.0 10.0 rx[0] d2d_tx0
 bb1 MICROBUMP 50.0 10.0 rx[1] d2d_tx1
 bb2 MICROBUMP 90.0 10.0 rx[2] d2d_tx2
 ";
+
+    #[test]
+    fn a_finding_carries_its_coordinates_as_numbers_not_prose() {
+        // The whole point of this change: a heat map, a yield model such as UCLA's YAP, or a
+        // spreadsheet all need floats. Emitting only the sentence forced every consumer to parse
+        // English back into numbers, so none did.
+        // Two bumps a side: the tolerance is derived from the bump pitch, and one bump has no
+        // pitch, so a lone offset pair is classed unmated rather than misaligned.
+        let r = run(
+            "t0 MICROBUMP 10.0 10.0 tx d2d_a\nt1 MICROBUMP 50.0 10.0 tx d2d_b\n",
+            "b0 MICROBUMP 10.4 10.0 rx d2d_a\nb1 MICROBUMP 50.0 10.0 rx d2d_b\n",
+        );
+        let f = r
+            .findings
+            .iter()
+            .find(|f| f.kind() == "misaligned")
+            .expect("a 0.4 um offset is a misalignment");
+        let j = f.to_json();
+        assert_eq!(j["x_um"], 10.0);
+        assert_eq!(j["y_um"], 10.0);
+        assert!((j["distance_um"].as_f64().unwrap() - 0.4).abs() < 1e-9);
+        // Signed, not just magnitude: a whole field pushed the same way is a placement error,
+        // the same magnitudes scattered is overlay noise, and |d| cannot tell those apart.
+        assert!((j["dx_um"].as_f64().unwrap() + 0.4).abs() < 1e-9);
+        assert_eq!(j["top"]["inst"], "t0");
+        assert_eq!(j["bottom"]["net"], "d2d_a");
+        // The sentence stays — a person reading a terminal still needs it.
+        assert!(j["message"].as_str().unwrap().contains("apart"));
+    }
+
+    #[test]
+    fn every_mated_pair_is_sampled_including_the_good_ones() {
+        // A map drawn only from findings shows failures floating in a void, with no way to see
+        // that the rest of the interface is clean.
+        let r = run(
+            "t0 MICROBUMP 10.0 10.0 tx d2d_a\nt1 MICROBUMP 50.0 10.0 tx d2d_b\n",
+            "b0 MICROBUMP 10.0 10.0 rx d2d_a\nb1 MICROBUMP 50.4 10.0 rx d2d_b\n",
+        );
+        assert_eq!(r.samples.len(), 2, "both pairs mate, so both are samples");
+        assert!(r.samples.iter().any(|s| s.distance_um == 0.0), "the clean pair is kept");
+        assert!(r.samples.iter().any(|s| s.distance_um > 0.0), "the bad pair is kept");
+    }
 
     fn run(top: &str, bottom: &str) -> D2dReport {
         check(

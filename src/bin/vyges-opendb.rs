@@ -69,7 +69,7 @@ commands:
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
                       database, so it can be linted or queried. Reports anything the
                       format expresses and the database cannot.
-  view-3dblox               --input <f.3dbx|f.odb> --output <out.svg|out.png>
+  view-3dblox               --input <f.3dbx|f.odb> --output <out.svg|out.png> [--heatmap]
                             [--top <chip>] [--scale <n>]
                       Draw the assembly: cross-section + plan, with any check-3dblox
                       findings listed on it. Format follows the output extension.
@@ -967,11 +967,13 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     use vyges_opendb::view3d::{to_png, to_svg, Assembly3d};
     let (mut input, mut output, mut top) = (None, None, None);
     let mut scale = 2.0f64;
+    let mut heatmap = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
             "--output" | "-o" => output = args.next(),
             "--top" => top = args.next(),
+            "--heatmap" => heatmap = true,
             "--scale" => {
                 let v = args.next().ok_or("view-3dblox: --scale needs a number")?;
                 scale = v
@@ -985,7 +987,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "-h" | "--help" => {
                 eprintln!(
                     "usage: vyges-opendb view-3dblox --input <f.3dbx|f.odb> \
-                     --output <out.svg|out.png> [--top <chip>] [--scale <n>]"
+                     --output <out.svg|out.png> [--top <chip>] [--scale <n>] [--heatmap]"
                 );
                 return Ok(());
             }
@@ -1052,6 +1054,8 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     // verdict captions a broken interface "no violations". Measured on a released binary —
     // check-d2d reported 5 violations on an assembly whose drawing said it was clean.
     let mut findings = findings;
+    // (x, y, separation) in microns, assembly frame — scaled to DBU once `dbu` is known.
+    let mut overlay_um: Vec<(f64, f64, f64)> = Vec::new();
     if is_dbx {
         for p in vyges_opendb::blox::bonded_pairs(&input)? {
             let load = |s: &vyges_opendb::blox::BondedSide| {
@@ -1071,6 +1075,9 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 continue;
             };
             if let Ok(r) = vyges_opendb::d2d::check_placed(&tm, &tp, &bm, &bp, None) {
+                if heatmap {
+                    overlay_um.extend(r.samples.iter().map(|s| (s.x, s.y, s.distance_um)));
+                }
                 for f in &r.findings {
                     findings.push((format!("d2d/{}", f.kind()), f.message()));
                 }
@@ -1078,7 +1085,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         }
     }
 
-    let asm = Assembly3d::read(&db, &top)?.with_findings(findings);
+    let mut asm = Assembly3d::read(&db, &top)?.with_findings(findings);
     if asm.dies.is_empty() {
         eprintln!(
             "view-3dblox: warning: no chip instances under top chip '{top}' — the drawing will \
@@ -1090,6 +1097,26 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         0 => 1000.0,
         d => f64::from(d),
     };
+    if heatmap {
+        if overlay_um.is_empty() {
+            eprintln!(
+                "view-3dblox: --heatmap: no mated bumps to map. A heat map needs bump maps on \
+                 both mating faces (.3dbv `bmap:`) and a .3dbx input; drawing without it."
+            );
+        }
+        asm.overlay = vyges_opendb::view3d::Overlay {
+            points: overlay_um
+                .iter()
+                .map(|(x, y, v)| vyges_opendb::view3d::OverlayPoint {
+                    x: x * dbu,
+                    y: y * dbu,
+                    value: *v,
+                })
+                .collect(),
+            label: "misalignment".into(),
+            unit: "um".into(),
+        };
+    }
     if png {
         std::fs::write(&output, to_png(&asm, dbu, scale))?;
     } else {
@@ -1139,16 +1166,19 @@ const BLOX_CHECKS: [&str; 7] = [
 
 const VIEW_3DBLOX_DESCRIBE: &str = r#"{
   "name": "view-3dblox",
-  "summary": "draw a chiplet assembly as SVG or PNG: cross-section, plan, and linter findings",
+  "summary": "draw a chiplet assembly as SVG or PNG: cross-section, plan, linter findings, and an optional die-to-die misalignment heat map",
   "maturity": "experimental",
   "provenance_limitations": [
       "The Z axis is exaggerated so the stack is legible; the factor is printed on the drawing and dimensions must not be measured off it.",
       "Geometry only: no routing, no bumps drawn individually, no per-die layer stack.",
+      "--heatmap shows MEASURED die-to-die misalignment, not predicted yield. Yield needs process inputs (particle density, Cu recess, surface roughness) that no layout carries; this is the layout-side input such a model consumes.",
+      "--heatmap needs a .3dbx input with bump maps on both mating faces; without them the drawing is produced without a map and a note is written to stderr.",
+      "Heat-map samples are drawn at a legible minimum size, so a dense bump field merges into regions rather than resolving individual bumps.",
       "A .odb input needs --top because the database has no top-chip getter."
   ],
   "invocation": {
     "args_template": ["view-3dblox", "--input", "{input}", "--output", "{output}"],
-    "optional": [ { "arg": "top", "flag": "--top" }, { "arg": "scale", "flag": "--scale" } ],
+    "optional": [ { "arg": "top", "flag": "--top" }, { "arg": "scale", "flag": "--scale" }, { "arg": "heatmap", "flag": "--heatmap", "type": "boolean" } ],
     "emits_json": false
   },
   "inputs": {
