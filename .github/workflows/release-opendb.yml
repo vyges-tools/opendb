@@ -40,8 +40,10 @@ jobs:
           - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - { os: macos-15,         target: aarch64-apple-darwin      }
     steps:
-      # Sibling layout: <ws>/vyges-tools-opendb + <ws>/vyges-tools-opendb-lib, so Cargo.toml's
-      # `[patch] vyges-opendb-lib = { path = "../vyges-tools-opendb-lib" }` resolves on CI.
+      # Sibling layout: <ws>/vyges-tools-opendb + <ws>/vyges-tools-opendb-lib +
+      # <ws>/vyges-tools-layout, so BOTH `[patch]` path entries in Cargo.toml resolve on CI.
+      # Every patched dependency needs a checkout here — a patch whose path does not exist is a
+      # hard `failed to load source` at build time, not a fall-back to the git source.
       - uses: actions/checkout@v4
         with:
           path: vyges-tools-opendb
@@ -49,6 +51,10 @@ jobs:
         with:
           repository: vyges-tools/opendb-lib
           path: vyges-tools-opendb-lib
+      - uses: actions/checkout@v4
+        with:
+          repository: vyges-tools/layout
+          path: vyges-tools-layout
 
       - name: Toolchain (Linux)
         if: runner.os == 'Linux'
