@@ -73,6 +73,8 @@ commands:
                             [--top <chip>] [--scale <n>]
                       Draw the assembly: cross-section + plan, with any check-3dblox
                       findings listed on it. Format follows the output extension.
+                      --heatmap shades MEASURED die-to-die misalignment onto the
+                      plan view (from check-d2d); it is not a yield prediction.
   check-d2d                 --input <stack.3dbx> | --top <a.bmap> --bottom <b.bmap>
                             [--offset-x <um>] [--offset-y <um>] [--flip-x]
                             [--tolerance <um>]
@@ -1369,7 +1371,13 @@ const CHECK_D2D_DESCRIBE: &str = r#"{
       "flip_x":    { "type": "boolean", "description": "mirror the bottom map in X (face-to-face bonding)" },
       "tolerance": { "type": "number", "description": "match radius in microns; default is half the bump pitch" }
     }
-  }
+  },
+  "output": "JSON on stdout. Two shapes: with --input, { interfaces: [...], interfaces_checked, interfaces_skipped, violations }; with --top/--bottom, one interface object directly. An interface carries { violations, by_kind, top_bumps, bottom_bumps, matched, tolerance_um, tolerance_source, frame, transform, findings, parse_errors }. Every finding is DATA, not only prose: { kind, message, x_um, y_um } always, plus distance_um and signed dx_um/dy_um for 'misaligned', and top/bottom bump objects { inst, cell, x_um, y_um, port, net } for every paired kind. Exits non-zero when violations > 0.",
+  "consumers": [
+      "vyges-opendb view-3dblox --heatmap shades distance_um onto the plan view.",
+      "Signed dx_um/dy_um separate a systematic error (a field displaced one way — placement or thermal expansion) from random overlay scatter; the magnitude alone cannot.",
+      "The same fields are the layout-side input a bonding-yield model (e.g. UCLA's YAP, integrated into OpenROAD over a file interface) consumes. This tool measures geometry; it does NOT predict yield, which needs process inputs (particle density, Cu recess, surface roughness) no layout carries."
+  ]
 }
 "#;
 

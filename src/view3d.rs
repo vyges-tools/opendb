@@ -22,6 +22,14 @@
 //! cross-section in the industry is drawn this way. Ours prints the factor in the corner so
 //! nobody measures a gap off the picture.
 //!
+//! **An optional heat map shades a measured field onto the plan view.** [`Overlay`] carries a
+//! scalar sampled per bump — `check-d2d`'s separation between mated pairs — and the drawing
+//! colours it cool to hot with a legend giving the range. The point is *shape*: a uniform drift
+//! across the field is a placement or thermal-expansion error, a hot corner is warpage, scatter
+//! is overlay noise. A violation count cannot distinguish those; a picture can. It is a
+//! **measurement, not a yield prediction**, and the caption on the drawing says so — yield needs
+//! process inputs (particle density, Cu recess, surface roughness) that no layout carries.
+//!
 //! **Orientation is taken from the unfolded model, not recomputed.** A die at `MZ` is flipped:
 //! its FRONT faces down. Getting that wrong silently draws a plausible and wrong assembly, which
 //! is worse than drawing nothing, so face labels come from `dbUnfoldedChipRegionInst`'s
