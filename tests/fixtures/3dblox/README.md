@@ -21,3 +21,17 @@ only way to find out whether the reader understood the format or merely accepted
 loads the LEF/DEF collateral this reader deliberately skips. It is kept as the reference for what
 their linter reports on this design, and the initial-state assertion in it — that the design is
 clean before anything is moved — is the one `blox_read.rs` reproduces.
+
+## `example.bmap` is ours, not upstream's
+
+`example.3dbv` declares `bmap: example.bmap` on `back_reg`, and OpenROAD does not ship that file.
+Reading their own example therefore always reported a loss — the reader said, correctly, that a
+bump map it was told about could not be opened.
+
+So this directory supplies one: an 8x8 field on a 100 um pitch, centred inside `back_reg`'s
+955 x 1082 um outline, supply rails on the edge and signals in the middle. Plausible geometry, not
+authoritative. With it, upstream's example loads completely and the only element still reported as
+unrepresentable is the virtual bond (`bot: ~`), which genuinely has no counterpart to attach to.
+
+The missing-bump-map path is still covered — `cli_3dblox.rs` deletes a map from the `d2d/` fixture
+and asserts the loss is reported by name.

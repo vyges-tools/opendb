@@ -109,16 +109,12 @@ fn upstreams_assembly_loads_into_a_database_and_lints_clean() {
     ] {
         assert_eq!(markers(&db, c), 0, "{c}");
     }
-    // and what could not be taken in is named, not dropped. Two things here, and the second is
-    // upstream's, not ours: `back_reg` declares `bmap: example.bmap` and that file is not shipped
-    // with the example. Reporting it is the point — a bump map that silently fails to load would
-    // leave every bump check with nothing to look at and a clean verdict to show for it.
-    assert_eq!(lossy.len(), 2, "got: {lossy:?}");
-    assert!(lossy.iter().any(|l| l.contains("soc_to_virtual")), "got: {lossy:?}");
-    assert!(
-        lossy.iter().any(|l| l.contains("example.bmap") && l.contains("not read")),
-        "got: {lossy:?}"
-    );
+    // and the one thing that genuinely cannot be expressed is named, not dropped. Exactly one:
+    // the virtual bond. `back_reg` declares `bmap: example.bmap`, which upstream references but
+    // does not ship — we supply it (see the fixture README), so the example now loads completely
+    // and this list is down to what is actually unrepresentable rather than merely absent.
+    assert_eq!(lossy.len(), 1, "got: {lossy:?}");
+    assert!(lossy[0].contains("soc_to_virtual"), "got: {lossy:?}");
 }
 
 #[test]

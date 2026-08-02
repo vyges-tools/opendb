@@ -1,0 +1,74 @@
+# example.bmap — bump map for SoC/back_reg
+#
+# NOT from upstream. OpenROAD's example.3dbv references `bmap: example.bmap` but the file is not
+# shipped with it, so reading their example reported a loss it could do nothing about. This is our
+# stand-in: an 8x8 field on a 100 um pitch, centred inside back_reg's 955 x 1082 um outline, with
+# supply rails around the edge and signals in the middle. The geometry is plausible, not
+# authoritative — it exists so the example loads completely.
+#
+# Format (upstream's, from bmapWriter.cpp):
+#   bumpInstName  bumpCellType  x(um)  y(um)  portName  netName        `-` means absent
+bump_r0c0  MICROBUMP  127.5  191.0  -  VDD
+bump_r0c1  MICROBUMP  227.5  191.0  -  VSS
+bump_r0c2  MICROBUMP  327.5  191.0  -  VDD
+bump_r0c3  MICROBUMP  427.5  191.0  -  VSS
+bump_r0c4  MICROBUMP  527.5  191.0  -  VDD
+bump_r0c5  MICROBUMP  627.5  191.0  -  VSS
+bump_r0c6  MICROBUMP  727.5  191.0  -  VDD
+bump_r0c7  MICROBUMP  827.5  191.0  -  VSS
+bump_r1c0  MICROBUMP  127.5  291.0  -  VSS
+bump_r1c1  MICROBUMP  227.5  291.0  io[9]  soc_io[9]
+bump_r1c2  MICROBUMP  327.5  291.0  io[10]  soc_io[10]
+bump_r1c3  MICROBUMP  427.5  291.0  io[11]  soc_io[11]
+bump_r1c4  MICROBUMP  527.5  291.0  io[12]  soc_io[12]
+bump_r1c5  MICROBUMP  627.5  291.0  io[13]  soc_io[13]
+bump_r1c6  MICROBUMP  727.5  291.0  io[14]  soc_io[14]
+bump_r1c7  MICROBUMP  827.5  291.0  -  VDD
+bump_r2c0  MICROBUMP  127.5  391.0  -  VDD
+bump_r2c1  MICROBUMP  227.5  391.0  io[17]  soc_io[17]
+bump_r2c2  MICROBUMP  327.5  391.0  io[18]  soc_io[18]
+bump_r2c3  MICROBUMP  427.5  391.0  io[19]  soc_io[19]
+bump_r2c4  MICROBUMP  527.5  391.0  io[20]  soc_io[20]
+bump_r2c5  MICROBUMP  627.5  391.0  io[21]  soc_io[21]
+bump_r2c6  MICROBUMP  727.5  391.0  io[22]  soc_io[22]
+bump_r2c7  MICROBUMP  827.5  391.0  -  VSS
+bump_r3c0  MICROBUMP  127.5  491.0  -  VSS
+bump_r3c1  MICROBUMP  227.5  491.0  io[25]  soc_io[25]
+bump_r3c2  MICROBUMP  327.5  491.0  io[26]  soc_io[26]
+bump_r3c3  MICROBUMP  427.5  491.0  io[27]  soc_io[27]
+bump_r3c4  MICROBUMP  527.5  491.0  io[28]  soc_io[28]
+bump_r3c5  MICROBUMP  627.5  491.0  io[29]  soc_io[29]
+bump_r3c6  MICROBUMP  727.5  491.0  io[30]  soc_io[30]
+bump_r3c7  MICROBUMP  827.5  491.0  -  VDD
+bump_r4c0  MICROBUMP  127.5  591.0  -  VDD
+bump_r4c1  MICROBUMP  227.5  591.0  io[33]  soc_io[33]
+bump_r4c2  MICROBUMP  327.5  591.0  io[34]  soc_io[34]
+bump_r4c3  MICROBUMP  427.5  591.0  io[35]  soc_io[35]
+bump_r4c4  MICROBUMP  527.5  591.0  io[36]  soc_io[36]
+bump_r4c5  MICROBUMP  627.5  591.0  io[37]  soc_io[37]
+bump_r4c6  MICROBUMP  727.5  591.0  io[38]  soc_io[38]
+bump_r4c7  MICROBUMP  827.5  591.0  -  VSS
+bump_r5c0  MICROBUMP  127.5  691.0  -  VSS
+bump_r5c1  MICROBUMP  227.5  691.0  io[41]  soc_io[41]
+bump_r5c2  MICROBUMP  327.5  691.0  io[42]  soc_io[42]
+bump_r5c3  MICROBUMP  427.5  691.0  io[43]  soc_io[43]
+bump_r5c4  MICROBUMP  527.5  691.0  io[44]  soc_io[44]
+bump_r5c5  MICROBUMP  627.5  691.0  io[45]  soc_io[45]
+bump_r5c6  MICROBUMP  727.5  691.0  io[46]  soc_io[46]
+bump_r5c7  MICROBUMP  827.5  691.0  -  VDD
+bump_r6c0  MICROBUMP  127.5  791.0  -  VDD
+bump_r6c1  MICROBUMP  227.5  791.0  io[49]  soc_io[49]
+bump_r6c2  MICROBUMP  327.5  791.0  io[50]  soc_io[50]
+bump_r6c3  MICROBUMP  427.5  791.0  io[51]  soc_io[51]
+bump_r6c4  MICROBUMP  527.5  791.0  io[52]  soc_io[52]
+bump_r6c5  MICROBUMP  627.5  791.0  io[53]  soc_io[53]
+bump_r6c6  MICROBUMP  727.5  791.0  io[54]  soc_io[54]
+bump_r6c7  MICROBUMP  827.5  791.0  -  VSS
+bump_r7c0  MICROBUMP  127.5  891.0  -  VSS
+bump_r7c1  MICROBUMP  227.5  891.0  -  VDD
+bump_r7c2  MICROBUMP  327.5  891.0  -  VSS
+bump_r7c3  MICROBUMP  427.5  891.0  -  VDD
+bump_r7c4  MICROBUMP  527.5  891.0  -  VSS
+bump_r7c5  MICROBUMP  627.5  891.0  -  VDD
+bump_r7c6  MICROBUMP  727.5  891.0  -  VSS
+bump_r7c7  MICROBUMP  827.5  891.0  -  VDD
