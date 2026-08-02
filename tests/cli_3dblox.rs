@@ -282,3 +282,136 @@ fn the_png_scale_reaches_the_image() {
     };
     assert_eq!(dims("2", "cli_3dblox_s2.png"), 2 * dims("1", "cli_3dblox_s1.png"));
 }
+
+// ── Bumps ───────────────────────────────────────────────────────────────────────────────────
+
+/// The d2d fixture assembly copied to scratch, so a test can perturb its bump maps.
+fn bump_fixture(tag: &str) -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("bumps_{tag}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in std::fs::read_dir("tests/fixtures/3dblox/d2d").unwrap() {
+        let f = f.unwrap().path();
+        if f.is_file() {
+            std::fs::copy(&f, dir.join(f.file_name().unwrap())).unwrap();
+        }
+    }
+    dir
+}
+
+#[test]
+fn bumps_from_a_bump_map_survive_into_the_written_database() {
+    // The reader used to load geometry only, so a .3dbx produced a database with no bumps and
+    // every bump-related check had nothing to look at — reporting clean for want of input.
+    let dir = bump_fixture("roundtrip");
+    let odb = dir.join("out.odb");
+    let out = Command::new(bin())
+        .args(["read-3dblox", "--input"])
+        .arg(dir.join("stack.3dbx"))
+        .arg("--output")
+        .arg(&odb)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+    // Read back from the file, not from the process that wrote it — the bumps have to persist.
+    let pos = |path: &str, idx: u32| -> i64 {
+        let o = Command::new(bin())
+            .args(["get", "-i"])
+            .arg(&odb)
+            .args([
+                "--class", "dbUnfoldedChipBumpInst",
+                "--field", "get_global_position_x",
+                "--key", path, "--key", "0", "--key", &idx.to_string(),
+            ])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&o.stdout).trim().parse().unwrap_or(-1)
+    };
+    // logic_front.bmap puts bumps at 40/80/120/160 um; the header precision is 2000 dbu/um.
+    assert_eq!(pos("u_logic", 0), 80_000);
+    assert_eq!(pos("u_logic", 3), 320_000);
+    // u_mem is MZ_MY — mirrored about its 200 um die — so its bumps land on the same points.
+    assert_eq!(pos("u_mem", 0), 80_000);
+    assert_eq!(pos("u_mem", 3), 320_000);
+}
+
+#[test]
+fn a_bump_outside_its_die_is_now_caught_from_an_assembly() {
+    // The capability loading bumps actually buys: check-3dblox's Bump Alignment check had
+    // nothing to run on before, because a .3dbx produced a database with no bumps at all.
+    let dir = bump_fixture("outside");
+    let mut map = std::fs::read_to_string(dir.join("logic_front.bmap")).unwrap();
+    map.push_str("lg_stray MICROBUMP 900.0 900.0 tx[9] d2d_stray\n"); // far outside the 200 um die
+    std::fs::write(dir.join("logic_front.bmap"), map).unwrap();
+
+    let odb = dir.join("out.odb");
+    assert!(Command::new(bin())
+        .args(["read-3dblox", "--input"])
+        .arg(dir.join("stack.3dbx"))
+        .arg("--output")
+        .arg(&odb)
+        .status()
+        .unwrap()
+        .success());
+
+    let out = Command::new(bin()).args(["check-3dblox", "--input"]).arg(&odb).output().unwrap();
+    assert!(
+        out.status.success(),
+        "check-3dblox must not abort on a bump finding: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["violations"], 1);
+    let cat = &j["categories"][0];
+    assert_eq!(cat["category"], "Bump Alignment");
+    assert!(cat["markers"][0]["comment"]
+        .as_str()
+        .unwrap()
+        .contains("outside its parent region"));
+}
+
+#[test]
+fn a_bump_finding_does_not_abort_the_process() {
+    // Not a hypothetical. dbMarker::getName() switches on its sources' object types and calls
+    // logger->error() on dbChipBumpInst, which it does not handle; utl::Logger::error throws,
+    // our generated getter is bound infallible, and the process dies. A single bump outside its
+    // region killed check-3dblox outright before this was guarded.
+    let dir = bump_fixture("noabort");
+    let mut map = std::fs::read_to_string(dir.join("logic_front.bmap")).unwrap();
+    map.push_str("lg_stray MICROBUMP 900.0 900.0 tx[9] d2d_stray\n");
+    std::fs::write(dir.join("logic_front.bmap"), map).unwrap();
+    let odb = dir.join("out.odb");
+    Command::new(bin())
+        .args(["read-3dblox", "--input"])
+        .arg(dir.join("stack.3dbx"))
+        .arg("--output")
+        .arg(&odb)
+        .status()
+        .unwrap();
+
+    let out = Command::new(bin()).args(["check-3dblox", "--input"]).arg(&odb).output().unwrap();
+    // An abort shows up as a signal, not an exit code, so check both.
+    assert!(out.status.success(), "exited {:?}", out.status);
+    assert!(
+        !String::from_utf8_lossy(&out.stderr).contains("libc++abi"),
+        "the process aborted: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_missing_bump_map_is_reported_rather_than_read_as_no_bumps() {
+    let dir = bump_fixture("missingmap");
+    std::fs::remove_file(dir.join("mem_front.bmap")).unwrap();
+    let out = Command::new(bin())
+        .args(["read-3dblox", "--input"])
+        .arg(dir.join("stack.3dbx"))
+        .arg("--output")
+        .arg(dir.join("out.odb"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "the geometry is still worth having");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("mem_front.bmap"), "the missing map must be named: {err}");
+}

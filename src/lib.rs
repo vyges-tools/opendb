@@ -463,6 +463,24 @@ impl Db {
     pub fn create_net(&mut self, name: &str) -> Result<()> {
         Ok(sys::create_net(self.r(), name)?)
     }
+    /// Read the cell masters from a LEF into a named library.
+    ///
+    /// [`Db::tech_from_lef`] reads a LEF's layers; this reads its cells. A bump map names cell
+    /// types, and those masters live in the `LEF_file` a `.3dbv` already points at.
+    pub fn lib_from_lef(&mut self, lib: &str, tech: &str, lef_path: &str) -> Result<()> {
+        Ok(sys::lib_from_lef(self.r(), lib, tech, lef_path)?)
+    }
+
+    /// A placeholder bump master for a cell type no available LEF defines.
+    ///
+    /// **Pass `0, 0` unless you know the real geometry.** odb reads a bump's position from the
+    /// instance bounding-box *centre* (`dbUnfoldedChipBumpInst::getGlobalPosition`) while a bump
+    /// map records its *origin* (`BmapWriter`), so at any other size the two disagree by half the
+    /// master and a map written out then read back moves.
+    pub fn create_bump_master(&mut self, name: &str, width: i32, height: i32) -> Result<()> {
+        Ok(sys::bump_master_create(self.r(), name, width, height)?)
+    }
+
     pub fn create_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_inst(self.r(), master, name)?)
     }

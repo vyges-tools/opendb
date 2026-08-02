@@ -91,6 +91,17 @@ read-3dblox: 1 element(s) the database cannot represent:
   connection soc_to_virtual (virtual, no bottom)
 ```
 
+Bump maps are read too: a region's `bmap` becomes real `dbChipBump`s in the database, so
+`check-3dblox`'s **Bump Alignment** check — which had nothing to run on before, because a `.3dbx`
+produced a database with no bumps — now catches a bump map whose bumps do not fit their die.
+
+Bump masters are created **zero-sized**, and that is not laziness: odb takes a bump's position
+from the instance bounding-box *centre* (`dbUnfoldedChipBumpInst::getGlobalPosition`) while a bump
+map records its *origin* (`BmapWriter`). At any other size the two disagree by half the master, so
+a map written out and read back would move. Zero-sized makes centre and origin the same point, so
+a loaded bump sits exactly where the file says. Real cell geometry would have to come from the
+`LEF_file` leg, which this phase does not read.
+
 Three known losses, all reported rather than dropped: virtual bonds (`bot: ~`) have no bottom die
 to attach to; a non-rectangular region collapses to its bounding rectangle; and a stack whose dies
 are on different processes cannot be fully held, because a database carries **one** technology.

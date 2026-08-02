@@ -23,7 +23,7 @@ pub use parse::{parse_dbv, parse_dbx};
 
 use crate::{Db, Error, Result};
 use preprocess::expand_glob;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// One bonded pair of surfaces, resolved from an assembly: which two regions mate, where their
@@ -265,6 +265,66 @@ impl Db {
                         asm.lossy_regions.push(format!("{}/{}", def.name, r.name));
                     }
                 }
+            }
+        }
+
+        // Bumps, before the chip instances that will carry them: `dbChipInst::create` derives
+        // its region *and bump* instances from the master as it stands, so a bump added after
+        // the instance exists never reaches the unfolded model and is silently unchecked.
+        for def in asm.defs.values() {
+            let bumped: Vec<&Region> = def.regions.iter().filter(|r| r.bmap.is_some()).collect();
+            if bumped.is_empty() {
+                continue;
+            }
+            // A chip needs a block to hold the bump instances. The design top deliberately has
+            // none (see above), but a chiplet that carries bumps does.
+            self.create_chip_block(&def.name, &format!("{}_blk", def.name))?;
+            for r in bumped {
+                let path = r.bmap.as_deref().expect("filtered on Some");
+                let text = match std::fs::read_to_string(path) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        // A missing bump map is not a reason to abandon the whole assembly — the
+                        // geometry is still worth having — but it must not pass for "no bumps".
+                        let note = format!("{}/{}: bump map {path} not read ({e})", def.name, r.name);
+                        event(vyges_events::Severity::Warn, "BLOX-BMAP-MISSING", note.clone());
+                        asm.lossy_regions.push(note);
+                        continue;
+                    }
+                };
+                let map = crate::d2d::BumpMap::parse(&text);
+                for (line, why) in &map.errors {
+                    let note = format!("{path}:{line}: {why}");
+                    event(vyges_events::Severity::Warn, "BLOX-BMAP-LINE", note.clone());
+                    asm.lossy_regions.push(note);
+                }
+                // One master per distinct cell type. Zero-sized on purpose: odb takes a bump's
+                // position from the instance bbox CENTRE while the map records its ORIGIN, so
+                // any other size moves every bump by half the master. Real geometry would have
+                // to come from the `LEF_file` leg, which this phase does not read.
+                for cell in map.bumps.iter().map(|b| b.cell.as_str()).collect::<BTreeSet<_>>() {
+                    self.create_bump_master(cell, 0, 0)?;
+                }
+                // Instances live in the owning chip's block, which odb reaches by re-rooting the
+                // database at that chip — the addressing model, not a trick.
+                self.set_top_chip(&def.name)?;
+                for b in &map.bumps {
+                    self.create_inst(&b.cell, &b.inst)?;
+                    self.set_inst_location(
+                        &b.inst,
+                        dbu(b.x, dbu_per_micron),
+                        dbu(b.y, dbu_per_micron),
+                    )?;
+                }
+                self.set_top_chip(&top)?;
+                for b in &map.bumps {
+                    self.create_chip_bump(&def.name, &r.name, &b.inst)?;
+                }
+                event(
+                    vyges_events::Severity::Info,
+                    "BLOX-BMAP",
+                    format!("{}/{}: {} bump(s) from {path}", def.name, r.name, map.bumps.len()),
+                );
             }
         }
 

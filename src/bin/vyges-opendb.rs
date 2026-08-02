@@ -942,8 +942,10 @@ fn blox_findings(db: &Db) -> Vec<(String, String)> {
             .ok()
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
+        let nameable = !UNNAMEABLE_MARKER_CATEGORIES.contains(&check);
         for i in 0..count {
-            let name = vyges_opendb::registry::get(db, "dbMarker", "get_name",
+            let field = if nameable { "get_name" } else { "get_comment" };
+            let name = vyges_opendb::registry::get(db, "dbMarker", field,
                                                    &[path.clone(), i.to_string()])
                 .ok()
                 .and_then(|v| v.as_str().map(str::to_string))
@@ -1081,6 +1083,18 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     }
     Err("view-3dblox requires a build with --features gen-write; released binaries have it".into())
 }
+
+/// Categories whose markers carry a `dbChipBumpInst` source.
+///
+/// `dbMarker::getName()` switches on its sources' object types and calls `logger->error()` on
+/// anything it does not handle — and `dbChipBumpInst` is not handled. `utl::Logger::error` throws,
+/// our generated getter is bound infallible, and the process **aborts**. Measured, not feared: a
+/// single bump outside its region killed `check-3dblox` outright.
+///
+/// So for these two, read the comment and leave the name alone. The comment is a stored string
+/// and carries the useful text anyway ("Bump is outside its parent region ..."). Both checks add
+/// `marker->addSource(bump->getChipBumpInst())`, which is why it is these two and not one.
+const UNNAMEABLE_MARKER_CATEGORIES: [&str; 2] = ["Bump Alignment", "Logical Connectivity"];
 
 const BLOX_CHECKS: [&str; 7] = [
     "Logical Connectivity",
@@ -1337,11 +1351,13 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         if count == 0 {
             continue; // checks that passed are omitted rather than listed as zero
         }
+        // See UNNAMEABLE_MARKER_CATEGORIES: asking these for a name aborts the process.
+        let nameable = !UNNAMEABLE_MARKER_CATEGORIES.contains(&check);
         let markers: Vec<serde_json::Value> = (0..count)
             .map(|i| {
                 let keys = [path.clone(), i.to_string()];
                 serde_json::json!({
-                    "name": get("dbMarker", "get_name", &keys),
+                    "name": if nameable { get("dbMarker", "get_name", &keys) } else { None },
                     "comment": get("dbMarker", "get_comment", &keys),
                 })
             })

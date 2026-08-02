@@ -109,9 +109,16 @@ fn upstreams_assembly_loads_into_a_database_and_lints_clean() {
     ] {
         assert_eq!(markers(&db, c), 0, "{c}");
     }
-    // and the one thing Phase 1 cannot express is named, not dropped
-    assert_eq!(lossy.len(), 1);
-    assert!(lossy[0].contains("soc_to_virtual"), "got: {lossy:?}");
+    // and what could not be taken in is named, not dropped. Two things here, and the second is
+    // upstream's, not ours: `back_reg` declares `bmap: example.bmap` and that file is not shipped
+    // with the example. Reporting it is the point — a bump map that silently fails to load would
+    // leave every bump check with nothing to look at and a clean verdict to show for it.
+    assert_eq!(lossy.len(), 2, "got: {lossy:?}");
+    assert!(lossy.iter().any(|l| l.contains("soc_to_virtual")), "got: {lossy:?}");
+    assert!(
+        lossy.iter().any(|l| l.contains("example.bmap") && l.contains("not read")),
+        "got: {lossy:?}"
+    );
 }
 
 #[test]
