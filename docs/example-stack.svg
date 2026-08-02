@@ -26,10 +26,10 @@
 <text x="563.2" y="253.5" font-size="9.0" fill="#d62728" text-anchor="start">logic_to_interposer</text>
 <text x="48.0" y="374.0" font-size="12.0" fill="#444444" text-anchor="start" font-weight="600">Plan (X-Y) · to scale</text>
 <rect x="48.0" y="380.0" width="244.0" height="187.7" fill="#f28e2b" fill-opacity="0.18" stroke="#f28e2b" stroke-width="1.4"/>
-<text x="54.0" y="395.0" font-size="10.0" fill="#f28e2b" text-anchor="start">u_interposer  z=0.0um</text>
 <rect x="62.1" y="426.9" width="140.8" height="122.0" fill="#59a14f" fill-opacity="0.18" stroke="#59a14f" stroke-width="1.4"/>
-<text x="68.1" y="454.9" font-size="10.0" fill="#59a14f" text-anchor="start">u_logic  z=100.0um</text>
 <rect x="207.5" y="431.6" width="75.1" height="103.2" fill="#4e79a7" fill-opacity="0.18" stroke="#4e79a7" stroke-width="1.4"/>
+<text x="54.0" y="395.0" font-size="10.0" fill="#f28e2b" text-anchor="start">u_interposer  z=0.0um</text>
+<text x="68.1" y="454.9" font-size="10.0" fill="#59a14f" text-anchor="start">u_logic  z=100.0um</text>
 <text x="213.5" y="472.6" font-size="10.0" fill="#4e79a7" text-anchor="start">u_hbm  z=350.0um</text>
 <text x="48.0" y="688.0" font-size="11.0" fill="#d62728" text-anchor="start" font-weight="600">checks: 1 finding(s)</text>
 <text x="58.0" y="703.0" font-size="10.0" fill="#aa3333" text-anchor="start">Floating chips — u_hbm</text>

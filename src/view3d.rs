@@ -432,6 +432,7 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
     let ps = inner.min(PLAN_H - 2.0 * MARGIN) / ex.max(ey);
     let ps = (inner / ex).min((PLAN_H - 2.0 * MARGIN) / ey).min(ps.max(f64::MIN_POSITIVE));
     sc.push(Shape::text(MARGIN, plan_top - 6.0, "Plan (X-Y) · to scale", 12.0, SUBHEAD).bolded());
+    let mut die_labels: Vec<Shape> = Vec::new();
     for (i, d) in a.dies.iter().enumerate() {
         let c = a.color(&d.master);
         let x = MARGIN + d.x * ps;
@@ -449,7 +450,10 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
         // Stacked dies very often share a footprint exactly, and then every label lands on the
         // same pixel and all but the last is invisible — a two-die stack that reads as one die.
         // Step each label down a line so the drawing shows how many there really are.
-        sc.push(Shape::text(
+        //
+        // Deferred, not drawn here: the heat map paints over this rectangle, and a label emitted
+        // now ends up underneath it. Names last, so the map cannot bury them.
+        die_labels.push(Shape::text(
             x + 6.0,
             y + 15.0 + 13.0 * i as f64,
             format!("{}  z={:.1}um", d.inst, d.z / dbu_per_um),
@@ -513,6 +517,10 @@ pub fn to_scene(a: &Assembly3d, dbu_per_um: f64) -> Scene {
             9.5,
             DIM,
         ));
+    }
+
+    for l in die_labels {
+        sc.push(l);
     }
 
     // ── Findings from the linter. The engines say what; this says where. ──

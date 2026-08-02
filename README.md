@@ -174,6 +174,30 @@ from the same scene, so they cannot drift into being pictures of different thing
 `cargo run --features gen-write --example draw_stack`. The memory die sits above the bond plane,
 which is why the linter reports it floating; the drawing is how you see that at a glance.*
 
+### Where the interface is off: `--heatmap`
+
+`check-d2d` says which bumps are wrong. `--heatmap` shades the **measured** separation of every
+mated pair onto the plan view, so the *shape* of the error is visible — and shape is diagnosis. A
+uniform drift across the field is a placement or thermal-expansion error; a hot corner is warpage;
+scatter is overlay noise. A count cannot tell those apart.
+
+```sh
+vyges-opendb view-3dblox -i stack.3dbx -o stack.png --heatmap
+```
+
+![Die-to-die misalignment heat map](docs/example-heatmap.png)
+
+*The same assembly with a misalignment field over the memory die — drift across X plus a lifted
+corner. Regenerate with `cargo run --features gen-write --example draw_stack`. **This field is
+synthetic**: the example database carries no bump maps, so there is nothing real to measure; on
+real input the values come from `check-d2d`.*
+
+**This is a measurement, not a yield prediction, and the drawing says so.** Predicting yield needs
+particle density, Cu recess and surface roughness — process inputs no layout carries. What this
+gives you is the layout-side input a yield model (such as UCLA's YAP, integrated into OpenROAD
+over a file interface) consumes. `check-d2d --json` emits the same numbers per finding —
+`x_um`, `y_um`, `distance_um`, and signed `dx_um`/`dy_um` — so you can feed one or plot your own.
+
 It draws two views, because one is not enough. A **plan** view shows footprints and overhang; it
 cannot show stacking order, die thickness, bond gaps, or **which face is bonded** — and those are
 the entire subject of an assembly. So the primary view is the **cross-section**, the drawing a

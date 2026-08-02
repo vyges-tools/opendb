@@ -66,5 +66,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         asm.dies.len(),
         asm.bonds.len()
     );
+
+    // ── The same assembly with a die-to-die misalignment heat map. ──
+    //
+    // The field here is SYNTHETIC, like the stack it sits on: this database has no bump maps, so
+    // there is nothing real to measure. It is shaped the way a genuine defect looks rather than
+    // scattered at random — a linear drift across X, which is what a rotated or thermally
+    // mismatched die produces, plus a hot corner of the kind a warped die gives. A demo field of
+    // uniform noise would show a pretty gradient and teach nobody what to look for.
+    //
+    // On real input the values come from `check-d2d`, which measures them. See `--heatmap`.
+    let hbm = asm
+        .dies
+        .iter()
+        .find(|d| d.inst == "u_hbm")
+        .ok_or("u_hbm missing")?;
+    let (cols, rows) = (24, 32);
+    let mut points = Vec::with_capacity(cols * rows);
+    for i in 0..cols {
+        for j in 0..rows {
+            let (u, v) = (i as f64 / (cols - 1) as f64, j as f64 / (rows - 1) as f64);
+            let drift = 1.4 * u;
+            // A corner that lifts: falls off with distance from the top-right of the field.
+            let warp = 2.2 * ((u - 1.0).powi(2) + (v - 1.0).powi(2)).sqrt().mul_add(-1.0, 1.0).max(0.0).powi(2);
+            points.push(vyges_opendb::view3d::OverlayPoint {
+                x: hbm.x + u * hbm.w,
+                y: hbm.y + v * hbm.h,
+                value: drift + warp,
+            });
+        }
+    }
+    let n = points.len();
+    let mut hot = asm.clone();
+    hot.overlay = vyges_opendb::view3d::Overlay {
+        points,
+        label: "misalignment".into(),
+        unit: "um".into(),
+    };
+    std::fs::write("docs/example-heatmap.svg", to_svg(&hot, 1000.0))?;
+    std::fs::write("docs/example-heatmap.png", to_png(&hot, 1000.0, 2.0))?;
+    eprintln!("wrote docs/example-heatmap.{{svg,png}} — {n} synthetic samples over u_hbm");
     Ok(())
 }
