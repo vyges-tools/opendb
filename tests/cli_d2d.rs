@@ -38,8 +38,8 @@ fn a_matching_interface_reports_clean() {
 
 #[test]
 fn the_defects_upstream_reports_zero_for_are_all_named() {
-    let (ok, j, err) = run(&["--top", TOP, "--bottom", BAD]);
-    assert!(ok, "{err}");
+    let (ok, j, _err) = run(&["--top", TOP, "--bottom", BAD]);
+    assert!(!ok, "violations exit non-zero so CI fails");
     assert!(j["violations"].as_u64().unwrap() > 0);
 
     let kinds = &j["by_kind"];
@@ -172,9 +172,9 @@ fn an_assembly_is_checked_without_any_geometry_on_the_command_line() {
 fn a_defect_in_a_bump_map_reaches_the_assembly_level_report() {
     let dir = scratch("broken");
     std::fs::copy(dir.join("mem_front_broken.bmap"), dir.join("mem_front.bmap")).unwrap();
-    let (ok, j, err) = run(&["--input", dir.join("stack.3dbx").to_str().unwrap()]);
-    assert!(ok, "{err}");
-    assert_eq!(j["violations"], 5);
+    let (ok, j, _err) = run(&["--input", dir.join("stack.3dbx").to_str().unwrap()]);
+    assert!(!ok, "violations exit non-zero");
+    assert_eq!(j["violations"], 5, "and the report is still printed");
     let k = &j["interfaces"][0]["by_kind"];
     assert_eq!(k["unmated"], 1);
     assert_eq!(k["misaligned"], 1);
@@ -193,7 +193,7 @@ fn the_wrong_orientation_is_loud_rather_than_silent() {
     std::fs::write(&p, text).unwrap();
 
     let (ok, j, _) = run(&["--input", p.to_str().unwrap()]);
-    assert!(ok);
+    assert!(!ok, "a reversed interface must fail the job, not just report");
     assert_eq!(j["violations"], 4, "the whole interface should read as reversed");
     assert_eq!(j["interfaces"][0]["by_kind"]["net-mismatch"], 4);
 }
@@ -235,4 +235,31 @@ fn mixing_the_two_input_forms_is_refused() {
     let (ok, _, err) = run(&["--input", STACK, "--top", TOP]);
     assert!(!ok);
     assert!(err.contains("--top"), "{err}");
+}
+
+#[test]
+fn a_check_that_finds_something_exits_non_zero() {
+    // A sign-off check that always exits 0 cannot gate anything: a CI job goes green over a dead
+    // interface, which is the exact failure this command exists to prevent. Every other engine in
+    // the suite exits non-zero on a violation; these were the exception until this test.
+    let (clean_ok, j, _) = run(&["--top", TOP, "--bottom", GOOD]);
+    assert!(clean_ok, "a clean interface must exit 0");
+    assert_eq!(j["violations"], 0);
+
+    let (bad_ok, j, _) = run(&["--top", TOP, "--bottom", BAD]);
+    assert!(!bad_ok, "violations must exit non-zero so CI fails");
+    assert!(j["violations"].as_u64().unwrap() > 0, "and still print the report");
+}
+
+#[test]
+fn the_assembly_form_gates_too() {
+    let (ok, j, _) = run(&["--input", STACK]);
+    assert!(ok, "the fixture assembly is clean");
+    assert_eq!(j["violations"], 0);
+
+    let dir = scratch("exitcode");
+    std::fs::copy(dir.join("mem_front_broken.bmap"), dir.join("mem_front.bmap")).unwrap();
+    let (ok, j, _) = run(&["--input", dir.join("stack.3dbx").to_str().unwrap()]);
+    assert!(!ok, "a broken interface read from the assembly must also fail the job");
+    assert_eq!(j["violations"], 5, "and the report is still on stdout to be parsed");
 }

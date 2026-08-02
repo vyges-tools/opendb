@@ -356,9 +356,13 @@ fn a_bump_outside_its_die_is_now_caught_from_an_assembly() {
         .success());
 
     let out = Command::new(bin()).args(["check-3dblox", "--input"]).arg(&odb).output().unwrap();
-    assert!(
-        out.status.success(),
-        "check-3dblox must not abort on a bump finding: {}",
+    // Exit 1 is the CORRECT outcome here — it found something. What must not happen is an abort,
+    // which is a signal, not an exit code. So assert the code is exactly 1.
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "expected a clean 'found violations' exit, got {:?}: {}",
+        out.status,
         String::from_utf8_lossy(&out.stderr)
     );
     let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -391,8 +395,9 @@ fn a_bump_finding_does_not_abort_the_process() {
         .unwrap();
 
     let out = Command::new(bin()).args(["check-3dblox", "--input"]).arg(&odb).output().unwrap();
-    // An abort shows up as a signal, not an exit code, so check both.
-    assert!(out.status.success(), "exited {:?}", out.status);
+    // An abort shows up as a SIGNAL (no exit code at all), which is what distinguishes it from
+    // the legitimate exit-1 for "found violations".
+    assert_eq!(out.status.code(), Some(1), "aborted rather than exited: {:?}", out.status);
     assert!(
         !String::from_utf8_lossy(&out.stderr).contains("libc++abi"),
         "the process aborted: {}",

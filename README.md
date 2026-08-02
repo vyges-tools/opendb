@@ -150,6 +150,10 @@ It is a **checker, not a repairer**: it annotates the in-memory database with ma
 modifies the design, so `Db::check_3dblox` takes `&self` and nothing is persisted unless you
 write the database out. Re-running is idempotent.
 
+**Both checks exit non-zero when they find something**, matching every other sign-off engine in
+the suite, so they gate CI directly. The report still goes to stdout — a failing job and a
+readable report are not alternatives.
+
 ### The drawing
 
 The linter says *what* is wrong. `view-3dblox` says *where* — one self-contained SVG, no server

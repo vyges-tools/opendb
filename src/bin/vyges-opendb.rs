@@ -1271,7 +1271,7 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         for s in &skipped {
             eprintln!("check-d2d: not checked — {s}");
         }
-        return Ok(());
+        return fail_on(violations);
     }
 
     let top = top.ok_or("check-d2d: --input <stack.3dbx>, or --top and --bottom, required")?;
@@ -1291,6 +1291,17 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "check-d2d: {} unparseable line(s); those bumps were not checked",
             report.parse_errors.len()
         );
+    }
+    // Non-zero on violations, matching every other sign-off engine in the suite. A checker that
+    // always exits 0 cannot gate anything: a CI job would go green over a dead interface, which
+    // is the exact failure this command exists to prevent.
+    fail_on(report.violations())
+}
+
+/// Exit code for a check: 0 clean, 1 when it found something.
+fn fail_on(violations: usize) -> Result<(), Fail> {
+    if violations > 0 {
+        std::process::exit(1);
     }
     Ok(())
 }
@@ -1401,7 +1412,8 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "{}",
         serde_json::json!({ "violations": violations, "categories": categories })
     );
-    Ok(())
+    // Non-zero on violations, so this gates CI like the rest of the suite.
+    fail_on(violations as usize)
 }
 
 const REPORT_WIRE_LENGTH_DESCRIBE: &str = r#"{
