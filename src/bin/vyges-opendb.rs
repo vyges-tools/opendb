@@ -159,6 +159,10 @@ fn run() -> Result<(), Fail> {
             println!("vyges-opendb {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        "--describe" => {
+            println!("{TOOL_DESCRIBE}");
+            Ok(())
+        }
         "" | "-h" | "--help" => {
             print!("{USAGE}");
             Ok(())
@@ -166,6 +170,53 @@ fn run() -> Result<(), Fail> {
         other => Err(format!("unknown command '{other}'. Try 'vyges-opendb --help'.").into()),
     }
 }
+
+/// Tool-level contract (`vyges-opendb --describe`). Per-step contracts stay on the steps
+/// (`vyges-opendb <step> --describe`); this one declares what the *binary* is and which schema it
+/// speaks, so a caller can interrogate it without already knowing a step name — the uniform
+/// interrogation point every other Vyges engine already offers.
+///
+/// Deliberately carries no `invocation`: this binary is not callable as a single operation, and a
+/// descriptor without one is ignored by MCP's engine parser rather than exposed as a broken tool.
+///
+/// The whole crate moves in unison — the step surface is a function of the pinned upstream
+/// OpenROAD odb source (`vyges-opendb-lib`, `openroad-pin.yaml`), not an independently versioned
+/// list — so `steps` ships and is reviewed with the dispatch table it describes.
+const TOOL_DESCRIBE: &str = r#"{
+  "schema": "vyges-tool-descriptor/1.1",
+  "kind": "multi-step",
+  "name": "opendb",
+  "summary": "OpenDB (.odb) database surgery, inspection, and D2D/3D checks",
+  "describe_per_step": true,
+  "steps": [
+    "info",
+    "insert-eco-buffers",
+    "insert-eco-diodes",
+    "manual-global-placement",
+    "manual-macro-placement",
+    "diodes-on-ports",
+    "cell-frequency-tables",
+    "report-disconnected-pins",
+    "set-power-connections",
+    "add-obstructions",
+    "remove-obstructions",
+    "write-verilog-header",
+    "report-wire-length",
+    "read-3dblox",
+    "view-3dblox",
+    "check-d2d",
+    "check-3dblox",
+    "apply-eco-plan",
+    "report-connectivity",
+    "custom-io-placement",
+    "write-def",
+    "read-def",
+    "apply-def-template",
+    "fields",
+    "get",
+    "set"
+  ]
+}"#;
 
 /// `info --input <f.odb>` — read a design and print a one-line summary.
 fn info(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
