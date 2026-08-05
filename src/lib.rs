@@ -333,6 +333,28 @@ impl Db {
         sys::iterm_avg_xy(self.r(), inst, pin, &mut x, &mut y).then_some((x, y))
     }
 
+    /// The pin's own metal, in placed coordinates — every ROUTING-layer box of the terminal
+    /// with the instance's transform applied.
+    ///
+    /// [`Db::iterm_avg_xy`] says where a pin roughly is; this says what it physically touches,
+    /// which is what decides the conductor it joins. Matching by proximity instead merges
+    /// conductors that are electrically separate.
+    pub fn iterm_pin_boxes(&self, inst: &str, pin: &str) -> Vec<WireShape> {
+        sys::iterm_pin_boxes(self.r(), inst, pin)
+            .chunks_exact(5)
+            .map(|c| WireShape {
+                layer: c[0],
+                x0: c[1] as i32,
+                y0: c[2] as i32,
+                x1: c[3] as i32,
+                y1: c[4] as i32,
+                is_via: false,
+                via_bottom: -1,
+                via_top: -1,
+            })
+            .collect()
+    }
+
     /// A diffusion-dependent antenna limit curve.
     ///
     /// LEF states antenna limits either as plain ratios or as these PWL curves, where the limit
