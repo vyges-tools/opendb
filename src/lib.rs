@@ -105,6 +105,40 @@ pub fn init_events_logging() {
 #[cfg(not(unix))]
 pub fn init_events_logging() {}
 
+/// Which diffusion-dependent antenna limit curve to read.
+///
+/// An enum rather than a string so a caller cannot name a curve the database layer does not
+/// know: an unrecognised selector would come back as zero points, which is indistinguishable
+/// from "this layer states no such limit" — a silent pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffCurve {
+    /// `ANTENNADIFFAREARATIO` — partial area.
+    Par,
+    /// `ANTENNACUMDIFFAREARATIO` — cumulative area.
+    Car,
+    /// `ANTENNADIFFSIDEAREARATIO` — partial side area. The only curve sky130 states.
+    Psr,
+    /// `ANTENNACUMDIFFSIDEAREARATIO` — cumulative side area.
+    Csr,
+    /// `ANTENNAAREADIFFREDUCEPWL` — area reduction as a function of diffusion.
+    AreaDiffReduce,
+    /// `ANTENNAGATEPLUSDIFF` in PWL form.
+    GatePlusDiff,
+}
+
+impl DiffCurve {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DiffCurve::Par => "par",
+            DiffCurve::Car => "car",
+            DiffCurve::Psr => "psr",
+            DiffCurve::Csr => "csr",
+            DiffCurve::AreaDiffReduce => "area_diff_reduce",
+            DiffCurve::GatePlusDiff => "gate_plus_diff",
+        }
+    }
+}
+
 /// An OpenDB design database (owns a `dbDatabase` + its logger). Unix-only.
 #[cfg(unix)]
 pub struct Db {
@@ -218,6 +252,34 @@ impl Db {
     /// Gate area (µm²) from the pin's antenna model — the ratio's denominator. Zero when the
     /// pin has no model, which means *not applicable*, not "a gate of zero area".
     pub fn mterm_antenna_gate_area(&self, master: &str, term: &str) -> f64 { sys::mterm_antenna_gate_area(self.r(), master, term) }
+    /// Diffusion area (µm²) on the pin — the index into the diff-ratio PWL curves.
+    ///
+    /// Note the asymmetry in odb: gate area lives on the pin's antenna *model*, diffusion area
+    /// directly on the `dbMTerm`. A pin can therefore carry a diffusion area while having no
+    /// antenna model at all.
+    pub fn mterm_antenna_diff_area(&self, master: &str, term: &str) -> f64 { sys::mterm_antenna_diff_area(self.r(), master, term) }
+
+    /// A diffusion-dependent antenna limit curve.
+    ///
+    /// LEF states antenna limits either as plain ratios or as these PWL curves, where the limit
+    /// is a function of the diffusion area connected to the net. Some technologies — sky130
+    /// among them — state *only* the PWL form, so a checker that reads only the plain ratios
+    /// finds no limits at all there.
+    pub fn layerantenna_diff_pwl(&self, layer: &str, which: DiffCurve) -> Vec<(f64, f64)> {
+        // The selector comes from the enum, never from a caller's string, so the underlying
+        // "unknown curve" error is unreachable by construction. It exists so that a typo in
+        // the FFI layer is loud rather than reading as "this layer states no limit".
+        let n = sys::layerantenna_num_diff_pwl(self.r(), layer, which.as_str())
+            .expect("DiffCurve always names a curve the shim knows");
+        (0..n)
+            .map(|i| {
+                (
+                    sys::layerantenna_diff_pwl_index(self.r(), layer, which.as_str(), i).unwrap_or(0.0),
+                    sys::layerantenna_diff_pwl_ratio(self.r(), layer, which.as_str(), i).unwrap_or(0.0),
+                )
+            })
+            .collect()
+    }
 
     /// Run OpenDB's 3D structural lint (`check_3dblox`) over the chiplet assembly and return
     /// the number of violations found — **0 means clean**.
