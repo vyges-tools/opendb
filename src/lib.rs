@@ -105,6 +105,39 @@ pub fn init_events_logging() {
 #[cfg(not(unix))]
 pub fn init_events_logging() {}
 
+/// One routed shape: a metal rectangle on a layer, or a via joining two layers.
+///
+/// Layers are odb layer *numbers*; resolve with [`Db::layer_name_by_number`]. Vias carry the
+/// pair they join rather than a layer of their own — that pair is what makes the routing a
+/// three-dimensional graph instead of a stack of unrelated per-layer pictures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WireShape {
+    /// Routing layer number, or -1 for a via.
+    pub layer: i64,
+    pub x0: i32,
+    pub y0: i32,
+    pub x1: i32,
+    pub y1: i32,
+    pub is_via: bool,
+    /// Via's lower layer number, -1 when not a via.
+    pub via_bottom: i64,
+    /// Via's upper layer number, -1 when not a via.
+    pub via_top: i64,
+}
+
+impl WireShape {
+    /// Does this shape touch or overlap `other` in the plane? Abutment counts: two segments
+    /// that merely share an edge are electrically one piece of metal.
+    pub fn touches(&self, other: &WireShape) -> bool {
+        self.x0 <= other.x1 && other.x0 <= self.x1 && self.y0 <= other.y1 && other.y0 <= self.y1
+    }
+
+    /// Does this shape cover the point? Used to anchor a pin to the metal it connects to.
+    pub fn contains(&self, x: i32, y: i32) -> bool {
+        self.x0 <= x && x <= self.x1 && self.y0 <= y && y <= self.y1
+    }
+}
+
 /// Which diffusion-dependent antenna limit curve to read.
 ///
 /// An enum rather than a string so a caller cannot name a curve the database layer does not
@@ -258,6 +291,47 @@ impl Db {
     /// directly on the `dbMTerm`. A pin can therefore carry a diffusion area while having no
     /// antenna model at all.
     pub fn mterm_antenna_diff_area(&self, master: &str, term: &str) -> f64 { sys::mterm_antenna_diff_area(self.r(), master, term) }
+
+    /// Every routed shape on `net`, with the connectivity needed to walk it as a graph.
+    ///
+    /// The per-layer area accessors answer "how much metal does this net have on this layer",
+    /// which is the wrong question for an antenna check: the charge a gate collects comes only
+    /// from the metal *reachable from that gate* over layers at or below the one being
+    /// deposited. Two gates on one net can sit on different branches and see very different
+    /// metal until a higher layer joins them.
+    ///
+    /// One call per net rather than per shape — a per-shape accessor re-walks the wire on every
+    /// query, which is quadratic exactly on the big nets that matter.
+    pub fn net_wire_shapes(&self, net: &str) -> Vec<WireShape> {
+        sys::net_wire_shapes(self.r(), net)
+            .chunks_exact(8)
+            .map(|c| WireShape {
+                layer: c[0],
+                x0: c[1] as i32,
+                y0: c[2] as i32,
+                x1: c[3] as i32,
+                y1: c[4] as i32,
+                is_via: c[5] != 0,
+                via_bottom: c[6],
+                via_top: c[7],
+            })
+            .collect()
+    }
+
+    /// Layer name for an odb layer number (empty when unknown).
+    pub fn layer_name_by_number(&self, number: i64) -> String {
+        sys::layer_name_by_number(self.r(), number)
+    }
+
+    /// Where an instance pin sits, for anchoring a gate to the shape graph.
+    ///
+    /// `None` when odb cannot place the pin — which a caller must treat as "cannot attribute",
+    /// never as the origin. Silently anchoring an unplaced pin at (0,0) would attach it to
+    /// whatever happens to be routed near the die corner.
+    pub fn iterm_avg_xy(&self, inst: &str, pin: &str) -> Option<(i32, i32)> {
+        let (mut x, mut y) = (0i32, 0i32);
+        sys::iterm_avg_xy(self.r(), inst, pin, &mut x, &mut y).then_some((x, y))
+    }
 
     /// A diffusion-dependent antenna limit curve.
     ///
