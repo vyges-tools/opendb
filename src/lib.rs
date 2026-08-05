@@ -193,6 +193,32 @@ impl Db {
     /// Total routed wire length over all nets, in DBU.
     pub fn total_wire_length(&self) -> u64 { sys::total_wire_length(self.r()) }
 
+    // ---- antenna ratio inputs (routed substrate) ----------------------------
+    // Numerator and denominator for the antenna check in `vyges-ant`. Read off the ROUTED
+    // database — the substrate where `RepairAntennas` can still act — not off a GDS.
+    //
+    // Areas are DBU²; the LEF states gate area in µm², so a caller computing a ratio must
+    // divide by `dbu_per_micron()²` first. Mixing them silently is a ~10⁶ error on sky130.
+
+    /// How many routing layers this net has metal on (0 if unrouted or unknown).
+    pub fn num_net_wire_layers(&self, net: &str) -> usize { sys::num_net_wire_layers(self.r(), net) }
+    /// Name of the net's `i`-th routing layer (empty past the end). Order is stable.
+    pub fn nth_net_wire_layer(&self, net: &str, i: usize) -> String { sys::nth_net_wire_layer(self.r(), net, i) }
+    /// Metal area of `net` on `layer`, in DBU². Zero if the net has no metal there.
+    ///
+    /// v0 bound: overlapping shapes on one layer are double-counted (raw rectangle sum, not a
+    /// union). Conservative — it over-reports area, hence the ratio, hence never hides a
+    /// violation — but it is a real difference from a union-area computation.
+    pub fn net_wire_area_on_layer(&self, net: &str, layer: &str) -> i64 { sys::net_wire_area_on_layer(self.r(), net, layer) }
+    /// Metal perimeter of `net` on `layer`, in DBU. Side area = this × [`Db::layer_thickness`].
+    pub fn net_wire_perimeter_on_layer(&self, net: &str, layer: &str) -> i64 { sys::net_wire_perimeter_on_layer(self.r(), net, layer) }
+    /// Layer thickness in DBU from the LEF, or 0 when the LEF states none — which a caller
+    /// must not read as a zero-thickness layer. Without it, side-area ratios are unavailable.
+    pub fn layer_thickness(&self, layer: &str) -> i32 { sys::layer_thickness(self.r(), layer) }
+    /// Gate area (µm²) from the pin's antenna model — the ratio's denominator. Zero when the
+    /// pin has no model, which means *not applicable*, not "a gate of zero area".
+    pub fn mterm_antenna_gate_area(&self, master: &str, term: &str) -> f64 { sys::mterm_antenna_gate_area(self.r(), master, term) }
+
     /// Run OpenDB's 3D structural lint (`check_3dblox`) over the chiplet assembly and return
     /// the number of violations found — **0 means clean**.
     ///
