@@ -138,6 +138,31 @@ impl WireShape {
     }
 }
 
+/// One box of routed metal or cut, on a named layer.
+///
+/// Unlike [`WireShape`] a via is not one object here — it has already been decomposed into the
+/// boxes it actually occupies, each on its own layer. `is_routing` separates metal (where the
+/// area/side ratios apply) from cut layers (which carry their own).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerBox {
+    pub layer: i64,
+    pub x0: i32,
+    pub y0: i32,
+    pub x1: i32,
+    pub y1: i32,
+    pub is_routing: bool,
+    /// True when this box came from a via's decomposition rather than a wire segment. Behaves
+    /// like wire metal; kept for diagnosis.
+    pub from_via: bool,
+}
+
+impl LayerBox {
+    /// Do the two boxes touch or overlap in the plane? Abutment counts.
+    pub fn touches(&self, o: &LayerBox) -> bool {
+        self.x0 <= o.x1 && o.x0 <= self.x1 && self.y0 <= o.y1 && o.y0 <= self.y1
+    }
+}
+
 /// Which diffusion-dependent antenna limit curve to read.
 ///
 /// An enum rather than a string so a caller cannot name a curve the database layer does not
@@ -314,6 +339,28 @@ impl Db {
                 is_via: c[5] != 0,
                 via_bottom: c[6],
                 via_top: c[7],
+            })
+            .collect()
+    }
+
+    /// Every routed box of a net, with vias **decomposed** onto the layers they occupy.
+    ///
+    /// [`Db::net_wire_shapes`] reports a via as one bounding box tagged with the pair it joins,
+    /// which loses what matters here: a via is a cut plus an enclosure on the layer below and
+    /// another above. On a net routed at met1 and up, the via enclosure is the *only* metal on
+    /// li1 — where the standard-cell pins are. Without this there is no geometry on the layer
+    /// the pins live on.
+    pub fn net_wire_boxes(&self, net: &str) -> Vec<LayerBox> {
+        sys::net_wire_boxes(self.r(), net)
+            .chunks_exact(7)
+            .map(|c| LayerBox {
+                layer: c[0],
+                x0: c[1] as i32,
+                y0: c[2] as i32,
+                x1: c[3] as i32,
+                y1: c[4] as i32,
+                is_routing: c[5] != 0,
+                from_via: c[6] != 0,
             })
             .collect()
     }
