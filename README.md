@@ -387,11 +387,12 @@ and anything that would need an assembly netlist is declined rather than guessed
 
 ### What it does not do
 
-- **It does not invent TSV geometry.** `tsv` is a per-die boolean; neither 3Dblox's chiplet header
-  nor odb carries TSV locations. A through-path inside a die is inferred from net names matching
-  across its two faces — sound, since both names are in the same netlist, but still a convention
-  rather than a standard. `--no-tsv-inference` turns it off and every finding names the rule it
-  applied.
+- **It does not invent TSV geometry.** `tsv` is a per-die boolean, and the 3D chip schema carries no
+  TSV positions. odb *can* hold TSV geometry — as shapes on a `dbTechLayer` of LEF58 type `TSV` or
+  `TSVMETAL`, in a die's own block — but that is the `LEF_file`/`DEF_file` leg this layer does not
+  read. So a through-path inside a die is inferred from net names matching across its two faces:
+  sound, since both names are in the same netlist, but still a convention rather than a standard.
+  `--no-tsv-inference` turns it off and every finding names the rule it applied.
 - **It does not read a database.** `dbChipNet` exists in odb, but every traversal edge it needs is
   unbridged at our pin (`dbUnfoldedChipNet::getConnectedBumps`, `dbChipRegion::getChipBumps`, the
   `dbUnfoldedChipConn` region relations), and `dbChipBump::setNet` is too — so a database built here

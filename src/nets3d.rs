@@ -50,10 +50,13 @@
 //!
 //! # What it does not do
 //!
-//! It does not invent TSV geometry. `tsv` is a per-die boolean; neither 3Dblox's chiplet header nor
-//! odb carries TSV locations, so a through-path inside a die is inferred from **net names matching
-//! across the die's two faces** — sound, because both names are in the same netlist — and nothing
-//! else. That is still a convention rather than a standard, so every finding says which rule
+//! It does not invent TSV geometry. `tsv` is a per-die boolean and the 3D chip schema carries no TSV
+//! positions. odb is not silent on TSVs generally — a `dbTechLayer` can be LEF58 type `TSV` or
+//! `TSVMETAL` (parsed from LEF by `lefTechLayerTypeParser`), so a die's own block can hold the
+//! shapes — but that is the `LEF_file`/`DEF_file` leg this layer does not read, so nothing here has
+//! a TSV position to work from. A through-path inside a die is therefore inferred from **net names
+//! matching across the die's two faces** — sound, because both names are in the same netlist — and
+//! nothing else. That is still a convention rather than a standard, so every finding says which rule
 //! produced it and [`Options::tsv_inference`] turns it off.
 //!
 //! It also declines to conclude anything a **skipped** bond could explain. A bond whose surfaces

@@ -1445,7 +1445,7 @@ const CHECK_3D_NETS_DESCRIBE: &str = r#"{
   "provenance_limitations": [
       "Net names come from the .bmap files the assembly points at, not from a netlist or a loaded database — the report always states net_source.",
       "A netName belongs to its own die's netlist, so net identity comes from the graph (same name within one die, plus whatever the bonding mates) and never from name equality across unbonded dies. Anything needing an assembly netlist is declined rather than guessed.",
-      "A through-path inside a TSV die is inferred from net names matching across the die's two faces; TSV geometry is not carried by 3Dblox or odb. --no-tsv-inference turns the inference off.",
+      "A through-path inside a TSV die is inferred from net names matching across the die's two faces. 3Dblox and odb's 3D chip schema carry only a per-die tsv boolean, no TSV positions; odb can hold TSV shapes on a dbTechLayer of LEF58 type TSV/TSVMETAL, but that is the LEF_file/DEF_file leg this reader does not read. --no-tsv-inference turns the inference off.",
       "A bond whose surfaces declare no bmap, a virtual bond, and a nested instance path are listed under interfaces_skipped, not counted as clean.",
       "Read-only: it never modifies the assembly or any database."
   ],
