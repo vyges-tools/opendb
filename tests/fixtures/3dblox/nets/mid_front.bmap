@@ -1,0 +1,3 @@
+# The middle die's upper face. n_thru continues from the back face THROUGH the die, which is only
+# possible if the die declares TSVs — the entire subject of this fixture.
+md_f0 MICROBUMP 40.0 40.0 tx[0] n_thru

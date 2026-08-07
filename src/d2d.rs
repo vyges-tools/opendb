@@ -485,15 +485,21 @@ fn key(x: f64, y: f64) -> (i64, i64) {
 /// input is worse than one that reports plainly.
 const NEAREST_PASS_CAP: usize = 4096;
 
-/// Check one die-to-die interface.
-pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Option<f64>) -> D2dReport {
-    let tb: Vec<Bump> = top.bumps.clone();
-    let bb: Vec<Bump> = tf.apply(bottom);
-
-    // A tolerance taken from the design beats one taken from a constant. Half the smaller of the
-    // two pitches: anything closer than that to a bump is nearer to it than to its neighbour, so
-    // a match cannot be ambiguous.
-    let (tolerance, source) = match tolerance_um {
+/// The match radius, and where it came from.
+///
+/// A tolerance taken from the design beats one taken from a constant. Half the smaller of the two
+/// pitches: anything closer than that to a bump is nearer to it than to its neighbour, so a match
+/// cannot be ambiguous.
+///
+/// Public because the through-stack net check derives the same radius per bond, and two
+/// independent rules for "are these two bumps mates?" would let the two checkers disagree about
+/// the same interface.
+pub fn derive_tolerance(
+    top: &BumpMap,
+    bottom: &BumpMap,
+    tolerance_um: Option<f64>,
+) -> (f64, &'static str) {
+    match tolerance_um {
         Some(t) => (t.max(0.0), "specified"),
         None => match (top.min_pitch(), bottom.min_pitch()) {
             (Some(a), Some(b)) => (a.min(b) / 2.0, "derived from bump pitch"),
@@ -502,20 +508,27 @@ pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Optio
             // and say that is what happened.
             (None, None) => (0.0, "exact (too few bumps to derive a pitch)"),
         },
-    };
+    }
+}
 
-    let mut findings = Vec::new();
-    let mut bottom_used = vec![false; bb.len()];
+/// Pair up two bump fields **already in a common frame**, as `(top index, bottom index,
+/// separation)`.
+///
+/// This is the one place that decides what "mates with" means. `check` turns the pairs into
+/// interface findings; the net-continuity check turns them into graph edges. Sharing it is the
+/// point — a second implementation would eventually classify the same bond differently.
+pub fn mate(top: &[Bump], bottom: &[Bump], tolerance: f64) -> Vec<(usize, usize, f64)> {
+    let mut bottom_used = vec![false; bottom.len()];
     let mut pairs: Vec<(usize, usize, f64)> = Vec::new();
 
     // Pass 1 — exact coincidence. This is the overwhelmingly common case in a correct design,
     // and it keeps the quadratic pass below down to the genuinely suspect bumps.
     let mut index: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    for (j, b) in bb.iter().enumerate() {
+    for (j, b) in bottom.iter().enumerate() {
         index.entry(key(b.x, b.y)).or_default().push(j);
     }
     let mut top_unmatched = Vec::new();
-    for (i, t) in tb.iter().enumerate() {
+    for (i, t) in top.iter().enumerate() {
         match index
             .get(&key(t.x, t.y))
             .and_then(|c| c.iter().copied().find(|j| !bottom_used[*j]))
@@ -530,17 +543,17 @@ pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Optio
 
     // Pass 2 — nearest neighbour among what is left, so a near miss is diagnosed as a misalignment
     // rather than as two unrelated orphans. This is the case upstream skips.
-    let leftover_bottom: Vec<usize> = (0..bb.len()).filter(|j| !bottom_used[*j]).collect();
+    let leftover_bottom: Vec<usize> = (0..bottom.len()).filter(|j| !bottom_used[*j]).collect();
     let capped = top_unmatched.len() > NEAREST_PASS_CAP || leftover_bottom.len() > NEAREST_PASS_CAP;
     if !capped && tolerance > 0.0 {
         for &i in &top_unmatched {
-            let t = &tb[i];
+            let t = &top[i];
             let mut best: Option<(usize, f64)> = None;
             for &j in &leftover_bottom {
                 if bottom_used[j] {
                     continue;
                 }
-                let (dx, dy) = (t.x - bb[j].x, t.y - bb[j].y);
+                let (dx, dy) = (t.x - bottom[j].x, t.y - bottom[j].y);
                 let d = (dx * dx + dy * dy).sqrt();
                 if d <= tolerance && best.map_or(true, |(_, bd)| d < bd) {
                     best = Some((j, d));
@@ -551,6 +564,22 @@ pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Optio
                 pairs.push((i, j, d));
             }
         }
+    }
+    pairs
+}
+
+/// Check one die-to-die interface.
+pub fn check(top: &BumpMap, bottom: &BumpMap, tf: Transform, tolerance_um: Option<f64>) -> D2dReport {
+    let tb: Vec<Bump> = top.bumps.clone();
+    let bb: Vec<Bump> = tf.apply(bottom);
+
+    let (tolerance, source) = derive_tolerance(top, bottom, tolerance_um);
+
+    let mut findings = Vec::new();
+    let pairs = mate(&tb, &bb, tolerance);
+    let mut bottom_used = vec![false; bb.len()];
+    for &(_, j, _) in &pairs {
+        bottom_used[j] = true;
     }
 
     let matched_top: std::collections::HashSet<usize> = pairs.iter().map(|(i, _, _)| *i).collect();

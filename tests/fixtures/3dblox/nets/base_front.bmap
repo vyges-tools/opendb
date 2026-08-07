@@ -1,0 +1,4 @@
+# bumpInstName bumpCellType x y portName netName
+# n_thru has to reach the top die; n_local terminates on the middle die.
+bs0 MICROBUMP 40.0 40.0 tx[0] n_thru
+bs1 MICROBUMP 80.0 40.0 tx[1] n_local

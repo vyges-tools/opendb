@@ -1,0 +1,2 @@
+# The top die, where n_thru is supposed to arrive.
+tp0 MICROBUMP 40.0 40.0 rx[0] n_thru

@@ -1,0 +1,3 @@
+# The middle die's lower face — the counterpart to base_front.bmap.
+md_b0 MICROBUMP 40.0 40.0 rx[0] n_thru
+md_b1 MICROBUMP 80.0 40.0 rx[1] n_local

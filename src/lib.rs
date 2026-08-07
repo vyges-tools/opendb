@@ -25,6 +25,8 @@ pub mod d2d;
 #[cfg(unix)]
 pub mod eco;
 #[cfg(unix)]
+pub mod nets3d;
+#[cfg(unix)]
 pub mod report;
 #[cfg(unix)]
 pub mod view3d;

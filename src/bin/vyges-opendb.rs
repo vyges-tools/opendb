@@ -80,6 +80,10 @@ commands:
                             [--tolerance <um>]
                       Check a die-to-die interface: unmated bumps, misalignment, net
                       and bump-cell mismatch across the bond. Emits JSON.
+  check-3d-nets             --input <stack.3dbx> [--tolerance <um>] [--no-tsv-inference]
+                      Check net continuity across the whole stack: a net a die cannot
+                      carry from one face to the other, and nets the bonding shorts
+                      together. Emits JSON.
   check-3dblox              --input <f.odb>
                       3D/chiplet structural sign-off lint; reports violations as JSON (check).
 
@@ -145,6 +149,7 @@ fn run() -> Result<(), Fail> {
         "read-3dblox" => read_3dblox(args),
         "view-3dblox" => view_3dblox(args),
         "check-d2d" => check_d2d(args),
+        "check-3d-nets" => check_3d_nets(args),
         "check-3dblox" => check_3dblox(args),
         "apply-eco-plan" => apply_eco_plan(args),
         "report-connectivity" => report_connectivity(args),
@@ -205,6 +210,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "read-3dblox",
     "view-3dblox",
     "check-d2d",
+    "check-3d-nets",
     "check-3dblox",
     "apply-eco-plan",
     "report-connectivity",
@@ -1431,6 +1437,105 @@ const CHECK_D2D_DESCRIBE: &str = r#"{
   ]
 }
 "#;
+
+const CHECK_3D_NETS_DESCRIBE: &str = r#"{
+  "name": "check-3d-nets",
+  "summary": "check net continuity across a whole chiplet stack: a net a die cannot carry from one face to the other, and nets the bonding shorts together",
+  "maturity": "experimental",
+  "provenance_limitations": [
+      "Net names come from the .bmap files the assembly points at, not from a netlist or a loaded database — the report always states net_source.",
+      "A netName belongs to its own die's netlist, so net identity comes from the graph (same name within one die, plus whatever the bonding mates) and never from name equality across unbonded dies. Anything needing an assembly netlist is declined rather than guessed.",
+      "A through-path inside a TSV die is inferred from net names matching across the die's two faces; TSV geometry is not carried by 3Dblox or odb. --no-tsv-inference turns the inference off.",
+      "A bond whose surfaces declare no bmap, a virtual bond, and a nested instance path are listed under interfaces_skipped, not counted as clean.",
+      "Read-only: it never modifies the assembly or any database."
+  ],
+  "invocation": {
+    "args_template": ["check-3d-nets", "--input", "{input}"],
+    "optional": [
+      { "arg": "tolerance", "flag": "--tolerance" },
+      { "arg": "no_tsv_inference", "flag": "--no-tsv-inference", "kind": "flag" }
+    ],
+    "emits_json": true
+  },
+  "inputs": {
+    "type": "object",
+    "required": ["input"],
+    "properties": {
+      "input":     { "type": "string", "description": "3Dblox assembly (.3dbx)" },
+      "tolerance": { "type": "number", "description": "bump match radius in microns; default is half the bump pitch, per bond" },
+      "no_tsv_inference": { "type": "boolean", "description": "do not join a TSV die's two faces by matching net name" }
+    }
+  },
+  "output": "JSON { violations, by_kind, nets, bumps, groups, unnetted_bumps, net_source, tsv_inference, interfaces_checked, bonds, interfaces_skipped, regions_skipped, findings, parse_errors } on stdout. Finding kinds: severed and net-merged are violations; unresolved and tsv-unused are informational. Exits non-zero when violations > 0.",
+  "consumers": [
+      "Complements check-d2d rather than repeating it: check-d2d asks whether one interface is wired right, this asks whether a net is right across the stack."
+  ]
+}
+"#;
+
+/// `check-3d-nets --input <stack.3dbx>`.
+///
+/// The stack-level counterpart to `check-d2d`. Deliberately `.3dbx`-only: the database has a
+/// `dbChipNet` class, but every traversal edge it would need is unbridged at our pin and
+/// `dbChipBump::setNet` is too, so a database we built carries no chip nets — a database-driven
+/// check would report every stack clean. Refusing a `.odb` and saying why beats that.
+fn check_3d_nets(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    use vyges_opendb::nets3d::{check_assembly, Options};
+    let mut input = None;
+    let mut opts = Options::default();
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--tolerance" => {
+                let v = args.next().ok_or("check-3d-nets: --tolerance needs a number")?;
+                opts.tolerance_um = Some(
+                    v.parse::<f64>()
+                        .map_err(|_| format!("check-3d-nets: --tolerance: not a number: {v}"))?,
+                );
+            }
+            "--no-tsv-inference" => opts.tsv_inference = false,
+            "--describe" => {
+                println!("{CHECK_3D_NETS_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!(
+                    "usage: vyges-opendb check-3d-nets --input <stack.3dbx> \
+                     [--tolerance <um>] [--no-tsv-inference]"
+                );
+                return Ok(());
+            }
+            other => return Err(format!("check-3d-nets: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("check-3d-nets: --input <stack.3dbx> required")?;
+    if input.ends_with(".odb") {
+        return Err("check-3d-nets: reads a 3Dblox assembly (.3dbx), not a database. Net \
+                    continuity needs the per-bump net names, which live in the .bmap files the \
+                    assembly points at; the database's own chip nets are not reachable at this \
+                    pin (dbUnfoldedChipNet::getConnectedBumps and dbChipRegion::getChipBumps are \
+                    not bound, and dbChipBump::setNet is not either, so a database built here \
+                    carries none)."
+            .into());
+    }
+    let report = check_assembly(&input, &opts)?;
+    println!("{}", serde_json::to_string_pretty(&report.to_json())?);
+    // Skipped work goes to stderr as well as into the report: a clean stdout that nobody reads
+    // past is exactly how "not looked at" gets mistaken for "looked and found nothing".
+    for s in &report.interfaces_skipped {
+        eprintln!("check-3d-nets: not checked — {s}");
+    }
+    for s in &report.regions_skipped {
+        eprintln!("check-3d-nets: not placed — {s}");
+    }
+    if !report.parse_errors.is_empty() {
+        eprintln!(
+            "check-3d-nets: {} unparseable bump-map line(s); those bumps were not checked",
+            report.parse_errors.len()
+        );
+    }
+    fail_on(report.violations())
+}
 
 fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut input = None;

@@ -86,7 +86,7 @@ and die-to-die connections.
 
 What it cannot represent, it **names**:
 
-```
+```text
 read-3dblox: 1 element(s) the database cannot represent:
   connection soc_to_virtual (virtual, no bottom)
 ```
@@ -319,6 +319,91 @@ enough, and refusing to check 4,095 good bumps because line 812 has five columns
 tool useless exactly when it is most needed. Bad lines are reported, and their bumps are not
 counted as checked.
 
+## Stack-level net continuity
+
+`check-d2d` asks whether one interface is wired correctly. `check-3d-nets` asks whether a net is
+correct across the whole stack — which no single bond can answer.
+
+```sh
+vyges-opendb check-3d-nets --input stack.3dbx    # [--tolerance <um>] [--no-tsv-inference]
+```
+
+A signal leaves die A's front face, crosses a bond into die B's back face, and has to reach die B's
+front face to continue to die C. If B has no TSVs it does not — and every bond in that stack is
+individually perfect, so nothing else reports it. Measured on `tests/fixtures/3dblox/nets/`, whose
+two assemblies differ only in the middle die's `tsv` flag:
+
+| on the severed stack | reports |
+| --- | --- |
+| `check-3dblox` *Logical Connectivity* | 0 — it compares only bumps already at coincident points |
+| `check-3dblox` `checkNetConnectivity` | 0 — an empty function body upstream |
+| `check-d2d` | 0 — each bond is correctly mated and correctly netted |
+| `check-3d-nets` | **1 `severed`**, naming the die the net cannot cross |
+
+```json
+{ "violations": 1,
+  "by_kind": { "severed": 1 },
+  "nets": 2, "bumps": 6, "groups": 3, "net_source": "bump maps", "tsv_inference": true,
+  "interfaces_checked": 2,
+  "bonds": [ { "bond": "bond0", "top": "u_mid.back", "bottom": "u_base.front",
+               "matched": 2, "tolerance_um": 20.0, "tolerance_source": "derived from bump pitch" } ],
+  "findings": [
+    { "kind": "severed", "net": "n_thru", "chip_inst": "u_mid", "chiplet": "mid_notsv",
+      "tsv": false, "faces": ["back", "front"],
+      "message": "net n_thru lands on u_mid/back and u_mid/front but is not joined between them — chiplet mid_notsv declares no TSVs, so nothing carries the net through the die" } ] }
+```
+
+Net names come from the `.bmap` files the assembly points at, and the report always says so in
+`net_source` — a continuity verdict is uninterpretable without knowing which description of the
+nets produced it.
+
+### Two violations and two observations
+
+**`severed`** and **`net-merged`** are violations and set a non-zero exit. `net-merged` is two
+differently named nets that the bonding shorts together; `check-d2d` reports the same short per
+interface as `net-mismatch`, and here it is one finding for the net, naming every bond that
+contributes — a net shorted at three bonds is one wrong net, not three wrong interfaces.
+
+**`unresolved`** and **`tsv-unused`** are informational and do **not** fail the run. `tsv-unused` is
+a die that declares TSVs no net crosses: not a defect, but either the flag is wrong or a
+through-connection was lost. `unresolved` is a net whose continuity only an **unchecked** bond could
+settle — a finding that would disappear if that bond turned out to be fine is not stated as a
+defect. Failing a build over missing input rather than over a defect is how a checker teaches people
+to ignore it.
+
+### A net name belongs to its own die
+
+The `netName` column names a net in **that die's** netlist. Two instances of one chiplet both carry
+a bump called `VDD`, and those are two different nets until something joins them; what joins die
+nets into assembly nets is the `.3dbx`'s `external.verilog_file`, which this layer does not read. So
+net identity comes from the **graph** — a shared name within one die, plus whatever the bonding
+physically mates — and never from name equality across unbonded dies.
+
+That distinction is load-bearing rather than pedantic. Grouping by name globally reports 38 split
+nets on upstream's own `example.3dbx`, which instantiates one chiplet twice — every `VDD`, `VSS` and
+`soc_io[n]` looks like a net in two pieces, on an assembly where **not one bonded surface carries a
+bump map**. So every finding is scoped to what a single die or a single bond can settle by itself,
+and anything that would need an assembly netlist is declined rather than guessed.
+
+### What it does not do
+
+- **It does not invent TSV geometry.** `tsv` is a per-die boolean; neither 3Dblox's chiplet header
+  nor odb carries TSV locations. A through-path inside a die is inferred from net names matching
+  across its two faces — sound, since both names are in the same netlist, but still a convention
+  rather than a standard. `--no-tsv-inference` turns it off and every finding names the rule it
+  applied.
+- **It does not read a database.** `dbChipNet` exists in odb, but every traversal edge it needs is
+  unbridged at our pin (`dbUnfoldedChipNet::getConnectedBumps`, `dbChipRegion::getChipBumps`, the
+  `dbUnfoldedChipConn` region relations), and `dbChipBump::setNet` is too — so a database built here
+  carries no chip nets at all, and a check over one would report every stack clean. A `.odb` input
+  is refused with that reason rather than checked emptily.
+- **It says nothing about timing.** A through-path that exists can still be unusable; 3D STA needs
+  `dbChipRSeg`/`dbChipCapNode`, absent from `db.h` at our pin.
+- **It never modifies anything.** Read-only, like `check-3dblox`.
+
+A bond that is not checked — no bump map, a virtual bond, a nested instance path — is listed under
+`interfaces_skipped` and reported on stderr, never counted as clean.
+
 ## Build & test
 
 ```sh
@@ -332,5 +417,6 @@ pinned OpenROAD subtree and builds it — see that crate for details). Deps: a C
 ## Status
 
 Read + ECO write path over the db core (v0), plus a 3D/chiplet path: read a 3Dblox assembly,
-lint it, draw it. LEF/DEF/GDS I/O and richer traversal follow the
+lint it, draw it, check its die-to-die interfaces and its stack-level net continuity.
+LEF/DEF/GDS I/O and richer traversal follow the
 `vyges-opendb-lib` roadmap. OpenROAD is BSD-3-Clause; this crate is Apache-2.0 (see NOTICE).

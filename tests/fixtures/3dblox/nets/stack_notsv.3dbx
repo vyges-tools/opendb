@@ -1,0 +1,41 @@
+Header:
+  version: "1.0"
+  unit: "micron"
+  precision: 2000
+  include:
+    - dies.3dbv
+
+Design:
+  name: "nets_stack_notsv"
+
+ChipletInst:
+  u_base:
+    reference: base
+  u_mid:
+    reference: mid_notsv
+  u_top:
+    reference: top
+
+Stack:
+  u_base:
+    loc: [0.0, 0.0]
+    z: 0.0
+    orient: R0
+  u_mid:
+    loc: [0.0, 0.0]
+    z: 250.0
+    orient: R0
+  u_top:
+    loc: [0.0, 0.0]
+    z: 350.0
+    orient: R0
+
+Connection:
+  bond0:
+    top: u_mid.regions.back
+    bot: u_base.regions.front
+    thickness: 0.0
+  bond1:
+    top: u_top.regions.back
+    bot: u_mid.regions.front
+    thickness: 0.0

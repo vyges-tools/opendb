@@ -1,0 +1,79 @@
+Header:
+  version: 2.5
+  unit: "micron"
+  precision: 2000
+
+# Four definitions, so two assemblies can differ in exactly one thing: whether the middle die
+# has TSVs. `mid_notsv` and `mid_tsv` are otherwise identical and share their bump maps, which is
+# what makes the pair a controlled comparison rather than two unrelated stacks.
+ChipletDef:
+  base:
+    type: die
+    design_area: [200, 200]
+    thickness: 250
+    regions:
+      front:
+        side: front
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: base_front.bmap
+  mid_notsv:
+    type: die
+    design_area: [200, 200]
+    thickness: 100
+    tsv: false
+    regions:
+      back:
+        side: back
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: mid_back.bmap
+      front:
+        side: front
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: mid_front.bmap
+  mid_tsv:
+    type: die
+    design_area: [200, 200]
+    thickness: 100
+    tsv: true
+    regions:
+      back:
+        side: back
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: mid_back.bmap
+      front:
+        side: front
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: mid_front.bmap
+  top:
+    type: die
+    design_area: [200, 200]
+    thickness: 180
+    regions:
+      back:
+        side: back
+        coords:
+          - [0, 0]
+          - [200, 0]
+          - [200, 200]
+          - [0, 200]
+        bmap: top_back.bmap
