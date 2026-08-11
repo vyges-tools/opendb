@@ -17,10 +17,10 @@ use vyges_opendb::{eco, report, Db};
 type Fail = Box<dyn std::error::Error>;
 
 const USAGE: &str = "\
-vyges-opendb — OpenROAD's OpenDB (libodb) design database
+vyges opendb — OpenROAD's OpenDB (libodb) design database
 
 usage:
-  vyges-opendb <command> [options]
+  vyges opendb <command> [options]
 
 commands:
   info                --input <f.odb>
