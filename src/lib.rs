@@ -802,6 +802,12 @@ impl Db {
     pub fn has_one_site_master(&self) -> bool {
         sys::has_one_site_master(self.r())
     }
+    /// An instance's bounding box in placed coordinates, `[x_min, y_min, x_max, y_max]`.
+    /// Empty when the instance is unknown. Reflects orientation, which origin + master size does
+    /// not.
+    pub fn inst_bbox(&self, inst: &str) -> Result<Vec<i32>> {
+        Ok(sys::inst_bbox(self.r(), inst)?)
+    }
     /// Create a **physical-only** instance: a cell in the layout but not the netlist, which is
     /// what every tap, endcap and filler is. Use this rather than [`create_inst`](Self::create_inst)
     /// for anything a placer inserts, or the cell lands in the hierarchy.
