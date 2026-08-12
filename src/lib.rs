@@ -802,6 +802,12 @@ impl Db {
     pub fn has_one_site_master(&self) -> bool {
         sys::has_one_site_master(self.r())
     }
+    /// Create a **physical-only** instance: a cell in the layout but not the netlist, which is
+    /// what every tap, endcap and filler is. Use this rather than [`create_inst`](Self::create_inst)
+    /// for anything a placer inserts, or the cell lands in the hierarchy.
+    pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
+        Ok(sys::create_physical_inst(self.r(), master, name)?)
+    }
     /// Name of the `i`th row. Empty when out of range.
     ///
     /// odb hands rows back in **reverse creation order**; anything that numbers or iterates rows
