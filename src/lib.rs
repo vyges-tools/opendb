@@ -802,6 +802,21 @@ impl Db {
     pub fn has_one_site_master(&self) -> bool {
         sys::has_one_site_master(self.r())
     }
+    /// Name of the `i`th row. Empty when out of range.
+    ///
+    /// odb hands rows back in **reverse creation order**; anything that numbers or iterates rows
+    /// inherits that.
+    pub fn nth_row_name(&self, i: usize) -> Result<String> {
+        Ok(sys::nth_row_name(self.r(), i)?)
+    }
+    /// Every row name, in odb's order.
+    pub fn row_names(&self) -> Result<Vec<String>> {
+        (0..self.num_rows()?).map(|i| self.nth_row_name(i)).collect()
+    }
+    /// A site's class (`CORE`, `PAD`, …). Empty when the site is unknown.
+    pub fn site_get_class(&self, site: &str) -> Result<String> {
+        Ok(sys::site_get_class(self.r(), site)?)
+    }
     /// A hybrid site's row pattern as `(site name, orientation)`, in order.
     ///
     /// Empty when the site declares no pattern, which is the ordinary single-height case — the

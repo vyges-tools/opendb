@@ -182,3 +182,25 @@ fn cutting_rows_reaches_odb_and_names_an_unknown_blockage() {
         .expect("no blockages is not an error");
     let _: bool = db.has_one_site_master();
 }
+
+#[test]
+fn rows_can_be_listed_and_their_site_class_read() {
+    let mut db = Db::open(FIXTURE).expect("opens");
+    let site = a_site(&db);
+    let (w, h) = (db.site_get_width(&site), db.site_get_height(&site));
+    db.clear_rows().expect("clear");
+    db.set_die_area(0, 0, w * 100, h * 4).expect("die");
+    for r in 0..3 {
+        db.create_row(&format!("R{r}"), &site, 0, r * h, "R0", "HORIZONTAL", 50, w)
+            .expect("row");
+    }
+    let names = db.row_names().expect("names");
+    assert_eq!(names.len(), 3);
+    assert_eq!(names.len(), db.num_rows().expect("count"));
+    assert!(names.iter().all(|n| n.starts_with('R')));
+    assert!(!db.site_get_class(&site).expect("class").is_empty());
+    assert!(db
+        .site_get_class("no_such_site_xyz")
+        .expect("readable")
+        .is_empty());
+}
