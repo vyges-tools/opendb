@@ -848,6 +848,20 @@ impl Db {
     pub fn track_grid(&self, layer: &str) -> Result<(Vec<i32>, Vec<i32>)> {
         Ok((sys::track_grid_x(self.r(), layer)?, sys::track_grid_y(self.r(), layer)?))
     }
+    /// Track **patterns** on a layer as `(origin, count, step)`, x and y.
+    ///
+    /// [`track_grid`](Self::track_grid) answers "where are the tracks"; this is the grid itself.
+    /// Pin placement indexes tracks by number from a pattern's origin, and a layer may carry
+    /// several patterns with different pitches.
+    pub fn track_patterns(&self, layer: &str) -> Result<(Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>)> {
+        let trip = |v: Vec<i32>| -> Vec<(i32, i32, i32)> {
+            v.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect()
+        };
+        Ok((
+            trip(sys::track_patterns_x(self.r(), layer)?),
+            trip(sys::track_patterns_y(self.r(), layer)?),
+        ))
+    }
     /// Every routing layer name, in stack order, with its routing direction
     /// (`HORIZONTAL`/`VERTICAL`/`NONE`).
     ///
