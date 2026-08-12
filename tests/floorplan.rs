@@ -219,3 +219,14 @@ fn masters_can_be_listed_with_their_types() {
         .expect("readable")
         .is_empty());
 }
+
+#[test]
+fn an_instance_can_be_destroyed_through_the_wrapper() {
+    let mut db = Db::open(FIXTURE).expect("opens");
+    let master = db.nth_master_name(0).expect("a master");
+    db.create_physical_inst(&master, "GONE").expect("created");
+    let before = db.num_insts();
+    db.destroy_inst("GONE").expect("destroyed");
+    assert_eq!(db.num_insts(), before - 1);
+    assert!(db.destroy_inst("GONE").is_err(), "already gone");
+}

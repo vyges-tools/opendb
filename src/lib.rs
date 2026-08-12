@@ -840,6 +840,10 @@ impl Db {
     pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_physical_inst(self.r(), master, name)?)
     }
+    /// Destroy an instance. Errors when it does not exist, so a typo cannot pass as a no-op.
+    pub fn destroy_inst(&mut self, inst: &str) -> Result<()> {
+        Ok(sys::destroy_inst(self.r(), inst)?)
+    }
     /// The `i`th row's `(bbox, site, orientation)`, addressed by INDEX.
     ///
     /// ⚠️ **Use this, not the by-name `row_get_*` accessors, to walk rows.** Row names are **not
