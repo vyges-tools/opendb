@@ -866,6 +866,18 @@ impl Db {
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
             .collect())
     }
+    /// Every **special**-wire box as `(layer number, x0, y0, x1, y1)`, with via enclosures
+    /// decomposed onto the layers they occupy.
+    ///
+    /// Special wires are the power grid. They are a separate collection from routed signal wires,
+    /// and anything reasoning about occupied metal needs both.
+    pub fn swire_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::swire_boxes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
     /// Obstruction rectangles as `(layer number, x0, y0, x1, y1)`.
     pub fn obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
         Ok(sys::obstruction_boxes(self.r())?
