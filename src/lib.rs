@@ -840,6 +840,19 @@ impl Db {
     pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_physical_inst(self.r(), master, name)?)
     }
+    /// The `i`th row's `(bbox, site, orientation)`, addressed by INDEX.
+    ///
+    /// ⚠️ **Use this, not the by-name `row_get_*` accessors, to walk rows.** Row names are **not
+    /// unique** — one upstream test case has 699 rows over 692 names — and the by-name accessors
+    /// return the first match, so a walk by name silently reads one row's geometry for another
+    /// and loses the rest.
+    pub fn nth_row(&self, i: usize) -> Result<Option<(Vec<i32>, String, String)>> {
+        let bbox = sys::nth_row_bbox(self.r(), i)?;
+        if bbox.len() != 4 {
+            return Ok(None);
+        }
+        Ok(Some((bbox, sys::nth_row_site(self.r(), i)?, sys::nth_row_orient(self.r(), i)?)))
+    }
     /// Name of the `i`th row. Empty when out of range.
     ///
     /// odb hands rows back in **reverse creation order**; anything that numbers or iterates rows
