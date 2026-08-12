@@ -840,6 +840,48 @@ impl Db {
     pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_physical_inst(self.r(), master, name)?)
     }
+    /// Every shape of every **placed** instance: `(layer number, x0, y0, x1, y1)` in placed
+    /// coordinates.
+    ///
+    /// This is the design's own metal — pins and internal routing — and it is what density fill
+    /// must not land on. Resolve layer numbers with [`layer_name_by_number`](Self::layer_name_by_number).
+    pub fn inst_shapes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::inst_shapes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
+    /// Obstruction rectangles as `(layer number, x0, y0, x1, y1)`.
+    pub fn obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::obstruction_boxes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
+    /// Create a fill rectangle. `mask` 0 means "no mask", which is what a single-mask layer wants.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_fill(
+        &mut self,
+        needs_opc: bool,
+        mask: u32,
+        layer: &str,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) -> Result<()> {
+        Ok(sys::fill_create(self.r(), needs_opc, mask, layer, x1, y1, x2, y2)?)
+    }
+    /// Number of fill shapes in the block.
+    pub fn num_fills(&self) -> Result<usize> {
+        Ok(sys::num_fills(self.r())?)
+    }
+    /// Destroy every fill; returns the count removed. Fill is regenerated, not patched.
+    pub fn clear_fills(&mut self) -> Result<usize> {
+        Ok(sys::clear_fills(self.r())?)
+    }
     /// Destroy an instance. Errors when it does not exist, so a typo cannot pass as a no-op.
     pub fn destroy_inst(&mut self, inst: &str) -> Result<()> {
         Ok(sys::destroy_inst(self.r(), inst)?)
