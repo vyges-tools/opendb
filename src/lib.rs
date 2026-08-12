@@ -862,6 +862,17 @@ impl Db {
             trip(sys::track_patterns_y(self.r(), layer)?),
         ))
     }
+    /// The **pin groups** the design declares: ports that must land on adjacent slots, and
+    /// whether their declared order matters.
+    ///
+    /// A group is a placement primitive, not a hint: its members occupy a contiguous run of slots,
+    /// so a group that cannot find one has to be handled rather than spread out.
+    pub fn bterm_groups(&self) -> Result<Vec<(Vec<String>, bool)>> {
+        (0..sys::num_bterm_groups(self.r())?)
+            .map(|i| Ok((sys::nth_bterm_group(self.r(), i)?, sys::nth_bterm_group_ordered(self.r(), i)?)))
+            .collect()
+    }
+
     /// A port's **constraint region**, if the design declares one: `(x0, y0, x1, y1)`.
     ///
     /// `set_io_pin_constraint -region` writes this onto the port in the database rather than
