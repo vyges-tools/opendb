@@ -862,6 +862,23 @@ impl Db {
             trip(sys::track_patterns_y(self.r(), layer)?),
         ))
     }
+    /// A port's **constraint region**, if the design declares one: `(x0, y0, x1, y1)`.
+    ///
+    /// `set_io_pin_constraint -region` writes this onto the port in the database rather than
+    /// passing it to a tool, so it survives a write/read cycle and is read back here — a placer
+    /// must not be told the constraints separately, or the two can disagree.
+    ///
+    /// ⚠️ **Read the rectangle's shape, not just its extent.** A DEGENERATE rectangle (zero width
+    /// or zero height) is an interval along one die edge, which is the ordinary case. One with
+    /// real area is a top-layer region, an entirely different placement path.
+    pub fn bterm_constraint_region(&self, bterm: &str) -> Result<Option<(i32, i32, i32, i32)>> {
+        let v = sys::bterm_constraint_region(self.r(), bterm)?;
+        Ok(match v[..] {
+            [x0, y0, x1, y1] => Some((x0, y0, x1, y1)),
+            _ => None,
+        })
+    }
+
     /// Every routing layer name, in stack order, with its routing direction
     /// (`HORIZONTAL`/`VERTICAL`/`NONE`).
     ///
