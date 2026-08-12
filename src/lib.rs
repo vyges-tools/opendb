@@ -206,6 +206,23 @@ pub struct Db {
 }
 
 #[cfg(unix)]
+/// The lattice that top-layer pins are placed on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopLayerGrid {
+    pub layer: String,
+    pub x_step: i32,
+    pub y_step: i32,
+    /// Pin size; a position is legal only if a pin this size fits there.
+    pub pin_width: i32,
+    pub pin_height: i32,
+    /// Clearance a pin must keep from any obstruction.
+    pub keepout: i32,
+    pub region: (i32, i32, i32, i32),
+    /// ⚠️ False means `region` is only an enclosing box. The reference does not handle a
+    /// non-rectangular grid either, so this must be checked rather than assumed.
+    pub region_is_rect: bool,
+}
+
 impl Db {
     /// Read a `.odb` file.
     pub fn open(path: impl AsRef<Path>) -> Result<Db> {
@@ -862,6 +879,29 @@ impl Db {
             trip(sys::track_patterns_y(self.r(), layer)?),
         ))
     }
+    /// The **top-layer pin grid**, if the design defines one
+    /// (`define_pin_shape_pattern`): the layer, the step in each direction, the pin size, the
+    /// keepout, the region's enclosing rectangle, and whether that region really is a rectangle.
+    ///
+    /// Pins assigned to this grid sit on a 2-D lattice *inside* the die rather than on its
+    /// boundary — a different placement surface, not a variation on the edges.
+    pub fn bterm_top_layer_grid(&self) -> Result<Option<TopLayerGrid>> {
+        let v = sys::bterm_top_layer_grid(self.r())?;
+        let [x_step, y_step, pin_width, pin_height, keepout, x0, y0, x1, y1] = v[..] else {
+            return Ok(None);
+        };
+        Ok(Some(TopLayerGrid {
+            layer: sys::bterm_top_layer_grid_layer(self.r())?,
+            x_step,
+            y_step,
+            pin_width,
+            pin_height,
+            keepout,
+            region: (x0, y0, x1, y1),
+            region_is_rect: sys::bterm_top_layer_grid_is_rect(self.r())?,
+        }))
+    }
+
     /// Regions no pin may occupy — `exclude_io_pin_region`, as `(x0, y0, x1, y1)`.
     ///
     /// Read back from the block for the same reason constraints are: the design records them, so
