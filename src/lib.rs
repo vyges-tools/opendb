@@ -732,6 +732,57 @@ impl Db {
     pub fn num_obstructions(&self) -> usize { sys::num_obstructions(self.r()) }
     /// Destroy all obstructions; returns the count removed.
     pub fn clear_obstructions(&mut self) -> usize { sys::clear_obstructions(self.r()) }
+
+    // ---- floorplan write path (the primitives `vyges-ifp` composes) ----
+
+    /// Set the die area, in DBU.
+    pub fn set_die_area(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
+        Ok(sys::block_set_die_area(self.r(), x1, y1, x2, y2)?)
+    }
+    /// Set the core area, in DBU. Note a floorplan usually wants
+    /// [`set_core_area_from_rows`](Self::set_core_area_from_rows) instead: the core a design
+    /// really has is the one its rows cover, not the one that was asked for.
+    pub fn set_core_area(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
+        Ok(sys::block_set_core_area(self.r(), x1, y1, x2, y2)?)
+    }
+    /// Replace the core area with the extent of the rows — odb's `setCoreArea(computeCoreArea())`.
+    pub fn set_core_area_from_rows(&mut self) -> Result<()> {
+        Ok(sys::block_set_core_area_from_rows(self.r())?)
+    }
+    /// The extent the rows cover, as `[x_min, y_min, x_max, y_max]` in DBU, **without** storing
+    /// it. Empty when there are no rows, which is an answer rather than a zero rectangle.
+    pub fn compute_core_area(&self) -> Result<Vec<i32>> {
+        Ok(sys::block_compute_core_area(self.r())?)
+    }
+    /// The technology's manufacturing grid in DBU, or `None` when it states none.
+    ///
+    /// odb reports "none" as 0; passing that on as a number would make every coordinate look
+    /// already-snapped, so absence is kept distinct from a grid of 1.
+    pub fn manufacturing_grid(&self) -> Result<Option<i32>> {
+        let g = sys::tech_manufacturing_grid(self.r())?;
+        Ok(if g > 0 { Some(g) } else { None })
+    }
+    /// Create a row of `num_sites` copies of `site` at `spacing`, starting at (`x`, `y`) in DBU.
+    /// `orient` is an odb orientation (`R0`, `MX`, …) and `direction` is `HORIZONTAL`/`VERTICAL`.
+    /// An unknown site is an error, not a skipped row.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_row(&mut self, name: &str, site: &str, x: i32, y: i32, orient: &str,
+                      direction: &str, num_sites: i32, spacing: i32) -> Result<()> {
+        Ok(sys::row_create(self.r(), name, site, x, y, orient, direction, num_sites, spacing)?)
+    }
+    /// Number of rows in the block.
+    pub fn num_rows(&self) -> Result<usize> { Ok(sys::num_rows(self.r())?) }
+    /// Destroy all rows; returns the count removed. A floorplan is rebuilt, not appended to.
+    pub fn clear_rows(&mut self) -> Result<usize> { Ok(sys::clear_rows(self.r())?) }
+    /// Number of sites across every library the database has loaded.
+    pub fn num_sites(&self) -> Result<usize> { Ok(sys::num_sites(self.r())?) }
+    /// Name of the `i`th site, in library order.
+    pub fn nth_site_name(&self, i: usize) -> Result<String> { Ok(sys::nth_site_name(self.r(), i)?) }
+    /// Every site name the loaded libraries define — what to offer when a caller names one that
+    /// does not exist.
+    pub fn site_names(&self) -> Result<Vec<String>> {
+        (0..self.num_sites()?).map(|i| self.nth_site_name(i)).collect()
+    }
     /// Place a port (`bterm`) pin box on `layer` at the given DBU rectangle. Errors on unknown
     /// bterm/layer.
     pub fn place_bterm(&mut self, bterm: &str, layer: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
