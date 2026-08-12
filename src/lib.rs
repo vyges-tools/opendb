@@ -879,6 +879,20 @@ impl Db {
             trip(sys::track_patterns_y(self.r(), layer)?),
         ))
     }
+    /// The die outline as a closed polygon of `(x, y)` points.
+    ///
+    /// ⚠️ **A rectangle reports five points**, the last repeating the first. More than five means a
+    /// genuinely rectilinear die, and that count is exactly how the reference decides whether to
+    /// place pins on four edges or on an arbitrary outline — so it is a branch condition, not a
+    /// description.
+    pub fn die_area_polygon(&self) -> Result<Vec<(i32, i32)>> {
+        Ok(sys::die_area_polygon(self.r())?
+            .chunks(2)
+            .filter(|c| c.len() == 2)
+            .map(|c| (c[0], c[1]))
+            .collect())
+    }
+
     /// The **top-layer pin grid**, if the design defines one
     /// (`define_pin_shape_pattern`): the layer, the step in each direction, the pin size, the
     /// keepout, the region's enclosing rectangle, and whether that region really is a rectangle.
