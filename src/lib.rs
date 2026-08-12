@@ -783,6 +783,25 @@ impl Db {
     pub fn site_names(&self) -> Result<Vec<String>> {
         (0..self.num_sites()?).map(|i| self.nth_site_name(i)).collect()
     }
+    /// Cut the rows around placed macros — odb's own `cutRows`, not a reimplementation.
+    ///
+    /// `blockage_insts` names the instances to cut around; choosing them (and reporting the ones
+    /// skipped) is the caller's job, because that is engine policy rather than database
+    /// mechanics. An unknown instance name is an error.
+    pub fn cut_rows(
+        &mut self,
+        min_row_width: i32,
+        blockage_insts: &[String],
+        halo_x: i32,
+        halo_y: i32,
+    ) -> Result<()> {
+        Ok(sys::block_cut_rows(self.r(), min_row_width, blockage_insts, halo_x, halo_y)?)
+    }
+    /// Does the technology have a single-site-width master? Decides whether tapcell placement
+    /// may leave one-site gaps.
+    pub fn has_one_site_master(&self) -> bool {
+        sys::has_one_site_master(self.r())
+    }
     /// A hybrid site's row pattern as `(site name, orientation)`, in order.
     ///
     /// Empty when the site declares no pattern, which is the ordinary single-height case — the

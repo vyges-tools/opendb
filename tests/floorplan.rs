@@ -169,3 +169,16 @@ fn a_site_without_a_row_pattern_reports_an_empty_one() {
         .expect("readable")
         .is_empty());
 }
+
+#[test]
+fn cutting_rows_reaches_odb_and_names_an_unknown_blockage() {
+    // Row cutting is odb's algorithm; the wrapper's job is to pass the blockage list through and
+    // to refuse a name the block does not define rather than cutting around nothing.
+    let mut db = Db::open(FIXTURE).expect("opens");
+    assert!(db
+        .cut_rows(0, &["no_such_inst_xyz".to_string()], 0, 0)
+        .is_err());
+    db.cut_rows(0, &[], 0, 0)
+        .expect("no blockages is not an error");
+    let _: bool = db.has_one_site_master();
+}
