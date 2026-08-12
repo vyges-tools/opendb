@@ -862,6 +862,31 @@ impl Db {
             trip(sys::track_patterns_y(self.r(), layer)?),
         ))
     }
+    /// Regions no pin may occupy — `exclude_io_pin_region`, as `(x0, y0, x1, y1)`.
+    ///
+    /// Read back from the block for the same reason constraints are: the design records them, so
+    /// a placer told them separately could disagree with what it reads. A degenerate rectangle is
+    /// an interval along one edge.
+    pub fn blocked_regions_for_pins(&self) -> Result<Vec<(i32, i32, i32, i32)>> {
+        Ok(sys::blocked_regions_for_pins(self.r())?
+            .chunks(4)
+            .filter(|c| c.len() == 4)
+            .map(|c| (c[0], c[1], c[2], c[3]))
+            .collect())
+    }
+
+    /// Every metal shape of every port already placed **fixed**: `(layer number, x0, y0, x1, y1)`.
+    ///
+    /// A fixed port is not ours to move — and the positions its metal covers are not ours to fill
+    /// either. Resolve layer numbers with [`layer_name_by_number`](Self::layer_name_by_number).
+    pub fn fixed_bterm_shapes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::fixed_bterm_shapes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
+
     /// The **pin groups** the design declares: ports that must land on adjacent slots, and
     /// whether their declared order matters.
     ///
