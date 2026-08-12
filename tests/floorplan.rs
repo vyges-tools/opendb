@@ -204,3 +204,18 @@ fn rows_can_be_listed_and_their_site_class_read() {
         .expect("readable")
         .is_empty());
 }
+
+#[test]
+fn masters_can_be_listed_with_their_types() {
+    let db = Db::open(FIXTURE).expect("opens");
+    let all = db.masters_with_types().expect("readable");
+    assert_eq!(all.len(), db.num_masters().expect("count"));
+    assert!(all.iter().all(|(n, t)| !n.is_empty() && !t.is_empty()));
+    // The type is the question a name substring cannot answer.
+    let (name, ty) = &all[0];
+    assert_eq!(&db.master_get_type(name).expect("type"), ty);
+    assert!(db
+        .master_get_type("no_such_master_xyz")
+        .expect("readable")
+        .is_empty());
+}

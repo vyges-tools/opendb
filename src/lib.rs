@@ -802,6 +802,32 @@ impl Db {
     pub fn has_one_site_master(&self) -> bool {
         sys::has_one_site_master(self.r())
     }
+    /// Number of masters across every loaded library.
+    pub fn num_masters(&self) -> Result<usize> {
+        Ok(sys::num_masters(self.r())?)
+    }
+    /// Name of the `i`th master. Empty when out of range.
+    pub fn nth_master_name(&self, i: usize) -> Result<String> {
+        Ok(sys::nth_master_name(self.r(), i)?)
+    }
+    /// Every master name, with its LEF class string (`CORE`, `ENDCAP`,
+    /// `ENDCAP_LEF58_LEFTBOTTOMCORNER`, …).
+    ///
+    /// The type is what answers "which cell is the bottom-left endcap?" — a name substring
+    /// cannot, and a library need not name its cells helpfully.
+    pub fn masters_with_types(&self) -> Result<Vec<(String, String)>> {
+        (0..self.num_masters()?)
+            .map(|i| {
+                let n = self.nth_master_name(i)?;
+                let t = self.master_get_type(&n)?;
+                Ok((n, t))
+            })
+            .collect()
+    }
+    /// A master's LEF class string. Empty when the master is unknown.
+    pub fn master_get_type(&self, master: &str) -> Result<String> {
+        Ok(sys::master_get_type(self.r(), master)?)
+    }
     /// An instance's bounding box in placed coordinates, `[x_min, y_min, x_max, y_max]`.
     /// Empty when the instance is unknown. Reflects orientation, which origin + master size does
     /// not.
