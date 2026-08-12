@@ -840,6 +840,20 @@ impl Db {
     pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_physical_inst(self.r(), master, name)?)
     }
+    /// Every routing layer name, in stack order, with its routing direction
+    /// (`HORIZONTAL`/`VERTICAL`/`NONE`).
+    ///
+    /// Direction is not in the generated surface, and it decides how a fill shape is oriented and
+    /// which axis a line-end spacing applies to.
+    pub fn layers_with_direction(&self) -> Result<Vec<(String, String)>> {
+        (0..sys::num_layers(self.r())?)
+            .map(|i| {
+                let n = sys::nth_layer_name(self.r(), i)?;
+                let d = sys::layer_direction(self.r(), &n)?;
+                Ok((n, d))
+            })
+            .collect()
+    }
     /// Every shape of every **placed** instance: `(layer number, x0, y0, x1, y1)` in placed
     /// coordinates.
     ///
