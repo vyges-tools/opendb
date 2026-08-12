@@ -156,3 +156,16 @@ fn a_row_on_an_unknown_site_is_an_error_rather_than_a_no_op() {
         "and it created nothing"
     );
 }
+
+#[test]
+fn a_site_without_a_row_pattern_reports_an_empty_one() {
+    // "No pattern" is the ordinary single-height case, so it must be an empty vector rather
+    // than an error the caller has to distinguish from a real failure.
+    let db = Db::open(FIXTURE).expect("opens");
+    let site = a_site(&db);
+    assert!(db.row_pattern(&site).expect("readable").is_empty());
+    assert!(db
+        .row_pattern("no_such_site_xyz")
+        .expect("readable")
+        .is_empty());
+}

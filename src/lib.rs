@@ -783,6 +783,20 @@ impl Db {
     pub fn site_names(&self) -> Result<Vec<String>> {
         (0..self.num_sites()?).map(|i| self.nth_site_name(i)).collect()
     }
+    /// A hybrid site's row pattern as `(site name, orientation)`, in order.
+    ///
+    /// Empty when the site declares no pattern, which is the ordinary single-height case — the
+    /// caller reads "no pattern" from an empty vector rather than having to ask twice.
+    pub fn row_pattern(&self, site: &str) -> Result<Vec<(String, String)>> {
+        (0..sys::site_row_pattern_len(self.r(), site)?)
+            .map(|i| {
+                Ok((
+                    sys::site_row_pattern_site(self.r(), site, i)?,
+                    sys::site_row_pattern_orient(self.r(), site, i)?,
+                ))
+            })
+            .collect()
+    }
     /// Place a port (`bterm`) pin box on `layer` at the given DBU rectangle. Errors on unknown
     /// bterm/layer.
     pub fn place_bterm(&mut self, bterm: &str, layer: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
