@@ -840,6 +840,14 @@ impl Db {
     pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_physical_inst(self.r(), master, name)?)
     }
+    /// Routing track coordinates on a layer: `(x tracks, y tracks)`.
+    ///
+    /// Every legal pin slot sits on a track, so this is the foundation of pin placement. A layer
+    /// with no track grid — a cut layer, say — reports empty vectors, which is an answer rather
+    /// than an error.
+    pub fn track_grid(&self, layer: &str) -> Result<(Vec<i32>, Vec<i32>)> {
+        Ok((sys::track_grid_x(self.r(), layer)?, sys::track_grid_y(self.r(), layer)?))
+    }
     /// Every routing layer name, in stack order, with its routing direction
     /// (`HORIZONTAL`/`VERTICAL`/`NONE`).
     ///
