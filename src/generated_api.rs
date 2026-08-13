@@ -27,7 +27,11 @@ impl Db {
     pub fn block_get_level_shifters(&self) -> Vec<String> { (0..sys::num_block_get_level_shifters(self.r())).map(|i| sys::nth_block_get_level_shifters(self.r(), i)).collect() }
     pub fn block_get_groups(&self) -> Vec<String> { (0..sys::num_block_get_groups(self.r())).map(|i| sys::nth_block_get_groups(self.r(), i)).collect() }
     pub fn block_get_component_mask_shift(&self) -> Vec<String> { (0..sys::num_block_get_component_mask_shift(self.r())).map(|i| sys::nth_block_get_component_mask_shift(self.r(), i)).collect() }
+    pub fn num_block_get_obstructions(&self) -> usize { sys::num_block_get_obstructions(self.r()) }
+    pub fn num_block_get_blockages(&self) -> usize { sys::num_block_get_blockages(self.r()) }
     pub fn block_get_nets(&self) -> Vec<String> { (0..sys::num_block_get_nets(self.r())).map(|i| sys::nth_block_get_nets(self.r(), i)).collect() }
+    pub fn num_block_get_cap_nodes(&self) -> usize { sys::num_block_get_cap_nodes(self.r()) }
+    pub fn num_block_get_r_segs(&self) -> usize { sys::num_block_get_r_segs(self.r()) }
     pub fn block_get_vias(&self) -> Vec<String> { (0..sys::num_block_get_vias(self.r())).map(|i| sys::nth_block_get_vias(self.r(), i)).collect() }
     pub fn block_get_def_units(&self) -> i32 { sys::block_get_def_units(self.r()) }
     pub fn block_get_db_units_per_micron(&self) -> i32 { sys::block_get_db_units_per_micron(self.r()) }
@@ -35,7 +39,9 @@ impl Db {
     pub fn block_get_corners_per_block(&self) -> i32 { sys::block_get_corners_per_block(self.r()) }
     pub fn block_get_ext_db_count(&self) -> i32 { sys::block_get_ext_db_count(self.r()) }
     pub fn block_get_corner_name_list(&self) -> String { sys::block_get_corner_name_list(self.r()) }
+    pub fn num_block_get_track_grids(&self) -> usize { sys::num_block_get_track_grids(self.r()) }
     pub fn block_get_rows(&self) -> Vec<String> { (0..sys::num_block_get_rows(self.r())).map(|i| sys::nth_block_get_rows(self.r(), i)).collect() }
+    pub fn num_block_get_fills(&self) -> usize { sys::num_block_get_fills(self.r()) }
     pub fn block_get_die_area_x_min(&self) -> i32 { sys::block_get_die_area_x_min(self.r()) }
     pub fn block_get_die_area_y_min(&self) -> i32 { sys::block_get_die_area_y_min(self.r()) }
     pub fn block_get_die_area_x_max(&self) -> i32 { sys::block_get_die_area_x_max(self.r()) }
@@ -53,6 +59,7 @@ impl Db {
     pub fn block_get_min_layer_for_clock(&self) -> i32 { sys::block_get_min_layer_for_clock(self.r()) }
     pub fn block_get_max_layer_for_clock(&self) -> i32 { sys::block_get_max_layer_for_clock(self.r()) }
     pub fn block_get_g_cell_tile_size(&self) -> i32 { sys::block_get_g_cell_tile_size(self.r()) }
+    pub fn num_block_get_c_c_segs(&self) -> usize { sys::num_block_get_c_c_segs(self.r()) }
     pub fn block_get_regions(&self) -> Vec<String> { (0..sys::num_block_get_regions(self.r())).map(|i| sys::nth_block_get_regions(self.r(), i)).collect() }
     pub fn block_get_non_default_rules(&self) -> Vec<String> { (0..sys::num_block_get_non_default_rules(self.r())).map(|i| sys::nth_block_get_non_default_rules(self.r(), i)).collect() }
     pub fn block_get_marker_categories(&self) -> Vec<String> { (0..sys::num_block_get_marker_categories(self.r())).map(|i| sys::nth_block_get_marker_categories(self.r(), i)).collect() }
@@ -126,6 +133,7 @@ impl Db {
     pub fn net_get_first_output(&self, net: &str) -> String { sys::net_get_first_output(self.r(), net) }
     pub fn net_get_b_terms(&self, net: &str) -> Vec<String> { (0..sys::num_net_get_b_terms(self.r(), net)).map(|i| sys::nth_net_get_b_terms(self.r(), net, i)).collect() }
     pub fn net_get1st_b_term(&self, net: &str) -> String { sys::net_get1st_b_term(self.r(), net) }
+    pub fn num_net_get_s_wires(&self, net: &str) -> usize { sys::num_net_get_s_wires(self.r(), net) }
     pub fn net_is_connected_by_abutment(&self, net: &str) -> bool { sys::net_is_connected_by_abutment(self.r(), net) }
     pub fn net_is_i_o(&self, net: &str) -> bool { sys::net_is_i_o(self.r(), net) }
     pub fn net_is_wild_connected(&self, net: &str) -> bool { sys::net_is_wild_connected(self.r(), net) }
@@ -136,9 +144,11 @@ impl Db {
     pub fn net_get_db_cc(&self, net: &str) -> f32 { sys::net_get_db_cc(self.r(), net) }
     pub fn net_get_ref_cc(&self, net: &str) -> f32 { sys::net_get_ref_cc(self.r(), net) }
     pub fn net_get_cc_match_ratio(&self, net: &str) -> f32 { sys::net_get_cc_match_ratio(self.r(), net) }
+    pub fn num_net_get_cap_nodes(&self, net: &str) -> usize { sys::num_net_get_cap_nodes(self.r(), net) }
     pub fn net_get1st_r_seg_id(&self, net: &str) -> u32 { sys::net_get1st_r_seg_id(self.r(), net) }
     pub fn net_get1st_cap_node_id(&self, net: &str) -> u32 { sys::net_get1st_cap_node_id(self.r(), net) }
     pub fn net_get_r_seg_count(&self, net: &str) -> u32 { sys::net_get_r_seg_count(self.r(), net) }
+    pub fn num_net_get_r_segs(&self, net: &str) -> usize { sys::num_net_get_r_segs(self.r(), net) }
     pub fn net_max_internal_cap_num(&self, net: &str) -> u32 { sys::net_max_internal_cap_num(self.r(), net) }
     pub fn net_get_cap_node_count(&self, net: &str) -> u32 { sys::net_get_cap_node_count(self.r(), net) }
     pub fn net_get_cc_count(&self, net: &str) -> u32 { sys::net_get_cc_count(self.r(), net) }
@@ -180,6 +190,7 @@ impl Db {
     pub fn bterm_get_mod_net(&self, bterm: &str) -> String { sys::bterm_get_mod_net(self.r(), bterm) }
     pub fn bterm_get_block(&self, bterm: &str) -> String { sys::bterm_get_block(self.r(), bterm) }
     pub fn bterm_get_i_term(&self, bterm: &str) -> String { sys::bterm_get_i_term(self.r(), bterm) }
+    pub fn num_bterm_get_b_pins(&self, bterm: &str) -> usize { sys::num_bterm_get_b_pins(self.r(), bterm) }
     pub fn bterm_get_first_pin_placement_status(&self, bterm: &str) -> String { sys::bterm_get_first_pin_placement_status(self.r(), bterm) }
     pub fn bterm_get_ground_pin(&self, bterm: &str) -> String { sys::bterm_get_ground_pin(self.r(), bterm) }
     pub fn bterm_get_supply_pin(&self, bterm: &str) -> String { sys::bterm_get_supply_pin(self.r(), bterm) }
@@ -242,6 +253,7 @@ impl Db {
     pub fn mterm_get_io_type(&self, master: &str, term: &str) -> String { sys::mterm_get_io_type(self.r(), master, term) }
     pub fn mterm_is_set_mark(&self, master: &str, term: &str) -> bool { sys::mterm_is_set_mark(self.r(), master, term) }
     pub fn mterm_get_master(&self, master: &str, term: &str) -> String { sys::mterm_get_master(self.r(), master, term) }
+    pub fn num_mterm_get_m_pins(&self, master: &str, term: &str) -> usize { sys::num_mterm_get_m_pins(self.r(), master, term) }
     pub fn mterm_get_b_box_x_min(&self, master: &str, term: &str) -> i32 { sys::mterm_get_b_box_x_min(self.r(), master, term) }
     pub fn mterm_get_b_box_y_min(&self, master: &str, term: &str) -> i32 { sys::mterm_get_b_box_y_min(self.r(), master, term) }
     pub fn mterm_get_b_box_x_max(&self, master: &str, term: &str) -> i32 { sys::mterm_get_b_box_x_max(self.r(), master, term) }
@@ -255,6 +267,8 @@ impl Db {
     pub fn layer_get_wrong_way_min_width(&self, layer: &str) -> u32 { sys::layer_get_wrong_way_min_width(self.r(), layer) }
     pub fn layer_get_layer_adjustment(&self, layer: &str) -> f32 { sys::layer_get_layer_adjustment(self.r(), layer) }
     pub fn layer_get_tech_layer_cut_class_rules(&self, layer: &str) -> Vec<String> { (0..sys::num_layer_get_tech_layer_cut_class_rules(self.r(), layer)).map(|i| sys::nth_layer_get_tech_layer_cut_class_rules(self.r(), layer, i)).collect() }
+    pub fn num_layer_get_tech_layer_cut_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_spacing_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_cut_enclosure_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_enclosure_rules(self.r(), layer) }
     pub fn layer_is_rect_only(&self, layer: &str) -> bool { sys::layer_is_rect_only(self.r(), layer) }
     pub fn layer_is_right_way_on_grid_only(&self, layer: &str) -> bool { sys::layer_is_right_way_on_grid_only(self.r(), layer) }
     pub fn layer_is_right_way_on_grid_only_check_mask(&self, layer: &str) -> bool { sys::layer_is_right_way_on_grid_only_check_mask(self.r(), layer) }
@@ -331,6 +345,7 @@ impl Db {
     pub fn via_get_via_generate_rule(&self, via: &str) -> String { sys::via_get_via_generate_rule(self.r(), via) }
     pub fn via_has_params(&self, via: &str) -> bool { sys::via_has_params(self.r(), via) }
     pub fn via_get_block(&self, via: &str) -> String { sys::via_get_block(self.r(), via) }
+    pub fn num_via_get_boxes(&self, via: &str) -> usize { sys::num_via_get_boxes(self.r(), via) }
     pub fn via_get_top_layer(&self, via: &str) -> String { sys::via_get_top_layer(self.r(), via) }
     pub fn via_get_bottom_layer(&self, via: &str) -> String { sys::via_get_bottom_layer(self.r(), via) }
     pub fn via_is_via_rotated(&self, via: &str) -> bool { sys::via_is_via_rotated(self.r(), via) }
@@ -347,6 +362,7 @@ impl Db {
     pub fn techvia_get_via_generate_rule(&self, via: &str) -> String { sys::techvia_get_via_generate_rule(self.r(), via) }
     pub fn techvia_has_params(&self, via: &str) -> bool { sys::techvia_has_params(self.r(), via) }
     pub fn techvia_get_tech(&self, via: &str) -> String { sys::techvia_get_tech(self.r(), via) }
+    pub fn num_techvia_get_boxes(&self, via: &str) -> usize { sys::num_techvia_get_boxes(self.r(), via) }
     pub fn techvia_get_top_layer(&self, via: &str) -> String { sys::techvia_get_top_layer(self.r(), via) }
     pub fn techvia_get_bottom_layer(&self, via: &str) -> String { sys::techvia_get_bottom_layer(self.r(), via) }
     pub fn techvia_get_non_default_rule(&self, via: &str) -> String { sys::techvia_get_non_default_rule(self.r(), via) }
@@ -379,6 +395,7 @@ impl Db {
     pub fn swire_get_net(&self, net: &str, idx: usize) -> String { sys::swire_get_net(self.r(), net, idx) }
     pub fn swire_get_wire_type(&self, net: &str, idx: usize) -> String { sys::swire_get_wire_type(self.r(), net, idx) }
     pub fn swire_get_shield(&self, net: &str, idx: usize) -> String { sys::swire_get_shield(self.r(), net, idx) }
+    pub fn num_swire_get_wires(&self, net: &str, idx: usize) -> usize { sys::num_swire_get_wires(self.r(), net, idx) }
     pub fn wire_get_block(&self, net: &str) -> String { sys::wire_get_block(self.r(), net) }
     pub fn wire_get_net(&self, net: &str) -> String { sys::wire_get_net(self.r(), net) }
     pub fn wire_is_global_wire(&self, net: &str) -> bool { sys::wire_is_global_wire(self.r(), net) }
@@ -434,6 +451,7 @@ impl Db {
     pub fn region_get_name(&self, region: &str) -> String { sys::region_get_name(self.r(), region) }
     pub fn region_get_region_insts(&self, region: &str) -> Vec<String> { (0..sys::num_region_get_region_insts(self.r(), region)).map(|i| sys::nth_region_get_region_insts(self.r(), region, i)).collect() }
     pub fn region_is_invalid(&self, region: &str) -> bool { sys::region_is_invalid(self.r(), region) }
+    pub fn num_region_get_boundaries(&self, region: &str) -> usize { sys::num_region_get_boundaries(self.r(), region) }
     pub fn region_get_groups(&self, region: &str) -> Vec<String> { (0..sys::num_region_get_groups(self.r(), region)).map(|i| sys::nth_region_get_groups(self.r(), region, i)).collect() }
     pub fn region_get_block(&self, region: &str) -> String { sys::region_get_block(self.r(), region) }
     pub fn blockage_get_instance(&self, idx: usize) -> String { sys::blockage_get_instance(self.r(), idx) }
@@ -583,6 +601,7 @@ impl Db {
     pub fn capnode_get_children_cnt(&self, idx: usize) -> u32 { sys::capnode_get_children_cnt(self.r(), idx) }
     pub fn capnode_get_sort_index(&self, idx: usize) -> u32 { sys::capnode_get_sort_index(self.r(), idx) }
     pub fn capnode_check_c_c(&self, idx: usize) -> bool { sys::capnode_check_c_c(self.r(), idx) }
+    pub fn num_capnode_get_c_c_segs(&self, idx: usize) -> usize { sys::num_capnode_get_c_c_segs(self.r(), idx) }
     pub fn capnode_get_net(&self, idx: usize) -> String { sys::capnode_get_net(self.r(), idx) }
     pub fn rseg_updated_cap(&self, idx: usize) -> bool { sys::rseg_updated_cap(self.r(), idx) }
     pub fn rseg_check_c_c(&self, idx: usize) -> bool { sys::rseg_check_c_c(self.r(), idx) }
@@ -606,6 +625,7 @@ impl Db {
     pub fn sbox_has_via_layer_masks(&self, net: &str, swire_idx: usize, sbox_idx: usize) -> bool { sys::sbox_has_via_layer_masks(self.r(), net, swire_idx, sbox_idx) }
     pub fn bpin_get_placement_status(&self, bterm: &str, idx: usize) -> String { sys::bpin_get_placement_status(self.r(), bterm, idx) }
     pub fn bpin_get_b_term(&self, bterm: &str, idx: usize) -> String { sys::bpin_get_b_term(self.r(), bterm, idx) }
+    pub fn num_bpin_get_boxes(&self, bterm: &str, idx: usize) -> usize { sys::num_bpin_get_boxes(self.r(), bterm, idx) }
     pub fn bpin_get_b_box_x_min(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_x_min(self.r(), bterm, idx) }
     pub fn bpin_get_b_box_y_min(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_y_min(self.r(), bterm, idx) }
     pub fn bpin_get_b_box_x_max(&self, bterm: &str, idx: usize) -> i32 { sys::bpin_get_b_box_x_max(self.r(), bterm, idx) }
@@ -647,6 +667,144 @@ impl Db {
     pub fn techvialayerrule_get_enclosure_overhang2(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_enclosure_overhang2(self.r(), gen_idx, layer_idx) }
     pub fn techvialayerrule_get_spacing_x_spacing(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_spacing_x_spacing(self.r(), gen_idx, layer_idx) }
     pub fn techvialayerrule_get_spacing_y_spacing(&self, gen_idx: usize, layer_idx: usize) -> i32 { sys::techvialayerrule_get_spacing_y_spacing(self.r(), gen_idx, layer_idx) }
+    pub fn cutclassrule_get_name(&self, layer: &str, idx: usize) -> String { sys::cutclassrule_get_name(self.r(), layer, idx) }
+    pub fn cutclassrule_get_width(&self, layer: &str, idx: usize) -> i32 { sys::cutclassrule_get_width(self.r(), layer, idx) }
+    pub fn cutclassrule_get_length(&self, layer: &str, idx: usize) -> i32 { sys::cutclassrule_get_length(self.r(), layer, idx) }
+    pub fn cutclassrule_get_num_cuts(&self, layer: &str, idx: usize) -> i32 { sys::cutclassrule_get_num_cuts(self.r(), layer, idx) }
+    pub fn cutclassrule_is_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cutclassrule_is_length_valid(self.r(), layer, idx) }
+    pub fn cutclassrule_is_cuts_valid(&self, layer: &str, idx: usize) -> bool { sys::cutclassrule_is_cuts_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_cut_class(&self, layer: &str, idx: usize) -> String { sys::cutenclosurerule_get_cut_class(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_eol_width(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_eol_min_length(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_eol_min_length(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_first_overhang(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_first_overhang(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_second_overhang(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_second_overhang(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_spacing(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_spacing(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_extension(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_extension(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_forward_extension(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_forward_extension(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_backward_extension(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_backward_extension(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_min_width(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_min_width(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_cut_within(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_cut_within(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_min_length(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_min_length(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_par_length(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_par_length(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_second_par_length(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_second_par_length(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_par_within(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_par_within(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_second_par_within(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_second_par_within(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_below_enclosure(&self, layer: &str, idx: usize) -> i32 { sys::cutenclosurerule_get_below_enclosure(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_num_corners(&self, layer: &str, idx: usize) -> u32 { sys::cutenclosurerule_get_num_corners(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_cut_class_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_cut_class_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_above(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_above(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_below(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_below(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_eol_min_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_eol_min_length_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_eol_only(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_eol_only(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_short_edge_on_eol(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_short_edge_on_eol(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_side_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_side_spacing_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_end_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_end_spacing_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_off_center_line(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_off_center_line(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_width_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_width_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_include_abutted(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_include_abutted(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_except_extra_cut(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_except_extra_cut(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_prl(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_prl(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_no_shared_edge(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_no_shared_edge(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_length_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_extra_cut_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_extra_cut_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_extra_only(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_extra_only(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_redundant_cut_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_redundant_cut_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_parallel_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_parallel_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_second_parallel_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_second_parallel_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_second_par_within_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_second_par_within_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_below_enclosure_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_below_enclosure_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_is_concave_corners_valid(&self, layer: &str, idx: usize) -> bool { sys::cutenclosurerule_is_concave_corners_valid(self.r(), layer, idx) }
+    pub fn cutenclosurerule_get_type(&self, layer: &str, idx: usize) -> String { sys::cutenclosurerule_get_type(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_cut_spacing(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_cut_spacing(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_orthogonal_spacing(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_orthogonal_spacing(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_width(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_width(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_enclosure(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_enclosure(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_edge_length(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_edge_length(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_par_within(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_par_within(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_par_enclosure(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_par_enclosure(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_edge_enclosure(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_edge_enclosure(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_adj_enclosure(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_adj_enclosure(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_above_enclosure(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_above_enclosure(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_above_width(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_above_width(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_min_length(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_min_length(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_extension(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_extension(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_eol_width(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_num_cuts(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_num_cuts(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_within(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_within(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_second_within(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingrule_get_second_within(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_two_cuts(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_two_cuts(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_prl(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_prl(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_par_length(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_par_length(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_center_to_center(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_center_to_center(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_same_net(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_net(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_same_metal(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_metal(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_same_via(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_via(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_stack(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_stack(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_orthogonal_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_orthogonal_spacing_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_above_width_enclosure_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_above_width_enclosure_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_short_edge_only(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_short_edge_only(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_concave_corner_width(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_concave_corner_width(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_concave_corner_parallel(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_concave_corner_parallel(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_concave_corner_edge_length(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_concave_corner_edge_length(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_concave_corner(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_concave_corner(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_extension_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_extension_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_non_eol_convex_corner(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_non_eol_convex_corner(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_eol_width_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_eol_width_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_min_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_min_length_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_above_width_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_above_width_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_mask_overlap(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_mask_overlap(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_wrong_direction(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_wrong_direction(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_adjacent_cuts(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_adjacent_cuts(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_exact_aligned(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_exact_aligned(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_cut_class_to_all(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_cut_class_to_all(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_no_prl(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_no_prl(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_same_mask(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_mask(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_except_same_pgnet(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_except_same_pgnet(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_side_parallel_overlap(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_side_parallel_overlap(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_except_same_net(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_except_same_net(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_except_same_metal(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_except_same_metal(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_except_same_metal_overlap(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_except_same_metal_overlap(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_except_same_via(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_except_same_via(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_above(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_above(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_except_two_edges(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_except_two_edges(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_two_cuts_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_two_cuts_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_same_cut(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_cut(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_long_edge_only(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_long_edge_only(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_prl_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_prl_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_below(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_below(self.r(), layer, idx) }
+    pub fn cutspacingrule_is_par_within_enclosure_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_par_within_enclosure_valid(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_cut_class(&self, layer: &str, idx: usize) -> String { sys::cutspacingrule_get_cut_class(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_second_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingrule_get_second_layer(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_tech_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingrule_get_tech_layer(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_type(&self, layer: &str, idx: usize) -> String { sys::cutspacingrule_get_type(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_default(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingtablerule_get_default(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_prl(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingtablerule_get_prl(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_extension(&self, layer: &str, idx: usize) -> i32 { sys::cutspacingtablerule_get_extension(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_default_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_default_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_same_mask(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_same_mask(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_same_net(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_same_net(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_same_metal(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_same_metal(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_same_via(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_same_via(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_layer_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_layer_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_no_stack(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_no_stack(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_non_zero_enclosure(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_non_zero_enclosure(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_prl_for_aligned_cut(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_prl_for_aligned_cut(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_center_to_center_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_center_to_center_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_center_and_edge_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_center_and_edge_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_no_prl(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_no_prl(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_prl_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_prl_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_max_x_y(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_max_x_y(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_end_extension_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_end_extension_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_side_extension_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_side_extension_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_exact_aligned_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_exact_aligned_spacing_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_horizontal(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_horizontal(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_prl_horizontal(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_prl_horizontal(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_vertical(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_vertical(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_prl_vertical(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_prl_vertical(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_non_opposite_enclosure_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_non_opposite_enclosure_spacing_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_second_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_second_layer(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_tech_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_tech_layer(self.r(), layer, idx) }
     pub fn layerantenna_is_valid(&self, layer: &str) -> bool { sys::layerantenna_is_valid(self.r(), layer) }
     pub fn layerantenna_has_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_area_factor(self.r(), layer) }
     pub fn layerantenna_has_side_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_side_area_factor(self.r(), layer) }
@@ -724,6 +882,7 @@ impl Db {
     pub fn chipinst_get_b_box_y_max(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_y_max(self.r(), chip, inst) }
     pub fn chipinst_get_b_box_dx(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_dx(self.r(), chip, inst) }
     pub fn chipinst_get_b_box_dy(&self, chip: &str, inst: &str) -> i32 { sys::chipinst_get_b_box_dy(self.r(), chip, inst) }
+    pub fn num_chipinst_get_regions(&self, chip: &str, inst: &str) -> usize { sys::num_chipinst_get_regions(self.r(), chip, inst) }
     pub fn chipregion_get_name(&self, chip: &str, region: &str) -> String { sys::chipregion_get_name(self.r(), chip, region) }
     pub fn chipregion_get_box_x_min(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_x_min(self.r(), chip, region) }
     pub fn chipregion_get_box_y_min(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_y_min(self.r(), chip, region) }
@@ -731,6 +890,7 @@ impl Db {
     pub fn chipregion_get_box_y_max(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_y_max(self.r(), chip, region) }
     pub fn chipregion_get_box_dx(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_dx(self.r(), chip, region) }
     pub fn chipregion_get_box_dy(&self, chip: &str, region: &str) -> i32 { sys::chipregion_get_box_dy(self.r(), chip, region) }
+    pub fn num_chipregion_get_chip_bumps(&self, chip: &str, region: &str) -> usize { sys::num_chipregion_get_chip_bumps(self.r(), chip, region) }
     pub fn chipregion_get_chip(&self, chip: &str, region: &str) -> String { sys::chipregion_get_chip(self.r(), chip, region) }
     pub fn chipregion_get_side(&self, chip: &str, region: &str) -> String { sys::chipregion_get_side(self.r(), chip, region) }
     pub fn chipregion_get_layer(&self, chip: &str, region: &str) -> String { sys::chipregion_get_layer(self.r(), chip, region) }
@@ -752,6 +912,7 @@ impl Db {
     pub fn chippath_get_name(&self, chip: &str, path: &str) -> String { sys::chippath_get_name(self.r(), chip, path) }
     pub fn chippath_get_chip(&self, chip: &str, path: &str) -> String { sys::chippath_get_chip(self.r(), chip, path) }
     pub fn unfoldedchip_get_name(&self, path: &str) -> String { sys::unfoldedchip_get_name(self.r(), path) }
+    pub fn num_unfoldedchip_get_regions(&self, path: &str) -> usize { sys::num_unfoldedchip_get_regions(self.r(), path) }
     pub fn unfoldedchip_get_chip_inst_path(&self, path: &str) -> Vec<String> { (0..sys::num_unfoldedchip_get_chip_inst_path(self.r(), path)).map(|i| sys::nth_unfoldedchip_get_chip_inst_path(self.r(), path, i)).collect() }
     pub fn unfoldedregion_get_parent_chip(&self, path: &str, idx: usize) -> String { sys::unfoldedregion_get_parent_chip(self.r(), path, idx) }
     pub fn unfoldedregion_get_effective_side(&self, path: &str, idx: usize) -> String { sys::unfoldedregion_get_effective_side(self.r(), path, idx) }
@@ -760,6 +921,7 @@ impl Db {
     pub fn unfoldedregion_is_internal(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_internal(self.r(), path, idx) }
     pub fn unfoldedregion_is_internal_ext(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_internal_ext(self.r(), path, idx) }
     pub fn unfoldedregion_get_surface_z(&self, path: &str, idx: usize) -> i32 { sys::unfoldedregion_get_surface_z(self.r(), path, idx) }
+    pub fn num_unfoldedregion_get_bumps(&self, path: &str, idx: usize) -> usize { sys::num_unfoldedregion_get_bumps(self.r(), path, idx) }
     pub fn unfoldedbump_get_global_position_x(&self, path: &str, region_idx: usize, idx: usize) -> i32 { sys::unfoldedbump_get_global_position_x(self.r(), path, region_idx, idx) }
     pub fn unfoldedbump_get_global_position_y(&self, path: &str, region_idx: usize, idx: usize) -> i32 { sys::unfoldedbump_get_global_position_y(self.r(), path, region_idx, idx) }
     pub fn unfoldedbump_get_global_position_z(&self, path: &str, region_idx: usize, idx: usize) -> i32 { sys::unfoldedbump_get_global_position_z(self.r(), path, region_idx, idx) }
