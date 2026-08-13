@@ -1093,6 +1093,14 @@ impl Db {
     pub fn destroy_net(&mut self, net: &str) -> Result<()> {
         Ok(sys::net_destroy(self.r(), net)?)
     }
+    /// The database's own identifier for a terminal.
+    ///
+    /// ⚠️ It reflects **creation order**, so it cannot be reconstructed from geometry or names.
+    /// Reference tools use it to settle ordering ties, where any other tie-break gives a different
+    /// — and equally self-consistent — answer.
+    pub fn iterm_id(&self, inst: &str, pin: &str) -> Result<u32> {
+        Ok(sys::iterm_get_id(self.r(), inst, pin)?)
+    }
     /// Create a block terminal on a net.
     pub fn create_bterm(&mut self, net: &str, name: &str) -> Result<()> {
         Ok(sys::bterm_create(self.r(), net, name)?)
