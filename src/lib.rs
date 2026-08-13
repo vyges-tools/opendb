@@ -1103,6 +1103,18 @@ impl Db {
     ) -> Result<()> {
         Ok(sys::swire_add_box(self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3)?)
     }
+    /// **LEF 5.5 `SPACINGTABLE PARALLELRUNLENGTH`** — the spacing a wire of `width` must keep from
+    /// its neighbours when it runs alongside them for `prl`.
+    ///
+    /// ⚠️ Both arguments matter and both are looked up as thresholds: the table is indexed by the
+    /// widest `WIDTH` row at or below `width` and the longest run-length column at or below `prl`,
+    /// so a long wide wire takes a far larger spacing than its layer's nominal one. Nangate45's
+    /// metal4 gives 280 for a minimum wire and 1800 for a 1um wire running the height of the core.
+    ///
+    /// Returns 0 where the layer declares no such table.
+    pub fn layer_find_v55_spacing(&self, layer: &str, width: i32, prl: i32) -> Result<i32> {
+        Ok(sys::layer_find_v55_spacing(self.r(), layer, width, prl)?)
+    }
     /// A special-wire box carrying an explicit **shape annotation** — `"FOLLOWPIN"`, `"STRIPE"`,
     /// `"RING"`, and so on.
     ///
