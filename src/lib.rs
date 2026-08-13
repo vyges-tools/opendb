@@ -1048,6 +1048,17 @@ impl Db {
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
             .collect())
     }
+    /// Placement blockage rectangles as `(x0, y0, x1, y1)`.
+    ///
+    /// ⚠️ Distinct from [`Self::obstruction_boxes`], which are *routing* obstructions and carry a
+    /// layer. A placement blockage has no layer: it forbids cells outright, everywhere in its box.
+    pub fn blockage_boxes(&self) -> Result<Vec<(i32, i32, i32, i32)>> {
+        Ok(sys::blockage_boxes(self.r())?
+            .chunks(4)
+            .filter(|c| c.len() == 4)
+            .map(|c| (c[0], c[1], c[2], c[3]))
+            .collect())
+    }
     /// Create a fill rectangle. `mask` 0 means "no mask", which is what a single-mask layer wants.
     #[allow(clippy::too_many_arguments)]
     pub fn create_fill(
