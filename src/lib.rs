@@ -1093,6 +1093,20 @@ impl Db {
     pub fn destroy_net(&mut self, net: &str) -> Result<()> {
         Ok(sys::net_destroy(self.r(), net)?)
     }
+    /// Append a special-wire box to a net, making the wire container if it has none.
+    pub fn add_swire_box(
+        &mut self,
+        net: &str,
+        layer: &str,
+        rect: (i32, i32, i32, i32),
+        fixed: bool,
+    ) -> Result<()> {
+        Ok(sys::swire_add_box(self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3)?)
+    }
+    /// Remove a net's **routed** special wires, keeping any marked fixed.
+    pub fn clear_routed_swires(&mut self, net: &str) -> Result<usize> {
+        Ok(sys::swire_clear_routed(self.r(), net)?)
+    }
     /// The database's own identifier for a terminal.
     ///
     /// ⚠️ It reflects **creation order**, so it cannot be reconstructed from geometry or names.
