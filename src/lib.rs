@@ -1103,6 +1103,24 @@ impl Db {
     ) -> Result<()> {
         Ok(sys::swire_add_box(self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3)?)
     }
+    /// A special-wire box carrying an explicit **shape annotation** — `"FOLLOWPIN"`, `"STRIPE"`,
+    /// `"RING"`, and so on.
+    ///
+    /// ⚠️ [`Self::add_swire_box`] writes `IOWIRE`, which is what a wire with no particular role is.
+    /// Every wire in a power grid has one, and a DEF comparison sees the difference: identical
+    /// geometry under the wrong annotation matches nothing.
+    pub fn add_swire_box_shaped(
+        &mut self,
+        net: &str,
+        layer: &str,
+        rect: (i32, i32, i32, i32),
+        fixed: bool,
+        shape: &str,
+    ) -> Result<()> {
+        Ok(sys::swire_add_box_shaped(
+            self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3, shape,
+        )?)
+    }
     /// Remove a net's **routed** special wires, keeping any marked fixed.
     pub fn clear_routed_swires(&mut self, net: &str) -> Result<usize> {
         Ok(sys::swire_clear_routed(self.r(), net)?)
