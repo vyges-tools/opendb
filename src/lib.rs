@@ -903,6 +903,13 @@ impl Db {
     pub fn master_pin_boxes(&self, master: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
         Ok(chunk5(sys::master_pin_boxes(self.r(), master)?))
     }
+    /// Pin rectangles of **one** terminal, as `(layer number, x0, y0, x1, y1)` in master coordinates.
+    ///
+    /// ⚠️ [`Self::master_pin_boxes`] merges every terminal's shapes together, which throws away
+    /// which terminal a shape belongs to. Connection by abutment turns on exactly that.
+    pub fn mterm_pin_boxes(&self, master: &str, term: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(chunk5(sys::mterm_pin_boxes(self.r(), master, term)?))
+    }
 
     /// A layer's **type** — `ROUTING`, `CUT`, `OVERLAP`, and so on.
     ///
@@ -1082,6 +1089,10 @@ impl Db {
         Ok(sys::clear_fills(self.r())?)
     }
     /// Destroy an instance. Errors when it does not exist, so a typo cannot pass as a no-op.
+    /// Delete a net. Its terminals are left disconnected rather than deleted.
+    pub fn destroy_net(&mut self, net: &str) -> Result<()> {
+        Ok(sys::net_destroy(self.r(), net)?)
+    }
     pub fn destroy_inst(&mut self, inst: &str) -> Result<()> {
         Ok(sys::destroy_inst(self.r(), inst)?)
     }
