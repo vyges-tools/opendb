@@ -223,6 +223,14 @@ pub struct TopLayerGrid {
     pub region_is_rect: bool,
 }
 
+/// Regroup a flat `(layer, x0, y0, x1, y1)` stream into tuples.
+fn chunk5(v: Vec<i32>) -> Vec<(i64, i32, i32, i32, i32)> {
+    v.chunks(5)
+        .filter(|c| c.len() == 5)
+        .map(|c| (c[0] as i64, c[1], c[2], c[3], c[4]))
+        .collect()
+}
+
 impl Db {
     /// Read a `.odb` file.
     pub fn open(path: impl AsRef<Path>) -> Result<Db> {
@@ -879,6 +887,31 @@ impl Db {
             trip(sys::track_patterns_y(self.r(), layer)?),
         ))
     }
+    /// A **master's own** shapes, in master coordinates: `(layer number, x0, y0, x1, y1)`.
+    ///
+    /// Master coordinates, not placed ones — a placer asks "would this cell fit here" about a cell
+    /// it has not put anywhere yet, so it needs the shapes before any transform.
+    ///
+    /// Obstructions and pin shapes are separate because they are treated differently: an
+    /// obstruction on an OVERLAP-type layer is the cell's true **outline**, while pin shapes take
+    /// part in the per-layer clearance check.
+    pub fn master_obstruction_boxes(&self, master: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(chunk5(sys::master_obstruction_boxes(self.r(), master)?))
+    }
+
+    /// A master's pin shapes, in master coordinates: `(layer number, x0, y0, x1, y1)`.
+    pub fn master_pin_boxes(&self, master: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(chunk5(sys::master_pin_boxes(self.r(), master)?))
+    }
+
+    /// A layer's **type** — `ROUTING`, `CUT`, `OVERLAP`, and so on.
+    ///
+    /// ⚠️ The type, not the name. A layer named `OVERLAP` in one technology is a coincidence; the
+    /// type is what marks an obstruction as an outline rather than as metal.
+    pub fn layer_get_type(&self, layer: &str) -> Result<String> {
+        Ok(sys::layer_get_type(self.r(), layer)?)
+    }
+
     /// The die outline as a closed polygon of `(x, y)` points.
     ///
     /// ⚠️ **A rectangle reports five points**, the last repeating the first. More than five means a
