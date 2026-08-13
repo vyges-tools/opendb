@@ -1115,6 +1115,10 @@ impl Db {
     pub fn iterm_id(&self, inst: &str, pin: &str) -> Result<u32> {
         Ok(sys::iterm_get_id(self.r(), inst, pin)?)
     }
+    /// The database's own identifier for an instance. Maps keyed by instance iterate in this order.
+    pub fn inst_id(&self, inst: &str) -> Result<u32> {
+        Ok(sys::inst_get_id(self.r(), inst)?)
+    }
     /// Create a block terminal on a net.
     pub fn create_bterm(&mut self, net: &str, name: &str) -> Result<()> {
         Ok(sys::bterm_create(self.r(), net, name)?)
