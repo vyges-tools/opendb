@@ -1093,6 +1093,22 @@ impl Db {
     pub fn destroy_net(&mut self, net: &str) -> Result<()> {
         Ok(sys::net_destroy(self.r(), net)?)
     }
+    /// Create a block terminal on a net.
+    pub fn create_bterm(&mut self, net: &str, name: &str) -> Result<()> {
+        Ok(sys::bterm_create(self.r(), net, name)?)
+    }
+    /// Add a pin shape to a block terminal, returning the new pin's index.
+    ///
+    /// ⚠️ The pin and its box are made in one call because a `dbBPin` has no name — there is no
+    /// way to address the pin in between. The index returned is what the `bpin_*` accessors take.
+    pub fn create_bterm_pin(
+        &mut self,
+        bterm: &str,
+        layer: &str,
+        rect: (i32, i32, i32, i32),
+    ) -> Result<usize> {
+        Ok(sys::bterm_create_pin(self.r(), bterm, layer, rect.0, rect.1, rect.2, rect.3)?)
+    }
     pub fn destroy_inst(&mut self, inst: &str) -> Result<()> {
         Ok(sys::destroy_inst(self.r(), inst)?)
     }
