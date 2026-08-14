@@ -1103,6 +1103,45 @@ impl Db {
     ) -> Result<()> {
         Ok(sys::swire_add_box(self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3)?)
     }
+    /// Create a **generated via** with explicit cut geometry, or leave an existing one of that
+    /// name untouched.
+    ///
+    /// ⚠️ `cut_spacing` is **edge-to-edge**, which is what the database stores — not the
+    /// centre-to-centre pitch a via generator works in. Passing the pitch spreads every cut array
+    /// by one cut width.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_generated_via(
+        &mut self,
+        name: &str,
+        rule: &str,
+        layers: (&str, &str, &str),
+        cut: (i32, i32),
+        cut_spacing: (i32, i32),
+        bottom_enclosure: (i32, i32),
+        top_enclosure: (i32, i32),
+        rows: i32,
+        columns: i32,
+    ) -> Result<()> {
+        Ok(sys::via_create_generated(
+            self.r(), name, rule, layers.0, layers.1, layers.2,
+            cut.0, cut.1, cut_spacing.0, cut_spacing.1,
+            bottom_enclosure.0, bottom_enclosure.1, top_enclosure.0, top_enclosure.1,
+            rows, columns,
+        )?)
+    }
+    /// Place a via on a net's special wire.
+    ///
+    /// ⚠️ A via is placed by its **centre**, unlike [`Self::add_swire_box`], which is given corners.
+    pub fn add_swire_via(
+        &mut self,
+        net: &str,
+        via: &str,
+        at: (i32, i32),
+        fixed: bool,
+        shape: &str,
+    ) -> Result<()> {
+        Ok(sys::swire_add_via(self.r(), net, fixed, via, at.0, at.1, shape)?)
+    }
     /// **LEF 5.5 `SPACINGTABLE PARALLELRUNLENGTH`** — the spacing a wire of `width` must keep from
     /// its neighbours when it runs alongside them for `prl`.
     ///
