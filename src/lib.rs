@@ -1172,6 +1172,21 @@ impl Db {
     pub fn layer_min_area(&self, layer: &str) -> Result<i64> {
         Ok(sys::layer_min_area(self.r(), layer)?)
     }
+    /// Every box of a named tech via as `(layer_number, x0, y0, x1, y1)`.
+    ///
+    /// A tech via is fixed geometry declared by the technology — cut boxes on its cut layer and
+    /// metal boxes on its two routing layers. Empty when no via of that name exists.
+    pub fn tech_via_boxes(&self, via: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::tech_via_boxes(self.r(), via)?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0] as i64, c[1], c[2], c[3], c[4]))
+            .collect())
+    }
+    /// A tech via's bottom (`"bottom"`) or top (`"top"`) routing layer name.
+    pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
+        Ok(sys::tech_via_layer(self.r(), via, which)?)
+    }
     /// A special-wire box carrying an explicit **shape annotation** — `"FOLLOWPIN"`, `"STRIPE"`,
     /// `"RING"`, and so on.
     ///
