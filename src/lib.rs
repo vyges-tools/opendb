@@ -1162,6 +1162,16 @@ impl Db {
     pub fn layer_find_v55_spacing(&self, layer: &str, width: i32, prl: i32) -> Result<i32> {
         Ok(sys::layer_find_v55_spacing(self.r(), layer, width, prl)?)
     }
+    /// The minimum area a shape on this layer must have, in square database units.
+    ///
+    /// ⚠️ Where LEF58 `AREA` rules exist the **largest** of them governs and the layer's own
+    /// `AREA` is ignored entirely rather than combined with them. A rule of 0 is skipped rather
+    /// than treated as a minimum.
+    ///
+    /// Returns 0 where the layer sets no minimum, which is the common case.
+    pub fn layer_min_area(&self, layer: &str) -> Result<i64> {
+        Ok(sys::layer_min_area(self.r(), layer)?)
+    }
     /// A special-wire box carrying an explicit **shape annotation** — `"FOLLOWPIN"`, `"STRIPE"`,
     /// `"RING"`, and so on.
     ///
