@@ -1187,6 +1187,17 @@ impl Db {
             .map(|c| (c[0] as i64, c[1], c[2], c[3], c[4]))
             .collect())
     }
+    /// Every box of one block pin as `(layer_number, x0, y0, x1, y1)`.
+    ///
+    /// ⚠️ Distinct from the pin's bounding box, which carries no layer: a pin may have boxes on
+    /// several layers, and an obstruction belongs to the layer its box is on.
+    pub fn bpin_layer_boxes(&self, bterm: &str, pin: usize) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::bpin_layer_boxes(self.r(), bterm, pin)?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0] as i64, c[1], c[2], c[3], c[4]))
+            .collect())
+    }
     /// A tech via's bottom (`"bottom"`) or top (`"top"`) routing layer name.
     pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
         Ok(sys::tech_via_layer(self.r(), via, which)?)
