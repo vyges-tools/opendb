@@ -1129,12 +1129,16 @@ impl Db {
         top_enclosure: (i32, i32),
         rows: i32,
         columns: i32,
+        // The via's own centre offset. ⚠️ A via built from a technology-declared one carries
+        // the offset of that via's cut extent; one built from a generate rule is centred already
+        // and passes (0, 0).
+        origin: (i32, i32),
     ) -> Result<()> {
         Ok(sys::via_create_generated(
             self.r(), name, rule, layers.0, layers.1, layers.2,
             cut.0, cut.1, cut_spacing.0, cut_spacing.1,
             bottom_enclosure.0, bottom_enclosure.1, top_enclosure.0, top_enclosure.1,
-            rows, columns,
+            rows, columns, origin.0, origin.1,
         )?)
     }
     /// Place a via on a net's special wire.
