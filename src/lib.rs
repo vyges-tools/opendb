@@ -1191,6 +1191,51 @@ impl Db {
     pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
         Ok(sys::tech_via_layer(self.r(), via, which)?)
     }
+    /// How many LEF58 cut spacing tables this cut layer states.
+    ///
+    /// ⚠️ Where a cut layer states no `SPACING` of its own — every ASAP7 cut layer — this table is
+    /// the only place a cut pitch comes from, so an empty answer is not the same as "no spacing".
+    pub fn num_cut_spacing_table_rules(&self, layer: &str) -> Result<usize> {
+        Ok(sys::num_cut_spacing_table_rules(self.r(), layer)?)
+    }
+    /// The largest spacing this rule states for a cut class against itself, `MIN` strategy.
+    ///
+    /// Used for a **square** cut, where the side/end distinction cannot be drawn.
+    pub fn cut_spacing_table_max_spacing(&self, layer: &str, idx: usize, cls: &str) -> Result<i32> {
+        Ok(sys::cut_spacing_table_max_spacing(self.r(), layer, idx, cls)?)
+    }
+    /// The spacing for a cut class against itself, each side flagged as a SIDE or an END.
+    ///
+    /// ⚠️ **The flags are crossed against the axis being asked about.** The x pitch is asked with
+    /// the *y* side flag, because a cut's `dx` is its side when `dx > dy`.
+    pub fn cut_spacing_table_spacing(
+        &self,
+        layer: &str,
+        idx: usize,
+        cls: &str,
+        side1: bool,
+        side2: bool,
+    ) -> Result<i32> {
+        Ok(sys::cut_spacing_table_spacing(self.r(), layer, idx, cls, side1, side2)?)
+    }
+    /// Whether this rule measures centre-to-edge, in which case its value is already a spacing.
+    pub fn cut_spacing_table_is_center_and_edge(
+        &self,
+        layer: &str,
+        idx: usize,
+        cls: &str,
+    ) -> Result<bool> {
+        Ok(sys::cut_spacing_table_is_center_and_edge(self.r(), layer, idx, cls)?)
+    }
+    /// Whether this rule measures centre-to-centre, in which case a cut must be subtracted.
+    pub fn cut_spacing_table_is_center_to_center(
+        &self,
+        layer: &str,
+        idx: usize,
+        cls: &str,
+    ) -> Result<bool> {
+        Ok(sys::cut_spacing_table_is_center_to_center(self.r(), layer, idx, cls)?)
+    }
     /// A special-wire box carrying an explicit **shape annotation** — `"FOLLOWPIN"`, `"STRIPE"`,
     /// `"RING"`, and so on.
     ///
