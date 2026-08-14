@@ -1103,6 +1103,14 @@ impl Db {
     ) -> Result<()> {
         Ok(sys::swire_add_box(self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3)?)
     }
+    /// The cut rectangle a `VIARULE GENERATE` declares for one of its layers.
+    ///
+    /// ⚠️ Returns `None` where the rule declares no rectangle — a via layer rule may carry an
+    /// enclosure or a spacing without one, so an absent rect is ordinary rather than an error.
+    pub fn via_layer_rule_rect(&self, gen_idx: usize, layer_idx: usize) -> Option<(i32, i32, i32, i32)> {
+        let v = sys::techvialayerrule_rect(self.r(), gen_idx, layer_idx).ok()?;
+        (v.len() == 4).then(|| (v[0], v[1], v[2], v[3]))
+    }
     /// Create a **generated via** with explicit cut geometry, or leave an existing one of that
     /// name untouched.
     ///
