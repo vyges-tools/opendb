@@ -1198,6 +1198,21 @@ impl Db {
             .map(|c| (c[0] as i64, c[1], c[2], c[3], c[4]))
             .collect())
     }
+    /// Every boundary rectangle of a named region.
+    ///
+    /// 🔑 **A region may be more than one rectangle.** DEF allows a non-rectangular region,
+    /// expressed as several boxes, so this returns all of them — taking only the first silently
+    /// shrinks the domain a grid is built for.
+    ///
+    /// ⚠️ `num_region_get_boundaries` on the generated bridge gives the COUNT and nothing else;
+    /// this is the geometry.
+    pub fn region_boundaries(&self, region: &str) -> Result<Vec<(i32, i32, i32, i32)>> {
+        Ok(sys::region_boundaries(self.r(), region)?
+            .chunks(4)
+            .filter(|c| c.len() == 4)
+            .map(|c| (c[0], c[1], c[2], c[3]))
+            .collect())
+    }
     /// A tech via's bottom (`"bottom"`) or top (`"top"`) routing layer name.
     pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
         Ok(sys::tech_via_layer(self.r(), via, which)?)
