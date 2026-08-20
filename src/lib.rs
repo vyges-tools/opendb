@@ -1213,6 +1213,39 @@ impl Db {
             .map(|c| (c[0], c[1], c[2], c[3]))
             .collect())
     }
+    /// One net's existing **special**-wire shapes as
+    /// `(layer number, x0, y0, x1, y1, wire shape type, octilinear)`.
+    ///
+    /// The type is the DEF wire shape: `0` NONE, `1` RING, `2` PADRING, `3` BLOCKRING, `4` STRIPE,
+    /// `5` FOLLOWPIN, `6` IOWIRE, `7` COREWIRE, `8` BLOCKWIRE, `9` BLOCKAGEWIRE, `10` FILLWIRE,
+    /// `11` DRCFILL. It decides what a shape may be connected to, so it cannot be discarded: a
+    /// stripe and a ring are landing targets where a follow pin is not.
+    ///
+    /// Via boxes are decomposed onto the layers their metal occupies, at the via's own placement.
+    ///
+    /// ⚠️ **An octilinear box's corners are its bounding box, not its metal** — the shape is a
+    /// 45-degree segment somewhere inside. Treat it as occupied space and never as a target.
+    ///
+    /// ⚠️ Distinct from [`Self::swire_boxes`], which flattens every net together and carries
+    /// neither the net nor the type. That answers *is this occupied*; this one also answers
+    /// *whose is it, and of what kind*.
+    pub fn net_swire_shapes(&self, net: &str) -> Result<Vec<(i64, i32, i32, i32, i32, i32, bool)>> {
+        Ok(sys::net_swire_shapes(self.r(), net)?
+            .chunks(7)
+            .filter(|c| c.len() == 7)
+            .map(|c| {
+                (
+                    c[0],
+                    c[1] as i32,
+                    c[2] as i32,
+                    c[3] as i32,
+                    c[4] as i32,
+                    c[5] as i32,
+                    c[6] != 0,
+                )
+            })
+            .collect())
+    }
     /// A tech via's bottom (`"bottom"`) or top (`"top"`) routing layer name.
     pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
         Ok(sys::tech_via_layer(self.r(), via, which)?)
