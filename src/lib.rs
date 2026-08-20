@@ -1166,6 +1166,23 @@ impl Db {
     pub fn layer_find_v55_spacing(&self, layer: &str, width: i32, prl: i32) -> Result<i32> {
         Ok(sys::layer_find_v55_spacing(self.r(), layer, width, prl)?)
     }
+    /// The `SPACINGTABLE TWOWIDTHS` answer for two shapes of the given widths running `prl`
+    /// alongside each other; `0` where the layer declares no such table.
+    ///
+    /// ⚠️ **A companion to [`Self::layer_find_v55_spacing`], not an alternative.** A layer may
+    /// declare both and a keep-out must take the LARGER of the two — OpenROAD's own
+    /// `TechLayer::getSpacing` is `max(getSpacing(width, length), findTwSpacing(width, width,
+    /// length))`. Asking one alone gives a halo short by whatever the other rule adds, which
+    /// shows up as a shape cut a few hundred units further along than it should be.
+    pub fn layer_find_tw_spacing(
+        &self,
+        layer: &str,
+        width1: i32,
+        width2: i32,
+        prl: i32,
+    ) -> Result<i32> {
+        Ok(sys::layer_find_tw_spacing(self.r(), layer, width1, width2, prl)?)
+    }
     /// The minimum area a shape on this layer must have, in square database units.
     ///
     /// ⚠️ Where LEF58 `AREA` rules exist the **largest** of them governs and the layer's own
