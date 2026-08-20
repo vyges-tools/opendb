@@ -1163,6 +1163,19 @@ impl Db {
     /// metal4 gives 280 for a minimum wire and 1800 for a 1um wire running the height of the core.
     ///
     /// Returns 0 where the layer declares no such table.
+    /// The spacing the database itself would use for a shape of this width running `length`
+    /// alongside another — `dbTechLayer::getSpacing(width, length)`.
+    ///
+    /// 🔑 **Three rules and a default, not one table:** the V5.4 range rules, then the V5.5
+    /// `SPACINGTABLE` which overwrites them, then the smallest V5.4 rule whose range ends below
+    /// the width, and only then the layer's plain `SPACING`.
+    ///
+    /// ⚠️ [`Self::layer_find_v55_spacing`] is the second of those alone. Reading it as "the
+    /// spacing" gives a keep-out short by whatever the range rules add; patching that gap with the
+    /// plain `SPACING` skips the range rules instead, which is a different wrong answer.
+    pub fn layer_get_spacing_for(&self, layer: &str, width: i32, length: i32) -> Result<i32> {
+        Ok(sys::layer_get_spacing_for(self.r(), layer, width, length)?)
+    }
     pub fn layer_find_v55_spacing(&self, layer: &str, width: i32, prl: i32) -> Result<i32> {
         Ok(sys::layer_find_v55_spacing(self.r(), layer, width, prl)?)
     }
@@ -1266,6 +1279,41 @@ impl Db {
     /// A tech via's bottom (`"bottom"`) or top (`"top"`) routing layer name.
     pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
         Ok(sys::tech_via_layer(self.r(), via, which)?)
+    }
+    /// Every LEF58 `ARRAYSPACING` rule this cut layer states, as
+    /// `(cut class, parallel overlap, long array, array width, cut spacing, (cuts, spacing) pairs)`.
+    ///
+    /// A rule says that once a via holds enough cuts in a row they must be grouped: `cuts` per
+    /// group at the ordinary pitch, with `spacing` between groups.
+    ///
+    /// ⚠️ **An empty cut class means EVERY class, not none** — `ViaGenerator::isCutClass` returns
+    /// true whenever either side is null.
+    ///
+    /// ⚠️ **A zero `array_width` means the rule states no width limit**, and a zero `cut_spacing`
+    /// means it states none and the via keeps the pitch it already had. Neither is a limit of
+    /// nothing: the reference skips a rule only on `getArrayWidth() != 0 && getArrayWidth() > width`.
+    #[allow(clippy::type_complexity)]
+    pub fn layer_array_spacing_rules(
+        &self,
+        layer: &str,
+    ) -> Result<Vec<(String, bool, bool, i32, i32, Vec<(i32, i32)>)>> {
+        let n = sys::num_array_spacing_rules(self.r(), layer)?;
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push((
+                sys::array_spacing_rule_cut_class(self.r(), layer, i)?,
+                sys::array_spacing_rule_is_parallel_overlap(self.r(), layer, i)?,
+                sys::array_spacing_rule_is_long_array(self.r(), layer, i)?,
+                sys::array_spacing_rule_array_width(self.r(), layer, i)?,
+                sys::array_spacing_rule_cut_spacing(self.r(), layer, i)?,
+                sys::array_spacing_rule_cuts_spacing(self.r(), layer, i)?
+                    .chunks(2)
+                    .filter(|c| c.len() == 2)
+                    .map(|c| (c[0], c[1]))
+                    .collect(),
+            ));
+        }
+        Ok(out)
     }
     /// How many LEF58 cut spacing tables this cut layer states.
     ///
