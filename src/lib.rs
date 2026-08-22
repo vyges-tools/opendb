@@ -1473,6 +1473,35 @@ impl Db {
         }
         Ok(Some((bbox, sys::nth_row_site(self.r(), i)?, sys::nth_row_orient(self.r(), i)?)))
     }
+    /// Remove a block terminal outright.
+    ///
+    /// 🔑 **Only a terminal this run created and then left empty should go.** One the design
+    /// arrived with is not a generator's to remove, empty or not.
+    pub fn bterm_destroy(&mut self, bterm: &str) -> Result<()> {
+        Ok(sys::bterm_destroy(self.r(), bterm)?)
+    }
+    /// Remove a terminal's generator-owned pin geometry, keeping anything placed FIXED.
+    ///
+    /// ⚠️ **FIXED is the exemption and it is the whole rule.** A generator republishing a supply
+    /// terminal owns what it produced last time and must leave alone what a person placed.
+    /// Returns how many pins were removed.
+    pub fn bterm_clear_unfixed_bpins(&mut self, bterm: &str) -> Result<usize> {
+        Ok(sys::bterm_clear_unfixed_bpins(self.r(), bterm)?)
+    }
+    /// Add one rectangle to a terminal's pin geometry; `false` if it was already there.
+    ///
+    /// 🔑 **Every rectangle goes on ONE pin object, not one pin per rectangle.** A `dbBPin` is a
+    /// DEF `PORT`, so a terminal built pin-per-rectangle writes several PORT blocks with separate
+    /// placements where one PORT carrying several LAYER lines is meant — a difference visible in
+    /// the DEF for geometry that is otherwise identical.
+    pub fn bterm_add_pin_box(
+        &mut self,
+        bterm: &str,
+        layer: &str,
+        rect: (i32, i32, i32, i32),
+    ) -> Result<bool> {
+        Ok(sys::bterm_add_pin_box(self.r(), bterm, layer, rect.0, rect.1, rect.2, rect.3)?)
+    }
     /// The direction the `i`th row's sites step in — `"HORIZONTAL"` or `"VERTICAL"`.
     ///
     /// ⚠️ **A row's direction is stated, not measured.** A single-site row's bounding box says
