@@ -1315,6 +1315,30 @@ impl Db {
         }
         Ok(out)
     }
+    /// A cut layer's LEF 5.4 adjacent-cut spacing rules, as `(cuts, spacing, except_same_pgnet)`.
+    ///
+    /// 🔑 **`SPACING <s> ADJACENTCUTS <n> WITHIN <w>` widens a via array once enough of its cuts
+    /// are adjacent** — the cut layer's plain `SPACING` no longer applies. A rule stating no
+    /// adjacent-cut clause comes back with zero cuts and is not a rule of this kind.
+    ///
+    /// ⚠️ `WITHIN` is not returned because the generator never consults it: it decides adjacency
+    /// from the array's own shape, not from a distance.
+    pub fn layer_v54_adjacent_cut_rules(&self, layer: &str) -> Result<Vec<(u32, i32, bool)>> {
+        let n = sys::num_v54_spacing_rules(self.r(), layer)?;
+        let mut out = Vec::new();
+        for i in 0..n {
+            let cuts = sys::v54_spacing_rule_adjacent_cuts(self.r(), layer, i)?;
+            if cuts == 0 {
+                continue;
+            }
+            out.push((
+                cuts,
+                sys::v54_spacing_rule_adjacent_spacing(self.r(), layer, i)?,
+                sys::v54_spacing_rule_adjacent_except_same_pgnet(self.r(), layer, i)?,
+            ));
+        }
+        Ok(out)
+    }
     /// How many LEF58 cut spacing tables this cut layer states.
     ///
     /// ⚠️ Where a cut layer states no `SPACING` of its own — every ASAP7 cut layer — this table is
