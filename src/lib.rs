@@ -1196,6 +1196,29 @@ impl Db {
     ) -> Result<i32> {
         Ok(sys::layer_find_tw_spacing(self.r(), layer, width1, width2, prl)?)
     }
+
+    /// The layer's LEF58 `WIDTHTABLE` rules as `(is_wrong_direction, widths)`, widths in database
+    /// units, in the order the technology states them.
+    ///
+    /// ⚠️ **A table is a whitelist, and `WRONGDIRECTION` says WHICH shapes it whitelists** — a
+    /// plain table constrains a wire running the layer's own way, a `WRONGDIRECTION` one
+    /// constrains a wire running across it. The two never apply to the same shape, so a reader
+    /// that treats the flag as an extra condition rather than an inversion checks the wrong
+    /// shapes in both directions.
+    ///
+    /// ℹ️ Returned raw. Whether a given width is legal depends on the shape's direction and on
+    /// the table's last entry as well as on membership, and that rule lives with its caller.
+    pub fn layer_width_tables(&self, layer: &str) -> Result<Vec<(bool, Vec<i32>)>> {
+        let n = sys::num_width_table_rules(self.r(), layer)?;
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push((
+                sys::width_table_rule_is_wrong_direction(self.r(), layer, i)?,
+                sys::width_table_rule_widths(self.r(), layer, i)?,
+            ));
+        }
+        Ok(out)
+    }
     /// The minimum area a shape on this layer must have, in square database units.
     ///
     /// ⚠️ Where LEF58 `AREA` rules exist the **largest** of them governs and the layer's own
@@ -1449,6 +1472,13 @@ impl Db {
             return Ok(None);
         }
         Ok(Some((bbox, sys::nth_row_site(self.r(), i)?, sys::nth_row_orient(self.r(), i)?)))
+    }
+    /// The direction the `i`th row's sites step in — `"HORIZONTAL"` or `"VERTICAL"`.
+    ///
+    /// ⚠️ **A row's direction is stated, not measured.** A single-site row's bounding box says
+    /// nothing about which way it runs, and the rails laid along it follow the stated direction.
+    pub fn nth_row_direction(&self, i: usize) -> Result<String> {
+        Ok(sys::nth_row_direction(self.r(), i)?)
     }
     /// Name of the `i`th row. Empty when out of range.
     ///
