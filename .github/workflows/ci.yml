@@ -34,6 +34,36 @@ jobs:
         with:
           repository: vyges-tools/opendb-lib
           path: vyges-tools-opendb-lib
+      # ⚠️ EVERY [patch] entry needs a checkout, not just the obvious one. This workflow's first
+      # run failed here: it checked out opendb-lib and not layout, and cargo stopped with
+      # "failed to load source for dependency vyges-layout" before compiling anything.
+      - uses: actions/checkout@v4
+        with:
+          repository: vyges-tools/layout
+          path: vyges-tools-layout
+
+      # 🔑 Check the sibling layout BEFORE cargo does, so a missing one names itself. Cargo's
+      # error points at a path and leaves you to work out which repo belongs there; this reads
+      # the [patch] sections and says exactly what is absent. It also catches a patch added later
+      # without a matching checkout, which is how this broke in the first place.
+      - name: Every [patch] path has a checkout
+        run: |
+          python3 - <<'PY'
+          import re, os, sys
+          s = open("Cargo.toml").read()
+          missing = []
+          for b in re.split(r"\n(?=\[)", s):
+              if not b.startswith("[patch."):
+                  continue
+              for m in re.finditer(r'^(\S+)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"', b, re.M):
+                  crate, path = m.group(1), m.group(2)
+                  if not os.path.exists(os.path.join(path, "Cargo.toml")):
+                      missing.append((crate, path))
+          for crate, path in missing:
+              print(f"MISSING  {crate} is patched to {path}, which has no Cargo.toml -- "
+                    f"add an actions/checkout for the repo that belongs there", file=sys.stderr)
+          sys.exit(1 if missing else 0)
+          PY
 
       - name: Toolchain
         # Boost (headers) + zlib only; fmt/spdlog/abseil are built from source by libodb's build.
