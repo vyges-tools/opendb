@@ -175,10 +175,14 @@ fn cutting_rows_reaches_odb_and_names_an_unknown_blockage() {
     // Row cutting is odb's algorithm; the wrapper's job is to pass the blockage list through and
     // to refuse a name the block does not define rather than cutting around nothing.
     let mut db = Db::open(FIXTURE).expect("opens");
+    // ⚠️ (min_row_width, min_row_height, blockages, halo_x, halo_y). `min_row_height` was added
+    // between the first two when the OpenROAD pin moved to 945a9f4, and this test kept calling the
+    // four-argument form — which does not fail a case, it stops the whole test binary compiling.
+    // A crate whose suite cannot build hides every later regression behind one stale call.
     assert!(db
-        .cut_rows(0, &["no_such_inst_xyz".to_string()], 0, 0)
+        .cut_rows(0, 0, &["no_such_inst_xyz".to_string()], 0, 0)
         .is_err());
-    db.cut_rows(0, &[], 0, 0)
+    db.cut_rows(0, 0, &[], 0, 0)
         .expect("no blockages is not an error");
     let _: bool = db.has_one_site_master();
 }

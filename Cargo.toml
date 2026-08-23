@@ -6,6 +6,23 @@ license = "Apache-2.0"
 description = "Safe, ergonomic Rust API for OpenROAD's OpenDB (libodb) — read + ECO write path."
 repository = "https://github.com/vyges-tools/opendb"
 
+# ⚠️ **Both examples drive the WRITE path**, which lives behind `gen-write` — so they must say
+# so, or `cargo test` (which builds examples) fails to compile with "no method named
+# chip_set_width", and the whole suite goes red over a feature flag rather than a defect. That is
+# how this crate's tests came to be uncompilable: the failure reads like a missing 3D API and is
+# actually a missing `required-features`.
+#
+# ℹ️ The 3D/chiplet surface itself is intact either way — `chip_set_width`, `place_chip_inst` and
+# the rest are generated and present; `gen-write` is a governance gate on mutation, not a
+# capability that comes and goes.
+[[example]]
+name = "draw_stack"
+required-features = ["gen-write"]
+
+[[example]]
+name = "d2d_gap"
+required-features = ["gen-write"]
+
 [features]
 # L2/governance-gated generated setter surface — forwards to the lib crate's feature.
 gen-write = ["vyges-opendb-lib/gen-write"]

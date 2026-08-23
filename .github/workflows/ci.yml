@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build & test on every push to main and on pull requests (plus manual dispatch).
+#
+# ⚠️ This crate had NO ci workflow until 2026-08-23 — only a release workflow, which builds the
+# binary but never runs `cargo test`. So nothing ran the suite, and the suite had stopped
+# compiling: a signature change to `cut_rows` left two stale call sites, and both examples drive
+# the `gen-write` surface without declaring they need it. Neither is a defect in the library; both
+# made the whole suite unrunnable, which is worse, because it hides the ones that would be.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vyges-tools-opendb
+    steps:
+      # ⚠️ Sibling layout so the `[patch]` path entry resolves. A patch whose path does not exist
+      # is a hard `failed to load source`, not a fall-back to the git source being patched.
+      - uses: actions/checkout@v4
+        with:
+          path: vyges-tools-opendb
+      - uses: actions/checkout@v4
+        with:
+          repository: vyges-tools/opendb-lib
+          path: vyges-tools-opendb-lib
+
+      - name: Toolchain
+        # Boost (headers) + zlib only; fmt/spdlog/abseil are built from source by libodb's build.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ git bison libboost-dev libboost-iostreams-dev libbz2-dev zlib1g-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Test (default surface)
+        run: cargo test --release --verbose
+
+      # 🔑 **Both, always.** `gen-write` gates the generated setter surface — including the whole
+      # 3D/chiplet write path — and it carries test binaries the default build never compiles, let
+      # alone runs. Testing only the default leaves that surface unexercised while looking green.
+      - name: Test (with gen-write, the L2/write surface)
+        run: cargo test --release --features gen-write --verbose
+
+      # The examples ARE the 3D/chiplet write path in use, so a compile is a real check on it.
+      - name: Examples build (they require gen-write)
+        run: cargo build --release --features gen-write --examples --verbose
