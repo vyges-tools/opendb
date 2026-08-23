@@ -19,6 +19,16 @@ use cxx::UniquePtr;
 use vyges_opendb_lib as sys;
 
 #[cfg(unix)]
+/// The OpenROAD commit the underlying `libodb` is built from, re-exported so every engine can
+/// report the pin it is actually running without carrying a SHA of its own.
+///
+/// 🔑 **This is the inheritance point.** Each engine already depends on this crate, so the pin
+/// arrives with no new plumbing: `openroad-pin.yaml` → `opendb-lib` → here → the engine's
+/// `--describe` and its report. See [`vyges_opendb_lib::OPENROAD_PIN`] for what it can and cannot
+/// tell you — it names the pin a binary was BUILT against, which is exactly what a harness needs
+/// to compare against the oracle it is about to launch.
+pub use vyges_opendb_lib::OPENROAD_PIN;
+
 pub mod blox;
 #[cfg(unix)]
 pub mod d2d;
