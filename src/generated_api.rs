@@ -165,6 +165,7 @@ impl Db {
     pub fn net_find_main_parent_mod_inst(&self, net: &str) -> String { sys::net_find_main_parent_mod_inst(self.r(), net) }
     pub fn net_find_main_parent_module(&self, net: &str) -> String { sys::net_find_main_parent_module(self.r(), net) }
     pub fn net_has_jumpers(&self, net: &str) -> bool { sys::net_has_jumpers(self.r(), net) }
+    pub fn net_is_auto_taper_enabled(&self, net: &str) -> bool { sys::net_is_auto_taper_enabled(self.r(), net) }
     pub fn net_find_mod_net_in_highest_hier(&self, net: &str) -> String { sys::net_find_mod_net_in_highest_hier(self.r(), net) }
     pub fn net_get_wire_count_wire_cnt(&self, net: &str) -> u32 { sys::net_get_wire_count_wire_cnt(self.r(), net) }
     pub fn net_get_wire_count_via_cnt(&self, net: &str) -> u32 { sys::net_get_wire_count_via_cnt(self.r(), net) }
@@ -421,6 +422,7 @@ impl Db {
     pub fn box_get_box_dy(&self, idx: usize) -> i32 { sys::box_get_box_dy(self.r(), idx) }
     pub fn box_get_d_x(&self, idx: usize) -> u32 { sys::box_get_d_x(self.r(), idx) }
     pub fn box_get_design_rule_width(&self, idx: usize) -> i32 { sys::box_get_design_rule_width(self.r(), idx) }
+    pub fn box_get_min_spacing(&self, idx: usize) -> i32 { sys::box_get_min_spacing(self.r(), idx) }
     pub fn box_get_d_y(&self, idx: usize) -> u32 { sys::box_get_d_y(self.r(), idx) }
     pub fn box_is_soft(&self, idx: usize) -> bool { sys::box_is_soft(self.r(), idx) }
     pub fn box_get_tech_layer(&self, idx: usize) -> String { sys::box_get_tech_layer(self.r(), idx) }
@@ -558,7 +560,6 @@ impl Db {
     pub fn level_shifter_get_cell_input(&self, name: &str) -> String { sys::level_shifter_get_cell_input(self.r(), name) }
     pub fn level_shifter_get_cell_output(&self, name: &str) -> String { sys::level_shifter_get_cell_output(self.r(), name) }
     pub fn tech_get_name(&self) -> String { sys::tech_get_name(self.r()) }
-    pub fn tech_get_extraction_rules_file(&self) -> String { sys::tech_get_extraction_rules_file(self.r()) }
     pub fn tech_get_db_units_per_micron(&self) -> i32 { sys::tech_get_db_units_per_micron(self.r()) }
     pub fn tech_get_layers(&self) -> Vec<String> { (0..sys::num_tech_get_layers(self.r())).map(|i| sys::nth_tech_get_layers(self.r(), i)).collect() }
     pub fn tech_first_frontside_routing_layer(&self) -> String { sys::tech_first_frontside_routing_layer(self.r()) }

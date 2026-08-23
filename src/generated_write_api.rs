@@ -69,6 +69,7 @@ impl Db {
     pub fn net_clear_guides(&mut self, net: &str) -> crate::Result<()> { Ok(sys::net_clear_guides(self.r(), net)?) }
     pub fn net_clear_tracks(&mut self, net: &str) -> crate::Result<()> { Ok(sys::net_clear_tracks(self.r(), net)?) }
     pub fn net_set_jumpers(&mut self, net: &str, has_jumpers: bool) -> crate::Result<()> { Ok(sys::net_set_jumpers(self.r(), net, has_jumpers)?) }
+    pub fn net_set_auto_taper(&mut self, net: &str, enable: bool) -> crate::Result<()> { Ok(sys::net_set_auto_taper(self.r(), net, enable)?) }
     pub fn bterm_set_sig_type(&mut self, bterm: &str, a0: &str) -> crate::Result<()> { Ok(sys::bterm_set_sig_type(self.r(), bterm, a0)?) }
     pub fn bterm_set_io_type(&mut self, bterm: &str, a0: &str) -> crate::Result<()> { Ok(sys::bterm_set_io_type(self.r(), bterm, a0)?) }
     pub fn bterm_set_spef_mark(&mut self, bterm: &str, v: u32) -> crate::Result<()> { Ok(sys::bterm_set_spef_mark(self.r(), bterm, v)?) }
@@ -187,7 +188,6 @@ impl Db {
     pub fn level_shifter_set_cell_name(&mut self, name: &str, cell_name: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_name(self.r(), name, cell_name)?) }
     pub fn level_shifter_set_cell_input(&mut self, name: &str, cell_input: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_input(self.r(), name, cell_input)?) }
     pub fn level_shifter_set_cell_output(&mut self, name: &str, cell_output: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_cell_output(self.r(), name, cell_output)?) }
-    pub fn tech_set_extraction_rules_file(&mut self, path: &str) -> crate::Result<()> { Ok(sys::tech_set_extraction_rules_file(self.r(), path)?) }
     pub fn tech_set_lef_units(&mut self, units: i32) -> crate::Result<()> { Ok(sys::tech_set_lef_units(self.r(), units)?) }
     pub fn tech_set_lef_version(&mut self, inver: f64) -> crate::Result<()> { Ok(sys::tech_set_lef_version(self.r(), inver)?) }
     pub fn tech_set_manufacturing_grid(&mut self, ingrd: i32) -> crate::Result<()> { Ok(sys::tech_set_manufacturing_grid(self.r(), ingrd)?) }

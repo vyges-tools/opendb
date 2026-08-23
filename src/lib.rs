@@ -813,14 +813,20 @@ impl Db {
     /// `blockage_insts` names the instances to cut around; choosing them (and reporting the ones
     /// skipped) is the caller's job, because that is engine policy rather than database
     /// mechanics. An unknown instance name is an error.
+    ///
+    /// `min_row_height` gates odb's narrow-region cutting: **0 disables it**, which is what
+    /// upstream's own `ifp` callers pass. A caller wanting rows too short for an endcap removed
+    /// asks for it explicitly.
     pub fn cut_rows(
         &mut self,
         min_row_width: i32,
+        min_row_height: i32,
         blockage_insts: &[String],
         halo_x: i32,
         halo_y: i32,
     ) -> Result<()> {
-        Ok(sys::block_cut_rows(self.r(), min_row_width, blockage_insts, halo_x, halo_y)?)
+        Ok(sys::block_cut_rows(self.r(), min_row_width, min_row_height, blockage_insts,
+                               halo_x, halo_y)?)
     }
     /// Does the technology have a single-site-width master? Decides whether tapcell placement
     /// may leave one-site gaps.
