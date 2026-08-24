@@ -265,6 +265,7 @@ impl Db {
     /// Import a DEF into the design. `mode`: `"default"` (design from scratch), `"floorplan"`
     /// (`Odb.ApplyDEFTemplate` — update DIEAREA/TRACKS/ROWS/COMPONENTS/PINS/NETS from a template),
     /// or `"incremental"` (COMPONENTS/PINS only). Non-default modes need an existing design + libs.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn read_def(&mut self, def_path: impl AsRef<Path>, mode: &str) -> Result<()> {
         Ok(sys::read_def(self.r(), &path_str(def_path)?, mode)?)
     }
@@ -493,6 +494,7 @@ impl Db {
     /// `tech` selects the chip's own `dbTech` by name — the per-chip tech is what lets dies
     /// from different processes coexist in one database. Empty selects the database default,
     /// which is the single-process case.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip(&mut self, name: &str, tech: &str, chip_type: &str) -> Result<()> {
         Ok(sys::chip_create(self.r(), name, tech, chip_type)?)
     }
@@ -500,29 +502,34 @@ impl Db {
     /// Give a chip its own `dbBlock` — the die's design. The top chip needs one for the
     /// block-level accessors to resolve through it; a die needs one to hold the instances its
     /// bumps wrap.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip_block(&mut self, chip: &str, name: &str) -> Result<()> {
         Ok(sys::chip_block_create(self.r(), chip, name)?)
     }
 
     /// Instantiate `master_chip` inside `parent_chip`. See the ordering note above: the
     /// master's regions and bumps must already exist.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip_inst(&mut self, parent_chip: &str, master_chip: &str, name: &str) -> Result<()> {
         Ok(sys::chip_inst_create(self.r(), parent_chip, master_chip, name)?)
     }
 
     /// Create a bonding region on a chip. `side` is `FRONT` | `BACK` | `INTERNAL` |
     /// `INTERNAL_EXT`; `layer` is a tech-layer name, or empty for none.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip_region(&mut self, chip: &str, name: &str, side: &str, layer: &str) -> Result<()> {
         Ok(sys::chip_region_create(self.r(), chip, name, side, layer)?)
     }
 
     /// Set a region's footprint. Without it the region has no extent, and the checks that
     /// reason about footprints have nothing to test.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn set_chip_region_box(&mut self, chip: &str, region: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::chip_region_set_box(self.r(), chip, region, x1, y1, x2, y2)?)
     }
 
     /// Place a bump on a region, wrapping an instance in that chip's own block.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip_bump(&mut self, chip: &str, region: &str, inst: &str) -> Result<()> {
         Ok(sys::chip_bump_create(self.r(), chip, region, inst)?)
     }
@@ -532,6 +539,7 @@ impl Db {
     /// odb takes a *path* of chip instances on each side, to name a region inside a nested
     /// assembly. This binds the direct case — one hop per side — which covers a bond between
     /// two chips in the same parent. Deeper paths are expressible upstream and not here yet.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     #[allow(clippy::too_many_arguments)]
     pub fn create_chip_conn(&mut self, name: &str, parent_chip: &str, top_inst: &str, top_region: &str,
                             bottom_inst: &str, bottom_region: &str, thickness: i32) -> Result<()> {
@@ -539,11 +547,13 @@ impl Db {
     }
 
     /// Create a logical net spanning bump instances across chips.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip_net(&mut self, chip: &str, name: &str) -> Result<()> {
         Ok(sys::chip_net_create(self.r(), chip, name)?)
     }
 
     /// Create a named traversal route through the assembly.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_chip_path(&mut self, chip: &str, name: &str) -> Result<()> {
         Ok(sys::chip_path_create(self.r(), chip, name)?)
     }
@@ -553,6 +563,7 @@ impl Db {
     /// The bump is addressed by its position in `(chip_inst, region)`. Needed because the
     /// logical-connectivity check compares the nets of physically aligned bump pairs — without
     /// any net associations it has nothing to disagree about and passes on any design.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn add_chip_net_bump(&mut self, chip: &str, net: &str, chip_inst: &str, region: &str, bump_index: usize) -> Result<()> {
         Ok(sys::chip_net_add_bump(self.r(), chip, net, chip_inst, region, bump_index)?)
     }
@@ -561,6 +572,7 @@ impl Db {
     ///
     /// The alignment-marker check returns immediately when no rule exists, so a design without
     /// one is not so much clean as unexamined.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_alignment_marker_rule(&mut self, master_a: &str, master_b: &str, tolerance: i32) -> Result<()> {
         Ok(sys::alignment_marker_rule_create(self.r(), master_a, master_b, tolerance)?)
     }
@@ -570,6 +582,7 @@ impl Db {
     /// **Required before any unfolded query or lint.** The unfolded builder starts from the top
     /// chip and walks its chip instances, so with it left pointing at a flat design every
     /// unfolded table reads empty — and nothing says why.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn set_top_chip(&mut self, chip: &str) -> Result<()> {
         Ok(sys::set_top_chip(self.r(), chip)?)
     }
@@ -578,6 +591,7 @@ impl Db {
     ///
     /// This is how a chiplet gets its **own** technology, from the `APR_tech_file` its `.3dbv`
     /// names — the mechanism that lets dies from different processes share one database.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn tech_from_lef(&mut self, name: &str, lef_path: &str) -> Result<()> {
         Ok(sys::tech_from_lef(self.r(), name, lef_path)?)
     }
@@ -586,6 +600,7 @@ impl Db {
     ///
     /// odb refuses to create a `DIE` chip without a technology; a geometry-only 3Dblox read has
     /// no LEF to build a real one from, so this is the placeholder that lets the model exist.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_tech(&mut self, name: &str) -> Result<()> {
         Ok(sys::tech_create(self.r(), name)?)
     }
@@ -595,6 +610,7 @@ impl Db {
 
     /// Set the database precision. A 3Dblox header declares the precision its micron
     /// coordinates are written at, and reading one has to reconcile the two.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn set_dbu_per_micron(&mut self, dbu: i32) {
         sys::set_dbu_per_micron(self.r(), dbu)
     }
@@ -613,6 +629,7 @@ impl Db {
     /// change upstream would otherwise turn every lint-after-move into a silently stale answer.
     ///
     /// Errors if there is no top chip.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn construct_unfolded_model(&mut self) -> Result<()> {
         Ok(sys::construct_unfolded_model(self.r())?)
     }
@@ -633,6 +650,7 @@ impl Db {
     /// planner needs library equivalence classes before it can drive this move.
     ///
     /// The swap is journaled, so it rolls back with [`eco_undo`](Self::eco_undo).
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn swap_master(&mut self, inst: &str, master: &str) -> Result<bool> {
         Ok(sys::swap_master(self.r(), inst, master)?)
     }
@@ -646,9 +664,23 @@ impl Db {
     /// verdict needs work in between — re-timing, for instance — which is the whole point of
     /// the mechanism.
     ///
-    /// Only edits OpenDB journals can be undone: object create/delete, connect/disconnect,
-    /// swaps and field updates. Anything outside the database (a file you wrote, state you
-    /// cached) is *not* rolled back.
+    /// # ⚠️ What rolls back, and what does not
+    ///
+    /// **The netlist rolls back. The geometry does not.**
+    ///
+    /// | | |
+    /// | --- | --- |
+    /// | 🔒 **Journaled** | instances (create, destroy, move, reorient, master swap), nets, terminals and their connectivity, the module hierarchy, parasitics, routing guides |
+    /// | ⛔ **NOT journaled** | blockages, obstructions, fills, rows, special wires, wires, vias, regions — and anything outside the database, such as a file you wrote or state you cached |
+    ///
+    /// Every mutating method on this type is marked with which of the two it is. **Those markers
+    /// are established by measurement**, not by inspection — see `tests/transactional.rs` in
+    /// `vyges-opendb-lib`, which performs each edit inside an ECO, rolls it back, and asserts
+    /// whether it returned.
+    ///
+    /// ⟹ **An engine that writes geometry and wants transaction semantics must undo that
+    /// geometry itself.** [`truncate_blockages`](Self::truncate_blockages) is the pattern:
+    /// record a baseline count before the edits, and destroy back down to it afterwards.
     pub fn eco_begin(&mut self) -> Result<()> { Ok(sys::eco_begin(self.r())?) }
 
     /// Keep the changes recorded since [`eco_begin`](Self::eco_begin).
@@ -662,6 +694,10 @@ impl Db {
 
     /// Apply `f` speculatively: **keep** its edits if it returns `Ok(true)`, **roll them back**
     /// if it returns `Ok(false)` — or if it fails.
+    ///
+    /// ⚠️ **Rolls back the netlist only.** Geometry written inside `f` — blockages, fills, rows,
+    /// obstructions, special wires — SURVIVES. See [`eco_begin`](Self::eco_begin) for the full
+    /// split and for how to undo geometry by hand.
     ///
     /// The error case is the one that matters. A fix that half-applies and then errors would
     /// leave the design in a state neither the caller nor the timer can reason about, so the
@@ -728,6 +764,7 @@ impl Db {
     }
 
     // ---- write primitives ----------------------------------------------------
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn create_net(&mut self, name: &str) -> Result<()> {
         Ok(sys::create_net(self.r(), name)?)
     }
@@ -735,6 +772,7 @@ impl Db {
     ///
     /// [`Db::tech_from_lef`] reads a LEF's layers; this reads its cells. A bump map names cell
     /// types, and those masters live in the `LEF_file` a `.3dbv` already points at.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn lib_from_lef(&mut self, lib: &str, tech: &str, lef_path: &str) -> Result<()> {
         Ok(sys::lib_from_lef(self.r(), lib, tech, lef_path)?)
     }
@@ -745,42 +783,51 @@ impl Db {
     /// instance bounding-box *centre* (`dbUnfoldedChipBumpInst::getGlobalPosition`) while a bump
     /// map records its *origin* (`BmapWriter`), so at any other size the two disagree by half the
     /// master and a map written out then read back moves.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_bump_master(&mut self, name: &str, width: i32, height: i32) -> Result<()> {
         Ok(sys::bump_master_create(self.r(), name, width, height)?)
     }
 
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn create_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_inst(self.r(), master, name)?)
     }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn set_inst_location(&mut self, inst: &str, x: i32, y: i32) -> Result<()> {
         Ok(sys::set_inst_location(self.r(), inst, x, y)?)
     }
     /// Set an instance's orientation (`R0`/`R90`/`R180`/`R270`/`MX`/`MY`/`MXR90`/`MYR90`).
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn set_inst_orient(&mut self, inst: &str, orient: &str) -> Result<()> {
         Ok(sys::set_inst_orient(self.r(), inst, orient)?)
     }
     /// Add a routing/PDN obstruction rectangle on `layer` (DBU). Errors if the layer is unknown.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn add_obstruction(&mut self, layer: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::add_obstruction(self.r(), layer, x1, y1, x2, y2)?)
     }
     /// Number of obstructions currently in the block.
     pub fn num_obstructions(&self) -> usize { sys::num_obstructions(self.r()) }
     /// Destroy all obstructions; returns the count removed.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn clear_obstructions(&mut self) -> usize { sys::clear_obstructions(self.r()) }
 
     // ---- floorplan write path (the primitives `vyges-ifp` composes) ----
 
     /// Set the die area, in DBU.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn set_die_area(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::block_set_die_area(self.r(), x1, y1, x2, y2)?)
     }
     /// Set the core area, in DBU. Note a floorplan usually wants
     /// [`set_core_area_from_rows`](Self::set_core_area_from_rows) instead: the core a design
     /// really has is the one its rows cover, not the one that was asked for.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn set_core_area(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::block_set_core_area(self.r(), x1, y1, x2, y2)?)
     }
     /// Replace the core area with the extent of the rows — odb's `setCoreArea(computeCoreArea())`.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn set_core_area_from_rows(&mut self) -> Result<()> {
         Ok(sys::block_set_core_area_from_rows(self.r())?)
     }
@@ -800,6 +847,7 @@ impl Db {
     /// Create a row of `num_sites` copies of `site` at `spacing`, starting at (`x`, `y`) in DBU.
     /// `orient` is an odb orientation (`R0`, `MX`, …) and `direction` is `HORIZONTAL`/`VERTICAL`.
     /// An unknown site is an error, not a skipped row.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     #[allow(clippy::too_many_arguments)]
     pub fn create_row(&mut self, name: &str, site: &str, x: i32, y: i32, orient: &str,
                       direction: &str, num_sites: i32, spacing: i32) -> Result<()> {
@@ -808,6 +856,7 @@ impl Db {
     /// Number of rows in the block.
     pub fn num_rows(&self) -> Result<usize> { Ok(sys::num_rows(self.r())?) }
     /// Destroy all rows; returns the count removed. A floorplan is rebuilt, not appended to.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn clear_rows(&mut self) -> Result<usize> { Ok(sys::clear_rows(self.r())?) }
     /// Number of sites across every library the database has loaded.
     pub fn num_sites(&self) -> Result<usize> { Ok(sys::num_sites(self.r())?) }
@@ -878,6 +927,7 @@ impl Db {
     /// Create a **physical-only** instance: a cell in the layout but not the netlist, which is
     /// what every tap, endcap and filler is. Use this rather than [`create_inst`](Self::create_inst)
     /// for anything a placer inserts, or the cell lands in the hierarchy.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_physical_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_physical_inst(self.r(), master, name)?)
     }
@@ -1091,6 +1141,7 @@ impl Db {
     ///
     /// `inst` empty means "not associated with an instance". A non-empty name that does not
     /// resolve is an error, never a silently unassociated blockage.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_blockage(
         &mut self,
         x1: i32,
@@ -1108,15 +1159,7 @@ impl Db {
     }
     /// Destroy the blockage at `idx`.
     ///
-    /// ⚠️ **OpenDB's ECO journal covers no physical object at all**, so a blockage created inside
-    /// `eco_begin`/`eco_undo` SURVIVES the rollback. Verified at pin `945a9f4`: `dbJournal`
-    /// handles the netlist (`dbInst`, `dbNet`, `dbITerm`, `dbBTerm`, `dbBlock`, `dbName`), the
-    /// module hierarchy, parasitics (`dbRSeg`, `dbCCSeg`, `dbCapNode`) and routing guides — and
-    /// has **zero** cases for `dbBlockage`, `dbObstruction`, `dbFill`, `dbRow`, `dbSWire`,
-    /// `dbWire`, `dbVia` or `dbRegion`.
-    ///
-    /// 🔑 It is a **netlist-ECO journal, not a general transaction log** — a scope, not an
-    /// oversight. Transaction semantics over physical geometry are ours to provide; see
+    /// ⛔ **NOT TRANSACTIONAL** — see [`eco_try`](Self::eco_try). Undo with
     /// [`truncate_blockages`](Self::truncate_blockages).
     pub fn destroy_blockage(&mut self, idx: usize) -> Result<()> {
         Ok(sys::blockage_destroy(self.r(), idx)?)
@@ -1126,6 +1169,7 @@ impl Db {
     /// 🔑 **This is the manual half of a rollback.** Record `num_blockages()` before the edits;
     /// call this with that number to undo them. Works backwards, because destroying one shifts
     /// the indices of those after it.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn truncate_blockages(&mut self, keep: usize) -> Result<usize> {
         let have = self.num_blockages()?;
         for idx in (keep..have).rev() {
@@ -1152,11 +1196,13 @@ impl Db {
         Ok(sys::num_fills(self.r())?)
     }
     /// Destroy every fill; returns the count removed. Fill is regenerated, not patched.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn clear_fills(&mut self) -> Result<usize> {
         Ok(sys::clear_fills(self.r())?)
     }
     /// Destroy an instance. Errors when it does not exist, so a typo cannot pass as a no-op.
     /// Delete a net. Its terminals are left disconnected rather than deleted.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn destroy_net(&mut self, net: &str) -> Result<()> {
         Ok(sys::net_destroy(self.r(), net)?)
     }
@@ -1493,6 +1539,7 @@ impl Db {
         )?)
     }
     /// Remove a net's **routed** special wires, keeping any marked fixed.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn clear_routed_swires(&mut self, net: &str) -> Result<usize> {
         Ok(sys::swire_clear_routed(self.r(), net)?)
     }
@@ -1509,6 +1556,7 @@ impl Db {
         Ok(sys::inst_get_id(self.r(), inst)?)
     }
     /// Create a block terminal on a net.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn create_bterm(&mut self, net: &str, name: &str) -> Result<()> {
         Ok(sys::bterm_create(self.r(), net, name)?)
     }
@@ -1524,6 +1572,7 @@ impl Db {
     ) -> Result<usize> {
         Ok(sys::bterm_create_pin(self.r(), bterm, layer, rect.0, rect.1, rect.2, rect.3)?)
     }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn destroy_inst(&mut self, inst: &str) -> Result<()> {
         Ok(sys::destroy_inst(self.r(), inst)?)
     }
@@ -1544,6 +1593,7 @@ impl Db {
     ///
     /// 🔑 **Only a terminal this run created and then left empty should go.** One the design
     /// arrived with is not a generator's to remove, empty or not.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn bterm_destroy(&mut self, bterm: &str) -> Result<()> {
         Ok(sys::bterm_destroy(self.r(), bterm)?)
     }
@@ -1552,6 +1602,7 @@ impl Db {
     /// ⚠️ **FIXED is the exemption and it is the whole rule.** A generator republishing a supply
     /// terminal owns what it produced last time and must leave alone what a person placed.
     /// Returns how many pins were removed.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn bterm_clear_unfixed_bpins(&mut self, bterm: &str) -> Result<usize> {
         Ok(sys::bterm_clear_unfixed_bpins(self.r(), bterm)?)
     }
@@ -1607,12 +1658,15 @@ impl Db {
     }
     /// Place a port (`bterm`) pin box on `layer` at the given DBU rectangle. Errors on unknown
     /// bterm/layer.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn place_bterm(&mut self, bterm: &str, layer: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::place_bterm(self.r(), bterm, layer, x1, y1, x2, y2)?)
     }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn connect(&mut self, inst: &str, pin: &str, net: &str) -> Result<()> {
         Ok(sys::connect(self.r(), inst, pin, net)?)
     }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn disconnect(&mut self, inst: &str, pin: &str) -> Result<()> {
         Ok(sys::disconnect(self.r(), inst, pin)?)
     }

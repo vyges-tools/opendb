@@ -21,6 +21,7 @@ pub struct EcoBuffer {
 ///
 /// Mirrors LibreLane's `Odb.InsertECOBuffers` (`eco_buffer.py`) database surgery — the
 /// downstream `grt` incremental-route + `dpl` legalization is a separate engine step.
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn insert_eco_buffers(db: &mut Db, specs: &[EcoBuffer]) -> Result<usize> {
     for (i, spec) in specs.iter().enumerate() {
         // rsplit: a hierarchical instance name contains '/', and pin names do not — splitting
@@ -49,6 +50,7 @@ pub struct EcoDiode {
 ///
 /// Mirrors LibreLane's `Odb.InsertECODiodes` database surgery — a diode is a leaf tied onto an
 /// existing net (no rewiring, unlike a buffer). Downstream legalization is a separate engine step.
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn insert_eco_diodes(db: &mut Db, specs: &[EcoDiode]) -> Result<usize> {
     for (i, spec) in specs.iter().enumerate() {
         // rsplit: a hierarchical instance name contains '/', and pin names do not — splitting
@@ -73,6 +75,7 @@ pub struct GlobalPlacement {
 
 /// Apply `ManualGlobalPlacement`: set each listed instance's origin. Returns the count placed.
 /// Mirrors LibreLane's `Odb.ManualGlobalPlacement` — fixes specific cells before global placement.
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn manual_global_placement(db: &mut Db, specs: &[GlobalPlacement]) -> Result<usize> {
     for spec in specs {
         db.set_inst_location(&spec.instance, spec.x, spec.y)?;
@@ -93,6 +96,7 @@ pub struct MacroPlacement {
 
 /// Apply `ManualMacroPlacement`: place each macro at its origin + orientation. Returns the count.
 /// Mirrors LibreLane's `Odb.ManualMacroPlacement` (macros are placed + oriented before the flow).
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn manual_macro_placement(db: &mut Db, specs: &[MacroPlacement]) -> Result<usize> {
     for spec in specs {
         db.set_inst_location(&spec.instance, spec.x, spec.y)?;
@@ -114,6 +118,7 @@ pub struct PowerConnection {
 /// Apply `SetPowerConnections`: connect each listed instance pin to its (special/power) net.
 /// Returns the count. Mirrors LibreLane's `Odb.SetPowerConnections` — here the PWR/GND pin→net
 /// mapping is provided explicitly (from Flow IR) rather than auto-derived from the PDN.
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn set_power_connections(db: &mut Db, specs: &[PowerConnection]) -> Result<usize> {
     for spec in specs {
         db.connect(&spec.instance, &spec.pin, &spec.net)?;
@@ -134,6 +139,8 @@ pub struct Obstruction {
 /// Add obstruction rectangles. Covers LibreLane's `Odb.AddPDNObstructions` **and**
 /// `Odb.AddRoutingObstructions` — both create `dbObstruction`s; the PDN-vs-routing distinction is
 /// only which layers you list. Returns the count added.
+/// ⛔ **NOT TRANSACTIONAL** — obstructions are geometry and are not journaled;
+/// see [`Db::eco_try`]. Undo them with [`remove_obstructions`].
 pub fn add_obstructions(db: &mut Db, specs: &[Obstruction]) -> Result<usize> {
     for o in specs {
         db.add_obstruction(&o.layer, o.llx, o.lly, o.urx, o.ury)?;
@@ -143,6 +150,8 @@ pub fn add_obstructions(db: &mut Db, specs: &[Obstruction]) -> Result<usize> {
 
 /// Remove all obstructions. Covers `Odb.RemovePDNObstructions` / `Odb.RemoveRoutingObstructions`.
 /// Returns the count removed.
+/// ⛔ **NOT TRANSACTIONAL** — obstructions are geometry and are not journaled;
+/// see [`Db::eco_try`]. Undo them with [`remove_obstructions`].
 pub fn remove_obstructions(db: &mut Db) -> usize {
     db.clear_obstructions()
 }
@@ -160,6 +169,7 @@ pub struct IoPlacement {
 
 /// Apply `CustomIOPlacement`: place each listed port pin at its rectangle. Returns the count.
 /// Mirrors LibreLane's `Odb.CustomIOPlacement` — fixes specific I/O pin locations/layers.
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn custom_io_placement(db: &mut Db, specs: &[IoPlacement]) -> Result<usize> {
     for s in specs {
         db.place_bterm(&s.port, &s.layer, s.llx, s.lly, s.urx, s.ury)?;
@@ -180,6 +190,7 @@ pub struct DiodesOnPorts {
 /// Apply `DiodesOnPorts`: tie an antenna diode onto each selected port's net, placed at the
 /// port's first-pin location. Returns the number of diodes inserted (unconnected ports skipped).
 /// Mirrors LibreLane's `Odb.DiodesOnPorts` — blanket antenna protection on I/O ports.
+/// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
 pub fn diodes_on_ports(db: &mut Db, spec: &DiodesOnPorts) -> Result<usize> {
     let ports = if spec.ports.is_empty() {
         db.bterm_names()
@@ -260,6 +271,9 @@ pub struct AppliedPlan {
 /// location and overlap it. Run detailed placement, re-extract parasitics and re-time before
 /// believing any number — the plan's predicted slacks were estimates against the pre-repair
 /// parasitics.
+/// ⚠️ **PARTLY TRANSACTIONAL.** This applies a mixed plan: its netlist and placement
+/// edits roll back with [`Db::eco_try`], its obstruction edits do NOT. A plan containing
+/// both cannot be undone by the journal alone.
 pub fn apply_eco_plan(db: &mut Db, plan_json: &str, strict_design: bool) -> Result<AppliedPlan> {
     let plan: EcoPlan = serde_json::from_str(plan_json)
         .map_err(|e| Error::Odb(format!("cannot parse ECO plan: {e}")))?;
