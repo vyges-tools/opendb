@@ -1082,6 +1082,30 @@ impl Db {
             .map(|c| (c[0], c[1], c[2], c[3]))
             .collect())
     }
+    /// Create a PLACEMENT blockage over a rectangle, optionally associated with an instance.
+    ///
+    /// 🔑 `mpl` creates one soft blockage per placed macro over its **haloed** bbox
+    /// (`HierRTLMP::commitMacroPlacementToDb`), and `block_macro_channels` creates them around
+    /// fixed macros. 34 of upstream's 36 `mpl` DEF goldens carry a `BLOCKAGES` section, so this
+    /// is on the main path, not a corner.
+    ///
+    /// `inst` empty means "not associated with an instance". A non-empty name that does not
+    /// resolve is an error, never a silently unassociated blockage.
+    pub fn create_blockage(
+        &mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        inst: &str,
+        soft: bool,
+    ) -> Result<()> {
+        Ok(sys::blockage_create(self.r(), x1, y1, x2, y2, inst, soft)?)
+    }
+    /// Number of placement blockages in the block.
+    pub fn num_blockages(&self) -> Result<usize> {
+        Ok(sys::num_blockages(self.r())?)
+    }
     /// Create a fill rectangle. `mask` 0 means "no mask", which is what a single-mask layer wants.
     #[allow(clippy::too_many_arguments)]
     pub fn create_fill(
