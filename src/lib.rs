@@ -1106,6 +1106,28 @@ impl Db {
     pub fn num_blockages(&self) -> Result<usize> {
         Ok(sys::num_blockages(self.r())?)
     }
+    /// Destroy the blockage at `idx`.
+    ///
+    /// ⚠️ **OpenDB's ECO journal does not cover `dbBlockage`** — one created inside
+    /// `eco_begin`/`eco_undo` SURVIVES the rollback (verified at pin `945a9f4`: `dbJournal`
+    /// handles `dbInst`, `dbNet`, `dbBTerm`, `dbITerm`, `dbGuide` and others, with no
+    /// `dbBlockageObj` case). An engine that applies its edits as a transaction must undo these
+    /// itself; see [`truncate_blockages`](Self::truncate_blockages).
+    pub fn destroy_blockage(&mut self, idx: usize) -> Result<()> {
+        Ok(sys::blockage_destroy(self.r(), idx)?)
+    }
+    /// Destroy every blockage beyond the first `keep`, restoring a recorded baseline.
+    ///
+    /// 🔑 **This is the manual half of a rollback.** Record `num_blockages()` before the edits;
+    /// call this with that number to undo them. Works backwards, because destroying one shifts
+    /// the indices of those after it.
+    pub fn truncate_blockages(&mut self, keep: usize) -> Result<usize> {
+        let have = self.num_blockages()?;
+        for idx in (keep..have).rev() {
+            self.destroy_blockage(idx)?;
+        }
+        Ok(have.saturating_sub(keep))
+    }
     /// Create a fill rectangle. `mask` 0 means "no mask", which is what a single-mask layer wants.
     #[allow(clippy::too_many_arguments)]
     pub fn create_fill(
