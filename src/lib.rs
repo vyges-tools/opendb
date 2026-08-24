@@ -1108,11 +1108,16 @@ impl Db {
     }
     /// Destroy the blockage at `idx`.
     ///
-    /// ⚠️ **OpenDB's ECO journal does not cover `dbBlockage`** — one created inside
-    /// `eco_begin`/`eco_undo` SURVIVES the rollback (verified at pin `945a9f4`: `dbJournal`
-    /// handles `dbInst`, `dbNet`, `dbBTerm`, `dbITerm`, `dbGuide` and others, with no
-    /// `dbBlockageObj` case). An engine that applies its edits as a transaction must undo these
-    /// itself; see [`truncate_blockages`](Self::truncate_blockages).
+    /// ⚠️ **OpenDB's ECO journal covers no physical object at all**, so a blockage created inside
+    /// `eco_begin`/`eco_undo` SURVIVES the rollback. Verified at pin `945a9f4`: `dbJournal`
+    /// handles the netlist (`dbInst`, `dbNet`, `dbITerm`, `dbBTerm`, `dbBlock`, `dbName`), the
+    /// module hierarchy, parasitics (`dbRSeg`, `dbCCSeg`, `dbCapNode`) and routing guides — and
+    /// has **zero** cases for `dbBlockage`, `dbObstruction`, `dbFill`, `dbRow`, `dbSWire`,
+    /// `dbWire`, `dbVia` or `dbRegion`.
+    ///
+    /// 🔑 It is a **netlist-ECO journal, not a general transaction log** — a scope, not an
+    /// oversight. Transaction semantics over physical geometry are ours to provide; see
+    /// [`truncate_blockages`](Self::truncate_blockages).
     pub fn destroy_blockage(&mut self, idx: usize) -> Result<()> {
         Ok(sys::blockage_destroy(self.r(), idx)?)
     }
