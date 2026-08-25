@@ -969,6 +969,40 @@ impl Db {
     pub fn master_pin_boxes(&self, master: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
         Ok(chunk5(sys::master_pin_boxes(self.r(), master)?))
     }
+
+    /// How many MPins one terminal of a master has.
+    pub fn num_mpins(&self, master: &str, term: &str) -> usize {
+        self.num_mterm_get_m_pins(master, term)
+    }
+
+    /// Pin rectangles of **one MPin** of one terminal: `(layer number, x0, y0, x1, y1)` in master
+    /// coordinates.
+    ///
+    /// 🔑 [`Self::mterm_pin_boxes`] flattens every MPin of the terminal into one list, which loses
+    /// the grouping. A rule that asks *which layer does this pin sit on* reads the answer from the
+    /// **MPin's first box**, not from the box under examination — so on a terminal with two MPins
+    /// on different layers, the flattened form answers a different question and never says so.
+    pub fn mpin_boxes(
+        &self,
+        master: &str,
+        term: &str,
+        idx: usize,
+    ) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(chunk5(sys::mpin_boxes(self.r(), master, term, idx)?))
+    }
+
+    /// The instance's halo as `(left, bottom, right, top, is_soft)`, or `None` if it has none.
+    ///
+    /// ⚠️ **The four numbers are per-side DISTANCES, not a rectangle** — odb stores them in a
+    /// `dbBox` and the field names read like coordinates. A hard halo is floored by the command's
+    /// base halo side by side; a soft one is taken as it stands.
+    pub fn inst_halo(&self, inst: &str) -> Result<Option<(i64, i64, i64, i64, bool)>> {
+        let v = sys::inst_halo(self.r(), inst)?;
+        if v.len() < 5 {
+            return Ok(None);
+        }
+        Ok(Some((v[0], v[1], v[2], v[3], v[4] != 0)))
+    }
     /// Pin rectangles of **one** terminal, as `(layer number, x0, y0, x1, y1)` in master coordinates.
     ///
     /// ⚠️ [`Self::master_pin_boxes`] merges every terminal's shapes together, which throws away
