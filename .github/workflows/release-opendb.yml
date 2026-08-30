@@ -55,6 +55,12 @@ jobs:
         with:
           repository: vyges-tools/layout
           path: vyges-tools-layout
+      # ⚠️ The RELEASE workflow patches the same siblings as ci.yml and is easy to forget: ci
+      # failing is visible, a release failing is visible later. loom joined with `import --verilog`.
+      - uses: actions/checkout@v4
+        with:
+          repository: vyges-tools/loom
+          path: vyges-tools-loom
 
       - name: Toolchain (Linux)
         if: runner.os == 'Linux'

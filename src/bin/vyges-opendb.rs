@@ -1888,8 +1888,10 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 /// (`dbSta/src/dbReadVerilog.cc`):
 ///
 /// 1. `makeBlock` (:238) — a chip if none, `dbBlock::create`, then **`setDefUnits`** from the
-///    LEF's units and **`setBusDelimiters('[' , ']')`**. Neither follows from block creation, and
-///    without the first every micron conversion downstream is wrong.
+///    LEF's units and **`setBusDelimiters('[' , ']')`**. ⚠️ `setDefUnits` is NOT the database
+///    scale: `dbu_per_micron` comes from the tech at block creation (`dbBlock.cpp:2953`), and
+///    `def_units_` is the DEF OUTPUT units, default 100 — so omitting it writes a DEF saying 100
+///    where sky130 should say 1000.
 /// 2. `makeChildInsts` (:552) — `dbInst::create(block, master, name)` per instance, the master
 ///    resolved in the LEF libs. ⛔ A missing master is an ERROR upstream (ORD-2013), not a skip.
 /// 3. `makeDbNets` (:700) — nets, then the pins on each.

@@ -266,6 +266,26 @@ impl Db {
     /// (`Odb.ApplyDEFTemplate` — update DIEAREA/TRACKS/ROWS/COMPONENTS/PINS/NETS from a template),
     /// or `"incremental"` (COMPONENTS/PINS only). Non-default modes need an existing design + libs.
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
+    /// Set a block terminal's direction — `INPUT` / `OUTPUT` / `INOUT` / `FEEDTHRU`.
+    ///
+    /// ⛔ **Hand-written, so the Verilog handoff does not require `gen-write`.** It was otherwise
+    /// generated into that gated surface, and `vyges-opendb` is the shipped binary.
+    /// 🔑 Goes through `dbBTerm::setIoType`, which **journals** the change
+    /// (`dbBTerm.cpp:326`) — writing the flag directly would leave an ECO rollback blind.
+    pub fn bterm_set_io_type(&mut self, bterm: &str, io_type: &str) -> Result<()> {
+        Ok(sys::bterm_set_io_type(self.r(), bterm, io_type)?)
+    }
+
+    /// Set the block's DEF output units, as `Verilog2db::makeBlock` does with `tech->getLefUnits()`.
+    ///
+    /// ⚠️ **This is NOT the database scale.** `dbu_per_micron` comes from the TECH when the block
+    /// is created (`dbBlock.cpp:2953`), so micron conversions work without this. `def_units_`
+    /// defaults to **100**, is serialized, and is compared in block equality — so a DEF written
+    /// without it says 100 where sky130 should say 1000.
+    pub fn block_set_def_units(&mut self, units: i32) -> Result<()> {
+        Ok(sys::block_set_def_units(self.r(), units)?)
+    }
+
     /// Set the block's bus delimiters, as `Verilog2db::makeBlock` does (`dbReadVerilog.cc:266`).
     ///
     /// ⛔ **Not optional for a design built from Verilog.** Without it bus names do not round-trip:

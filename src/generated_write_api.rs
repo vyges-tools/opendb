@@ -5,7 +5,6 @@
 
 impl Db {
     pub fn block_clear_global_connect(&mut self) -> crate::Result<()> { Ok(sys::block_clear_global_connect(self.r())?) }
-    pub fn block_set_def_units(&mut self, units: i32) -> crate::Result<()> { Ok(sys::block_set_def_units(self.r(), units)?) }
     pub fn block_set_corner_name_list(&mut self, name_list: &str) -> crate::Result<()> { Ok(sys::block_set_corner_name_list(self.r(), name_list)?) }
     pub fn block_set_corner_count(&mut self, corner_cnt: i32, ext_db_cnt: i32, name_list: &str) -> crate::Result<()> { Ok(sys::block_set_corner_count(self.r(), corner_cnt, ext_db_cnt, name_list)?) }
     pub fn block_set_min_routing_layer(&mut self, min_routing_layer: i32) -> crate::Result<()> { Ok(sys::block_set_min_routing_layer(self.r(), min_routing_layer)?) }
@@ -71,7 +70,6 @@ impl Db {
     pub fn net_set_jumpers(&mut self, net: &str, has_jumpers: bool) -> crate::Result<()> { Ok(sys::net_set_jumpers(self.r(), net, has_jumpers)?) }
     pub fn net_set_auto_taper(&mut self, net: &str, enable: bool) -> crate::Result<()> { Ok(sys::net_set_auto_taper(self.r(), net, enable)?) }
     pub fn bterm_set_sig_type(&mut self, bterm: &str, a0: &str) -> crate::Result<()> { Ok(sys::bterm_set_sig_type(self.r(), bterm, a0)?) }
-    pub fn bterm_set_io_type(&mut self, bterm: &str, a0: &str) -> crate::Result<()> { Ok(sys::bterm_set_io_type(self.r(), bterm, a0)?) }
     pub fn bterm_set_spef_mark(&mut self, bterm: &str, v: u32) -> crate::Result<()> { Ok(sys::bterm_set_spef_mark(self.r(), bterm, v)?) }
     pub fn bterm_set_mark(&mut self, bterm: &str, v: u32) -> crate::Result<()> { Ok(sys::bterm_set_mark(self.r(), bterm, v)?) }
     pub fn bterm_set_ext_id(&mut self, bterm: &str, v: u32) -> crate::Result<()> { Ok(sys::bterm_set_ext_id(self.r(), bterm, v)?) }

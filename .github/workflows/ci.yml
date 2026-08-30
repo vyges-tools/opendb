@@ -41,6 +41,12 @@ jobs:
         with:
           repository: vyges-tools/layout
           path: vyges-tools-layout
+      # loom joined the patch table when `import --verilog` landed: it supplies the structural
+      # netlist reader. The check below caught its absence on the first run after that.
+      - uses: actions/checkout@v4
+        with:
+          repository: vyges-tools/loom
+          path: vyges-tools-loom
 
       # 🔑 Check the sibling layout BEFORE cargo does, so a missing one names itself. Cargo's
       # error points at a path and leaves you to work out which repo belongs there; this reads
