@@ -266,6 +266,15 @@ impl Db {
     /// (`Odb.ApplyDEFTemplate` — update DIEAREA/TRACKS/ROWS/COMPONENTS/PINS/NETS from a template),
     /// or `"incremental"` (COMPONENTS/PINS only). Non-default modes need an existing design + libs.
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
+    /// Set the block's bus delimiters, as `Verilog2db::makeBlock` does (`dbReadVerilog.cc:266`).
+    ///
+    /// ⛔ **Not optional for a design built from Verilog.** Without it bus names do not round-trip:
+    /// `a[3]` written back is not the name anything else looks up. Upstream sets `'['` and `']'`
+    /// immediately after creating the block, alongside `set_def_units`.
+    pub fn set_bus_delimiters(&mut self, left: char, right: char) -> Result<()> {
+        Ok(sys::block_set_bus_delimiters(self.r(), &left.to_string(), &right.to_string())?)
+    }
+
     /// Read a LEF. **The first one read creates the tech**; later ones add libraries to it.
     ///
     /// 🔑 Transcribes `read_lef`'s own rule (`OpenRoad.tcl:7`): with neither `-tech` nor `-library`
