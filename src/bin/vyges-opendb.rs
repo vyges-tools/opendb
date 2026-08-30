@@ -156,6 +156,7 @@ fn run() -> Result<(), Fail> {
         "custom-io-placement" => custom_io_placement(args),
         "write-def" => write_def(args),
         "read-def" => read_def(args),
+        "import" => import(args),
         "apply-def-template" => apply_def_template(args),
         "fields" => fields(args),
         "get" => get(args),
@@ -1815,6 +1816,62 @@ fn read_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     db.read_def(&def, "default")?;
     db.write(&output)?;
     eprintln!("read-def: {input} + {def} -> {output}");
+    Ok(())
+}
+
+const IMPORT_DESCRIBE: &str = r#"{
+  "step": "import",
+  "summary": "Build a design database from LEF + DEF, with no OpenROAD in the loop.",
+  "inputs": ["lef", "def"],
+  "outputs": ["odb"]
+}"#;
+
+/// `import`: LEF(s) + DEF -> `.odb`, starting from an EMPTY database.
+///
+/// ⛔ **This closes the last thing only OpenROAD could do.** `read-def` needs a tech and libraries
+/// to read against, and until `read_lef` existed nothing on our side could create them — so every
+/// chain had to begin with an OpenROAD-built handoff.
+///
+/// 🔑 **LEF ORDER MATTERS and is the caller's**: the first `--lef` creates the tech, every later one
+/// adds a library to it, exactly as `read_lef` does. Give the technology LEF first.
+fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut lefs, mut def, mut output) = (Vec::new(), None, None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--lef" => lefs.push(args.next().ok_or("import: --lef needs a FILE")?),
+            "--def" => def = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--describe" => {
+                println!("{IMPORT_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                eprintln!("usage: vyges-opendb import --lef <tech.lef> [--lef <more.lef> ...] \
+                           [--def <f.def>] --output <out.odb>\n\
+                           \n  The FIRST --lef creates the tech; give the technology LEF first.");
+                return Ok(());
+            }
+            other => return Err(format!("import: unknown argument: {other}").into()),
+        }
+    }
+    if lefs.is_empty() {
+        return Err("import: at least one --lef is required (the first creates the tech)".into());
+    }
+    let output = output.ok_or("import: --output <out.odb> required")?;
+
+    let mut db = Db::new();
+    for lef in &lefs {
+        db.read_lef(lef)?;
+    }
+    if let Some(def) = &def {
+        db.read_def(def, "default")?;
+    }
+    db.write(&output)?;
+    eprintln!(
+        "import: {} LEF(s){} -> {output}",
+        lefs.len(),
+        def.as_ref().map(|d| format!(" + {d}")).unwrap_or_default()
+    );
     Ok(())
 }
 

@@ -266,6 +266,18 @@ impl Db {
     /// (`Odb.ApplyDEFTemplate` — update DIEAREA/TRACKS/ROWS/COMPONENTS/PINS/NETS from a template),
     /// or `"incremental"` (COMPONENTS/PINS only). Non-default modes need an existing design + libs.
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
+    /// Read a LEF. **The first one read creates the tech**; later ones add libraries to it.
+    ///
+    /// 🔑 Transcribes `read_lef`'s own rule (`OpenRoad.tcl:7`): with neither `-tech` nor `-library`
+    /// given, a library is always made and a tech only when the database has none. Names come from
+    /// the file's rootname, as the Tcl does.
+    ///
+    /// ⛔ **This is what lets a design be built without OpenROAD at all** — `read_def` needs a tech
+    /// and libs, and nothing on our side could create them before.
+    pub fn read_lef(&mut self, lef_path: impl AsRef<Path>) -> Result<()> {
+        Ok(sys::read_lef(self.r(), &path_str(lef_path)?)?)
+    }
+
     pub fn read_def(&mut self, def_path: impl AsRef<Path>, mode: &str) -> Result<()> {
         Ok(sys::read_def(self.r(), &path_str(def_path)?, mode)?)
     }
