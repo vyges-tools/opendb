@@ -936,6 +936,23 @@ impl Db {
     /// Every legal pin slot sits on a track, so this is the foundation of pin placement. A layer
     /// with no track grid — a cut layer, say — reports empty vectors, which is an answer rather
     /// than an error.
+    /// Add an X track pattern to `layer`'s grid, creating the grid if it has none.
+    ///
+    /// 🔑 **Mirrors `dbTrackGrid::addGridPatternX`, and the find-or-create of
+    /// `InitFloorplan::makeTracks`** — repeated calls for one layer ADD patterns to the same grid.
+    /// ⚠️ `origin` and `step` are DATABASE UNITS, not microns.
+    pub fn add_track_pattern_x(&mut self, layer: &str, origin: i32, count: i32, step: i32)
+        -> Result<()> {
+        Ok(sys::add_track_pattern_x(self.r(), layer, origin, count, step)?)
+    }
+
+    /// Add a Y track pattern to `layer`'s grid, creating the grid if it has none.
+    /// ⚠️ `origin` and `step` are DATABASE UNITS, not microns.
+    pub fn add_track_pattern_y(&mut self, layer: &str, origin: i32, count: i32, step: i32)
+        -> Result<()> {
+        Ok(sys::add_track_pattern_y(self.r(), layer, origin, count, step)?)
+    }
+
     pub fn track_grid(&self, layer: &str) -> Result<(Vec<i32>, Vec<i32>)> {
         Ok((sys::track_grid_x(self.r(), layer)?, sys::track_grid_y(self.r(), layer)?))
     }
