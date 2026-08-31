@@ -99,6 +99,11 @@ commands:
   read-def                  --input <in.odb> --def <f.def> --output <out.odb>
                       Import a DEF into the design (libodb v1 LEF/DEF I/O).
 
+  import                    --lef <tech.lef> [--lef <lib.lef>]... [--def <f.def>]
+                            [--verilog <f.v>] --output <out.odb>
+                      Build a database from LEF + DEF or a structural Verilog netlist,
+                      starting from nothing. The FIRST --lef creates the tech.
+
   apply-def-template        --input <in.odb> --template <f.def> --output <out.odb>
                       Apply a template DEF's floorplan (Odb.ApplyDEFTemplate).
 
@@ -218,6 +223,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "custom-io-placement",
     "write-def",
     "read-def",
+    "import",
     "apply-def-template",
     "fields",
     "get",
@@ -1821,8 +1827,8 @@ fn read_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
 const IMPORT_DESCRIBE: &str = r#"{
   "step": "import",
-  "summary": "Build a design database from LEF + DEF, with no OpenROAD in the loop.",
-  "inputs": ["lef", "def"],
+  "summary": "Build a design database from LEF plus a DEF or a structural Verilog netlist, with no OpenROAD in the loop.",
+  "inputs": ["lef", "def", "verilog"],
   "outputs": ["odb"]
 }"#;
 
@@ -1849,8 +1855,9 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 eprintln!("usage: vyges-opendb import --lef <tech.lef> [--lef <more.lef> ...] \
-                           [--def <f.def>] --output <out.odb>\n\
-                           \n  The FIRST --lef creates the tech; give the technology LEF first.");
+                           [--def <f.def>] [--verilog <f.v>] --output <out.odb>\n\
+                           \n  The FIRST --lef creates the tech; give the technology LEF first.\n\
+                           \n  --def and --verilog are alternative ways to bring in the design.");
                 return Ok(());
             }
             other => return Err(format!("import: unknown argument: {other}").into()),
@@ -2267,4 +2274,59 @@ fn set(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         return Ok(());
     }
     Err("`set` requires a build with --features gen-write (L2/write governance gate)".into())
+}
+
+#[cfg(test)]
+mod surface_tests {
+    //! ⛔ **A subcommand that dispatches but is not in `--help` does not exist to the user, and
+    //! does not exist to the docs** — `vyges-cli`'s mdbook pages are generated FROM `--help`.
+    //! `import` shipped in v0.1.34 dispatching correctly and documented nowhere; it was found by
+    //! a person reading the help, which is not a gate. This is the gate.
+
+    use super::{TOOL_DESCRIBE, USAGE};
+
+    /// Every `"name" => fn(args)` arm of `run()`'s dispatch, minus the flag arms.
+    fn dispatched() -> Vec<String> {
+        let src = include_str!("vyges-opendb.rs");
+        let body = src
+            .split_once("fn run() -> Result<(), Fail> {")
+            .expect("run() moved")
+            .1;
+        body.lines()
+            .take_while(|l| !l.contains("\"-V\""))
+            .filter_map(|l| {
+                let l = l.trim();
+                let name = l.strip_prefix('"')?.split_once("\" => ")?.0;
+                // ⚠️ Only real command names: skip anything that is not a plain word.
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    .then(|| name.to_string())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_dispatched_subcommand_is_in_the_help_text() {
+        let missing: Vec<_> = dispatched()
+            .into_iter()
+            .filter(|c| !USAGE.contains(&format!("\n  {c} ")) && !USAGE.contains(&format!("\n  {c}\n")))
+            .collect();
+        assert!(missing.is_empty(), "not documented in --help: {missing:?}");
+    }
+
+    #[test]
+    fn every_dispatched_subcommand_is_in_the_describe_list() {
+        let missing: Vec<_> = dispatched()
+            .into_iter()
+            .filter(|c| !TOOL_DESCRIBE.contains(&format!("\"{c}\"")))
+            .collect();
+        assert!(missing.is_empty(), "not listed by --describe: {missing:?}");
+    }
+
+    #[test]
+    fn the_gate_fires_on_an_undocumented_name() {
+        // 🔑 A check that cannot fail proves nothing: confirm it rejects a name nobody documented.
+        assert!(!USAGE.contains("\n  frobnicate "));
+        assert!(!TOOL_DESCRIBE.contains("\"frobnicate\""));
+    }
 }
