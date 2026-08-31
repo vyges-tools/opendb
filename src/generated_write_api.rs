@@ -65,6 +65,7 @@ impl Db {
     pub fn net_set1st_r_seg_id(&mut self, net: &str, rseg_id: u32) -> crate::Result<()> { Ok(sys::net_set1st_r_seg_id(self.r(), net, rseg_id)?) }
     pub fn net_set1st_cap_node_id(&mut self, net: &str, capn_id: u32) -> crate::Result<()> { Ok(sys::net_set1st_cap_node_id(self.r(), net, capn_id)?) }
     pub fn net_set_term_ext_ids(&mut self, net: &str, cap_id: i32) -> crate::Result<()> { Ok(sys::net_set_term_ext_ids(self.r(), net, cap_id)?) }
+    pub fn net_set_non_default_rule(&mut self, net: &str, rule: &str) -> crate::Result<()> { Ok(sys::net_set_non_default_rule(self.r(), net, rule)?) }
     pub fn net_clear_guides(&mut self, net: &str) -> crate::Result<()> { Ok(sys::net_clear_guides(self.r(), net)?) }
     pub fn net_clear_tracks(&mut self, net: &str) -> crate::Result<()> { Ok(sys::net_clear_tracks(self.r(), net)?) }
     pub fn net_set_jumpers(&mut self, net: &str, has_jumpers: bool) -> crate::Result<()> { Ok(sys::net_set_jumpers(self.r(), net, has_jumpers)?) }
@@ -74,10 +75,15 @@ impl Db {
     pub fn bterm_set_mark(&mut self, bterm: &str, v: u32) -> crate::Result<()> { Ok(sys::bterm_set_mark(self.r(), bterm, v)?) }
     pub fn bterm_set_ext_id(&mut self, bterm: &str, v: u32) -> crate::Result<()> { Ok(sys::bterm_set_ext_id(self.r(), bterm, v)?) }
     pub fn bterm_set_special(&mut self, bterm: &str) -> crate::Result<()> { Ok(sys::bterm_set_special(self.r(), bterm)?) }
+    pub fn bterm_set_ground_pin(&mut self, bterm: &str, pin: &str) -> crate::Result<()> { Ok(sys::bterm_set_ground_pin(self.r(), bterm, pin)?) }
+    pub fn bterm_set_supply_pin(&mut self, bterm: &str, pin: &str) -> crate::Result<()> { Ok(sys::bterm_set_supply_pin(self.r(), bterm, pin)?) }
+    pub fn bterm_set_mirrored_b_term(&mut self, bterm: &str, mirrored_bterm: &str) -> crate::Result<()> { Ok(sys::bterm_set_mirrored_b_term(self.r(), bterm, mirrored_bterm)?) }
     pub fn master_set_origin(&mut self, master: &str, x: i32, y: i32) -> crate::Result<()> { Ok(sys::master_set_origin(self.r(), master, x, y)?) }
     pub fn master_set_width(&mut self, master: &str, width: u32) -> crate::Result<()> { Ok(sys::master_set_width(self.r(), master, width)?) }
     pub fn master_set_height(&mut self, master: &str, height: u32) -> crate::Result<()> { Ok(sys::master_set_height(self.r(), master, height)?) }
     pub fn master_set_backside_bridge(&mut self, master: &str, is_bridge: bool) -> crate::Result<()> { Ok(sys::master_set_backside_bridge(self.r(), master, is_bridge)?) }
+    pub fn master_set_l_e_q(&mut self, master: &str, a0: &str) -> crate::Result<()> { Ok(sys::master_set_l_e_q(self.r(), master, a0)?) }
+    pub fn master_set_e_e_q(&mut self, master: &str, a0: &str) -> crate::Result<()> { Ok(sys::master_set_e_e_q(self.r(), master, a0)?) }
     pub fn master_set_symmetry_x(&mut self, master: &str) -> crate::Result<()> { Ok(sys::master_set_symmetry_x(self.r(), master)?) }
     pub fn master_set_symmetry_y(&mut self, master: &str) -> crate::Result<()> { Ok(sys::master_set_symmetry_y(self.r(), master)?) }
     pub fn master_set_symmetry_r90(&mut self, master: &str) -> crate::Result<()> { Ok(sys::master_set_symmetry_r90(self.r(), master)?) }
@@ -85,6 +91,7 @@ impl Db {
     pub fn master_set_sequential(&mut self, master: &str, v: bool) -> crate::Result<()> { Ok(sys::master_set_sequential(self.r(), master, v)?) }
     pub fn master_set_mark(&mut self, master: &str, mark: u32) -> crate::Result<()> { Ok(sys::master_set_mark(self.r(), master, mark)?) }
     pub fn master_set_special_power(&mut self, master: &str, v: bool) -> crate::Result<()> { Ok(sys::master_set_special_power(self.r(), master, v)?) }
+    pub fn master_set_site(&mut self, master: &str, site: &str) -> crate::Result<()> { Ok(sys::master_set_site(self.r(), master, site)?) }
     pub fn master_clear_pin_access(&mut self, master: &str, pin_access_idx: i32) -> crate::Result<()> { Ok(sys::master_clear_pin_access(self.r(), master, pin_access_idx)?) }
     pub fn iterm_set_spef(&mut self, inst: &str, pin: &str, v: u32) -> crate::Result<()> { Ok(sys::iterm_set_spef(self.r(), inst, pin, v)?) }
     pub fn iterm_set_ext_id(&mut self, inst: &str, pin: &str, v: u32) -> crate::Result<()> { Ok(sys::iterm_set_ext_id(self.r(), inst, pin, v)?) }
@@ -131,6 +138,7 @@ impl Db {
     pub fn techvia_set_resistance(&mut self, via: &str, res: f64) -> crate::Result<()> { Ok(sys::techvia_set_resistance(self.r(), via, res)?) }
     pub fn techvia_set_pattern(&mut self, via: &str, pattern: &str) -> crate::Result<()> { Ok(sys::techvia_set_pattern(self.r(), via, pattern)?) }
     pub fn ndr_set_hard_spacing(&mut self, rule: &str, value: bool) -> crate::Result<()> { Ok(sys::ndr_set_hard_spacing(self.r(), rule, value)?) }
+    pub fn ndr_set_min_cuts(&mut self, rule: &str, cut_layer: &str, count: i32) -> crate::Result<()> { Ok(sys::ndr_set_min_cuts(self.r(), rule, cut_layer, count)?) }
     pub fn site_set_width(&mut self, site: &str, width: i32) -> crate::Result<()> { Ok(sys::site_set_width(self.r(), site, width)?) }
     pub fn site_set_height(&mut self, site: &str, height: i32) -> crate::Result<()> { Ok(sys::site_set_height(self.r(), site, height)?) }
     pub fn site_set_symmetry_x(&mut self, site: &str) -> crate::Result<()> { Ok(sys::site_set_symmetry_x(self.r(), site)?) }
@@ -147,6 +155,7 @@ impl Db {
     pub fn wire_set_property(&mut self, net: &str, jid: i32, property: i32) -> crate::Result<()> { Ok(sys::wire_set_property(self.r(), net, jid, property)?) }
     pub fn box_set_soft(&mut self, idx: usize, value: bool) -> crate::Result<()> { Ok(sys::box_set_soft(self.r(), idx, value)?) }
     pub fn box_set_layer_mask(&mut self, idx: usize, mask: u32) -> crate::Result<()> { Ok(sys::box_set_layer_mask(self.r(), idx, mask)?) }
+    pub fn module_set_mod_inst(&mut self, module: &str, mod_inst: &str) -> crate::Result<()> { Ok(sys::module_set_mod_inst(self.r(), module, mod_inst)?) }
     pub fn region_set_invalid(&mut self, region: &str, v: bool) -> crate::Result<()> { Ok(sys::region_set_invalid(self.r(), region, v)?) }
     pub fn blockage_set_pushed_down(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::blockage_set_pushed_down(self.r(), idx)?) }
     pub fn blockage_set_soft(&mut self, idx: usize) -> crate::Result<()> { Ok(sys::blockage_set_soft(self.r(), idx)?) }
@@ -160,14 +169,22 @@ impl Db {
     pub fn marker_set_visited(&mut self, category: &str, idx: usize, visited: bool) -> crate::Result<()> { Ok(sys::marker_set_visited(self.r(), category, idx, visited)?) }
     pub fn marker_set_visible(&mut self, category: &str, idx: usize, visible: bool) -> crate::Result<()> { Ok(sys::marker_set_visible(self.r(), category, idx, visible)?) }
     pub fn marker_set_waived(&mut self, category: &str, idx: usize, waived: bool) -> crate::Result<()> { Ok(sys::marker_set_waived(self.r(), category, idx, waived)?) }
+    pub fn marker_set_tech_layer(&mut self, category: &str, idx: usize, layer: &str) -> crate::Result<()> { Ok(sys::marker_set_tech_layer(self.r(), category, idx, layer)?) }
+    pub fn modbterm_set_mod_net(&mut self, module: &str, idx: usize, mod_net: &str) -> crate::Result<()> { Ok(sys::modbterm_set_mod_net(self.r(), module, idx, mod_net)?) }
+    pub fn moditerm_set_mod_net(&mut self, modinst: &str, idx: usize, mod_net: &str) -> crate::Result<()> { Ok(sys::moditerm_set_mod_net(self.r(), modinst, idx, mod_net)?) }
     pub fn pwr_domain_set_top(&mut self, name: &str, top: bool) -> crate::Result<()> { Ok(sys::pwr_domain_set_top(self.r(), name, top)?) }
+    pub fn pwr_domain_set_parent(&mut self, name: &str, parent: &str) -> crate::Result<()> { Ok(sys::pwr_domain_set_parent(self.r(), name, parent)?) }
     pub fn pwr_domain_set_voltage(&mut self, name: &str, voltage: f32) -> crate::Result<()> { Ok(sys::pwr_domain_set_voltage(self.r(), name, voltage)?) }
+    pub fn pwr_domain_set_group(&mut self, name: &str, group: &str) -> crate::Result<()> { Ok(sys::pwr_domain_set_group(self.r(), name, group)?) }
+    pub fn pwr_switch_set_power_domain(&mut self, name: &str, power_domain: &str) -> crate::Result<()> { Ok(sys::pwr_switch_set_power_domain(self.r(), name, power_domain)?) }
     pub fn pwr_switch_set_out_supply_port(&mut self, name: &str, out_port: &str, net: &str) -> crate::Result<()> { Ok(sys::pwr_switch_set_out_supply_port(self.r(), name, out_port, net)?) }
+    pub fn pwr_switch_set_lib_cell(&mut self, name: &str, master: &str) -> crate::Result<()> { Ok(sys::pwr_switch_set_lib_cell(self.r(), name, master)?) }
     pub fn isolation_set_applies_to(&mut self, name: &str, applies_to: &str) -> crate::Result<()> { Ok(sys::isolation_set_applies_to(self.r(), name, applies_to)?) }
     pub fn isolation_set_clamp_value(&mut self, name: &str, clamp_value: &str) -> crate::Result<()> { Ok(sys::isolation_set_clamp_value(self.r(), name, clamp_value)?) }
     pub fn isolation_set_isolation_signal(&mut self, name: &str, isolation_signal: &str) -> crate::Result<()> { Ok(sys::isolation_set_isolation_signal(self.r(), name, isolation_signal)?) }
     pub fn isolation_set_isolation_sense(&mut self, name: &str, isolation_sense: &str) -> crate::Result<()> { Ok(sys::isolation_set_isolation_sense(self.r(), name, isolation_sense)?) }
     pub fn isolation_set_location(&mut self, name: &str, location: &str) -> crate::Result<()> { Ok(sys::isolation_set_location(self.r(), name, location)?) }
+    pub fn isolation_set_power_domain(&mut self, name: &str, power_domain: &str) -> crate::Result<()> { Ok(sys::isolation_set_power_domain(self.r(), name, power_domain)?) }
     pub fn level_shifter_set_source(&mut self, name: &str, source: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_source(self.r(), name, source)?) }
     pub fn level_shifter_set_sink(&mut self, name: &str, sink: &str) -> crate::Result<()> { Ok(sys::level_shifter_set_sink(self.r(), name, sink)?) }
     pub fn level_shifter_set_use_functional_equivalence(&mut self, name: &str, use_functional_equivalence: bool) -> crate::Result<()> { Ok(sys::level_shifter_set_use_functional_equivalence(self.r(), name, use_functional_equivalence)?) }
@@ -268,6 +285,7 @@ impl Db {
     pub fn cutenclosurerule_set_below_enclosure_valid(&mut self, layer: &str, idx: usize, below_enclosure_valid: bool) -> crate::Result<()> { Ok(sys::cutenclosurerule_set_below_enclosure_valid(self.r(), layer, idx, below_enclosure_valid)?) }
     pub fn cutenclosurerule_set_concave_corners_valid(&mut self, layer: &str, idx: usize, concave_corners_valid: bool) -> crate::Result<()> { Ok(sys::cutenclosurerule_set_concave_corners_valid(self.r(), layer, idx, concave_corners_valid)?) }
     pub fn cutspacingrule_set_cut_spacing(&mut self, layer: &str, idx: usize, cut_spacing: i32) -> crate::Result<()> { Ok(sys::cutspacingrule_set_cut_spacing(self.r(), layer, idx, cut_spacing)?) }
+    pub fn cutspacingrule_set_second_layer(&mut self, layer: &str, idx: usize, second_layer: &str) -> crate::Result<()> { Ok(sys::cutspacingrule_set_second_layer(self.r(), layer, idx, second_layer)?) }
     pub fn cutspacingrule_set_orthogonal_spacing(&mut self, layer: &str, idx: usize, orthogonal_spacing: i32) -> crate::Result<()> { Ok(sys::cutspacingrule_set_orthogonal_spacing(self.r(), layer, idx, orthogonal_spacing)?) }
     pub fn cutspacingrule_set_width(&mut self, layer: &str, idx: usize, width: i32) -> crate::Result<()> { Ok(sys::cutspacingrule_set_width(self.r(), layer, idx, width)?) }
     pub fn cutspacingrule_set_enclosure(&mut self, layer: &str, idx: usize, enclosure: i32) -> crate::Result<()> { Ok(sys::cutspacingrule_set_enclosure(self.r(), layer, idx, enclosure)?) }
@@ -327,6 +345,7 @@ impl Db {
     pub fn cutspacingrule_set_below(&mut self, layer: &str, idx: usize, below: bool) -> crate::Result<()> { Ok(sys::cutspacingrule_set_below(self.r(), layer, idx, below)?) }
     pub fn cutspacingrule_set_par_within_enclosure_valid(&mut self, layer: &str, idx: usize, par_within_enclosure_valid: bool) -> crate::Result<()> { Ok(sys::cutspacingrule_set_par_within_enclosure_valid(self.r(), layer, idx, par_within_enclosure_valid)?) }
     pub fn cutspacingtablerule_set_default(&mut self, layer: &str, idx: usize, spacing: i32) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_default(self.r(), layer, idx, spacing)?) }
+    pub fn cutspacingtablerule_set_second_layer(&mut self, layer: &str, idx: usize, second_layer: &str) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_second_layer(self.r(), layer, idx, second_layer)?) }
     pub fn cutspacingtablerule_set_prl(&mut self, layer: &str, idx: usize, prl: i32) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_prl(self.r(), layer, idx, prl)?) }
     pub fn cutspacingtablerule_set_extension(&mut self, layer: &str, idx: usize, extension: i32) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_extension(self.r(), layer, idx, extension)?) }
     pub fn cutspacingtablerule_set_default_valid(&mut self, layer: &str, idx: usize, default_valid: bool) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_default_valid(self.r(), layer, idx, default_valid)?) }
@@ -379,5 +398,7 @@ impl Db {
     pub fn chip_set_tsv(&mut self, chip: &str, tsv: bool) -> crate::Result<()> { Ok(sys::chip_set_tsv(self.r(), chip, tsv)?) }
     pub fn chipinst_set_orient(&mut self, chip: &str, inst: &str, orient: &str) -> crate::Result<()> { Ok(sys::chipinst_set_orient(self.r(), chip, inst, orient)?) }
     pub fn chipinst_set_loc(&mut self, chip: &str, inst: &str, x: i32, y: i32, z: i32) -> crate::Result<()> { Ok(sys::chipinst_set_loc(self.r(), chip, inst, x, y, z)?) }
+    pub fn chipbump_set_net(&mut self, chip: &str, region: &str, idx: usize, net: &str) -> crate::Result<()> { Ok(sys::chipbump_set_net(self.r(), chip, region, idx, net)?) }
+    pub fn chipbump_set_b_term(&mut self, chip: &str, region: &str, idx: usize, bterm: &str) -> crate::Result<()> { Ok(sys::chipbump_set_b_term(self.r(), chip, region, idx, bterm)?) }
     pub fn chipconn_set_thickness(&mut self, chip: &str, conn: &str, thickness: i32) -> crate::Result<()> { Ok(sys::chipconn_set_thickness(self.r(), chip, conn, thickness)?) }
 }
