@@ -1627,6 +1627,34 @@ impl Db {
             })
             .collect())
     }
+    /// Every **special**-wire box of one net as
+    /// `(layer number, swire is FIXED, box is OCTILINEAR, x0, y0, x1, y1, width)`.
+    ///
+    /// 🔑 **The discriminator is the SWIRE's wire type, not the box's shape type.**
+    /// `RDLRouter::populateObstructions` inserts every swire box on the routing layer as an
+    /// obstruction and skips only `swire->getWireType() != dbWireType::FIXED` on the nets it is
+    /// routing now — because those are the wires it is about to destroy and rebuild. A FIXED swire
+    /// on a net being routed therefore still blocks that net's own router.
+    ///
+    /// ⚠️ [`Self::net_swire_shapes`] cannot answer this: it reports each box's
+    /// `getWireShapeType()` (IOWIRE, STRIPE, …), a different field, and it flattens an octagon to
+    /// its bounding rectangle. Here an OCTILINEAR box gives the octagon's **centre-low and
+    /// centre-high points and its width**, so the true shape can be rebuilt; a rectangle gives its
+    /// box and a width of 0.
+    #[allow(clippy::type_complexity)]
+    pub fn net_swire_obstacles(
+        &self,
+        net: &str,
+    ) -> Result<Vec<(i64, bool, bool, i32, i32, i32, i32, i32)>> {
+        Ok(sys::net_swire_obstacles(self.r(), net)?
+            .chunks(8)
+            .filter(|c| c.len() == 8)
+            .map(|c| {
+                (c[0], c[1] != 0, c[2] != 0, c[3] as i32, c[4] as i32,
+                 c[5] as i32, c[6] as i32, c[7] as i32)
+            })
+            .collect())
+    }
     /// A tech via's bottom (`"bottom"`) or top (`"top"`) routing layer name.
     pub fn tech_via_layer(&self, via: &str, which: &str) -> Result<String> {
         Ok(sys::tech_via_layer(self.r(), via, which)?)
