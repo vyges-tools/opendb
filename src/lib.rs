@@ -1111,6 +1111,51 @@ impl Db {
         Ok(chunk5(sys::mterm_pin_boxes(self.r(), master, term)?))
     }
 
+    /// The same pin rectangles, but **without** the ones a POLYGON port decomposes into.
+    ///
+    /// ⚠️ `dbMPin::getGeometry()` includes decomposed polygons by default, so a caller that also
+    /// reads the polygons back would count an octagonal pad twice — once as an octagon, once as
+    /// the staircase of rectangles it splits into. Pair this with [`Db::iterm_pin_polygons`].
+    pub fn mterm_pin_boxes_excluding_polygons(
+        &self,
+        master: &str,
+        term: &str,
+    ) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(chunk5(sys::mterm_pin_boxes_excluding_polygons(self.r(), master, term)?))
+    }
+
+    /// The POLYGON ports of an instance terminal, **already through the instance transform**.
+    ///
+    /// Returned as `(layer number, points)` per polygon. The transform is applied inside the
+    /// binding, so nothing here has to reimplement `dbTransform` on a polygon.
+    pub fn iterm_pin_polygons(&self, iterm: &str) -> Result<Vec<(i64, Vec<(i32, i32)>)>> {
+        let flat = sys::iterm_pin_polygons(self.r(), iterm)?;
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while i + 1 < flat.len() {
+            let layer = flat[i] as i64;
+            let n = flat[i + 1].max(0) as usize;
+            i += 2;
+            if i + 2 * n > flat.len() {
+                break;
+            }
+            out.push((layer, (0..n).map(|k| (flat[i + 2 * k], flat[i + 2 * k + 1])).collect()));
+            i += 2 * n;
+        }
+        Ok(out)
+    }
+
+    /// Grow (or, with a negative margin, shrink) a polygon — `odb::Polygon::bloat`.
+    ///
+    /// 🔑 The result is a **closed, counter-clockwise** ring, and for a non-rectilinear polygon the
+    /// offset is not a per-edge shift. This calls the library the reference calls rather than
+    /// reimplementing it, so the two cannot drift apart.
+    pub fn polygon_bloat(&self, points: &[(i32, i32)], margin: i32) -> Result<Vec<(i32, i32)>> {
+        let flat: Vec<i32> = points.iter().flat_map(|&(x, y)| [x, y]).collect();
+        let out = sys::polygon_bloat(&flat, margin)?;
+        Ok(out.chunks_exact(2).map(|c| (c[0], c[1])).collect())
+    }
+
     /// A layer's **type** — `ROUTING`, `CUT`, `OVERLAP`, and so on.
     ///
     /// ⚠️ The type, not the name. A layer named `OVERLAP` in one technology is a coincidence; the
