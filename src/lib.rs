@@ -928,6 +928,36 @@ impl Db {
         Ok(sys::block_cut_rows(self.r(), min_row_width, min_row_height, blockage_insts,
                                halo_x, halo_y)?)
     }
+    /// Cut the rows against the block's **own blockages** — odb's `cutRows` again, over the input
+    /// `ifp` gives it.
+    ///
+    /// [`Self::cut_rows`] cuts around instances the caller names, because `tap` picks its
+    /// blockages from placed macros. `ifp` picks nothing: `makeRows` ends by passing every
+    /// `dbBlockage` in the block, unconditionally, and `cutRows` returns at once when there are
+    /// none — so on a design that declares no blockage this is a no-op.
+    ///
+    /// `min_row_height` gates odb's narrow-region cutting; **0 disables it**, and 0 is what
+    /// upstream's own `ifp` passes, as are both halos.
+    pub fn cut_rows_at_blockages(
+        &mut self,
+        min_row_width: i32,
+        min_row_height: i32,
+        halo_x: i32,
+        halo_y: i32,
+    ) -> Result<()> {
+        Ok(sys::block_cut_rows_at_blockages(self.r(), min_row_width, min_row_height,
+                                            halo_x, halo_y)?)
+    }
+    /// A group's type: `PHYSICAL_CLUSTER`, `VOLTAGE_DOMAIN`, `POWER_DOMAIN` or `VISUAL_DEBUG`.
+    ///
+    /// ⛔ **There is no proxy for this.** `ifp`'s `updateVoltageDomain` rebuilds the rows crossing
+    /// a VOLTAGE_DOMAIN or POWER_DOMAIN group and leaves every other group alone; a physical
+    /// cluster may carry a region and a name just the same, so guessing from those holds only on
+    /// the designs that happen to be at hand. An unknown group name is an error rather than an
+    /// empty string, which would read as a type.
+    pub fn group_get_type(&self, group: &str) -> Result<String> {
+        Ok(sys::group_get_type(self.r(), group)?)
+    }
     /// Does the technology have a single-site-width master? Decides whether tapcell placement
     /// may leave one-site gaps.
     pub fn has_one_site_master(&self) -> bool {

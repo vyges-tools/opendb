@@ -188,6 +188,36 @@ fn cutting_rows_reaches_odb_and_names_an_unknown_blockage() {
 }
 
 #[test]
+fn cutting_rows_at_the_blocks_own_blockages_reaches_odb() {
+    // `ifp` does not choose its blockages the way `tap` does: it hands odb every dbBlockage in
+    // the block. The fixture declares none, and odb returns immediately on an empty list, so
+    // this is a no-op — which is exactly the case that must not become an error, because every
+    // design without a blockage takes it.
+    let mut db = Db::open(FIXTURE).expect("opens");
+    db.cut_rows_at_blockages(0, 0, 0, 0)
+        .expect("a block with no blockages is not an error");
+}
+
+#[test]
+fn a_groups_type_is_readable_and_an_unknown_group_is_an_error() {
+    // ⚠️ An unknown group must throw rather than return "": an empty string would read as a
+    // type, and a caller filtering for VOLTAGE_DOMAIN would silently skip a group it could not
+    // find instead of failing. That silence is what `ifp` cannot afford — it decides which rows
+    // get rebuilt.
+    let db = Db::open(FIXTURE).expect("opens");
+    assert!(db.group_get_type("no_such_group_xyz").is_err());
+    // Every group the block does define answers with one of odb's four type names.
+    for g in db.block_get_groups() {
+        let t = db.group_get_type(&g).expect("a defined group has a type");
+        assert!(
+            matches!(t.as_str(), "PHYSICAL_CLUSTER" | "VOLTAGE_DOMAIN" | "POWER_DOMAIN"
+                                 | "VISUAL_DEBUG"),
+            "unexpected group type {t:?}"
+        );
+    }
+}
+
+#[test]
 fn rows_can_be_listed_and_their_site_class_read() {
     let mut db = Db::open(FIXTURE).expect("opens");
     let site = a_site(&db);
