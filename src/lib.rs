@@ -860,6 +860,18 @@ impl Db {
     pub fn set_die_area(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::block_set_die_area(self.r(), x1, y1, x2, y2)?)
     }
+    /// Set a **non-rectangular** die outline, as a flat `[x0, y0, x1, y1, ...]` list of vertices.
+    ///
+    /// The read side ([`die_area_polygon`](Self::die_area_polygon)) already existed; this is the
+    /// write side, and there is no generated equivalent because `setDieArea` is overloaded on
+    /// `odb::Polygon`. A floorplan whose die is a rectangle should keep using
+    /// [`set_die_area`](Self::set_die_area) — this is for the polygon form of the command.
+    ///
+    /// ⚠️ Fewer than 4 vertices, or an odd number of coordinates, is an error rather than a
+    /// stored degenerate outline.
+    pub fn set_die_area_polygon(&mut self, xy: &[i32]) -> Result<()> {
+        Ok(sys::block_set_die_area_polygon(self.r(), xy)?)
+    }
     /// Set the core area, in DBU. Note a floorplan usually wants
     /// [`set_core_area_from_rows`](Self::set_core_area_from_rows) instead: the core a design
     /// really has is the one its rows cover, not the one that was asked for.

@@ -188,6 +188,22 @@ fn cutting_rows_reaches_odb_and_names_an_unknown_blockage() {
 }
 
 #[test]
+fn a_polygon_die_round_trips_and_a_degenerate_one_is_refused() {
+    // The read side already existed; this is the write side. A polygon die is the only way the
+    // floorplan's polygon form can store its outline -- the rectangle setter would silently keep
+    // the bounding box instead, which is a different die.
+    let mut db = Db::open(FIXTURE).expect("opens");
+    let hexagon = [0, 0, 1000, 0, 1500, 500, 1000, 1000, 0, 1000, -500, 500];
+    db.set_die_area_polygon(&hexagon).expect("a 6-vertex die is legal");
+    let back = db.die_area_polygon().expect("readable");
+    assert!(back.len() >= 6, "the outline came back with its vertices, got {}", back.len());
+
+    // ⚠️ Degenerate outlines are an error, not a stored shape.
+    assert!(db.set_die_area_polygon(&[0, 0, 10, 0, 10, 10]).is_err(), "3 vertices is not a die");
+    assert!(db.set_die_area_polygon(&[0, 0, 10, 0, 10, 10, 0]).is_err(), "odd coordinate count");
+}
+
+#[test]
 fn cutting_rows_at_the_blocks_own_blockages_reaches_odb() {
     // `ifp` does not choose its blockages the way `tap` does: it hands odb every dbBlockage in
     // the block. The fixture declares none, and odb returns immediately on an empty list, so
