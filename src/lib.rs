@@ -1145,6 +1145,32 @@ impl Db {
         Ok(out)
     }
 
+    /// A boolean property on an instance terminal — `Some(value)`, or `None` when absent.
+    ///
+    /// ⚠️ **Absent is not false.** Callers that treat a missing property as `false` invert the
+    /// meaning of every terminal that simply never had one.
+    pub fn iterm_bool_property(&self, iterm: &str, name: &str) -> Result<Option<bool>> {
+        Ok(match sys::iterm_bool_property(self.r(), iterm, name)? {
+            0 => Some(false),
+            1 => Some(true),
+            _ => None,
+        })
+    }
+
+    /// The same property on the **master** terminal, which a whole library shares.
+    pub fn mterm_bool_property(
+        &self,
+        master: &str,
+        term: &str,
+        name: &str,
+    ) -> Result<Option<bool>> {
+        Ok(match sys::mterm_bool_property(self.r(), master, term, name)? {
+            0 => Some(false),
+            1 => Some(true),
+            _ => None,
+        })
+    }
+
     /// Grow (or, with a negative margin, shrink) a polygon — `odb::Polygon::bloat`.
     ///
     /// 🔑 The result is a **closed, counter-clockwise** ring, and for a non-rectilinear polygon the

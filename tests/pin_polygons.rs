@@ -94,3 +94,17 @@ fn an_absent_terminal_reports_nothing_rather_than_failing() {
     assert!(db.iterm_pin_polygons("no_such_inst/no_such_pin").expect("no error").is_empty());
     assert!(db.iterm_pin_polygons("malformed-name").expect("no error").is_empty());
 }
+
+// ⚠️ Absent is a third state, not `false`. A caller that folds the two together inverts the
+// meaning of every terminal that never carried the property — which is nearly all of them.
+#[test]
+fn an_absent_boolean_property_is_none_rather_than_false() {
+    let db = Db::open(FIXTURE).expect("opens");
+    let inst = db.inst_names().into_iter().next().expect("at least one instance");
+    let master = db.inst_get_master(&inst);
+    assert_eq!(db.iterm_bool_property(&format!("{inst}/A"), "RDL_ROUTE").expect("ok"), None);
+    assert_eq!(db.mterm_bool_property(&master, "A", "RDL_ROUTE").expect("ok"), None);
+    // A terminal that does not exist reports absence too, rather than failing.
+    assert_eq!(db.iterm_bool_property("nope/nope", "RDL_ROUTE").expect("ok"), None);
+    assert_eq!(db.mterm_bool_property("nope", "nope", "RDL_ROUTE").expect("ok"), None);
+}
