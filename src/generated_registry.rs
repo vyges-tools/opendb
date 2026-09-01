@@ -1145,7 +1145,7 @@ pub const UNIMPLEMENTED: &[Unimpl] = &[
     Unimpl { class: "dbGroup", field: "add_inst", method: "addInst", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbGroup", field: "add_mod_inst", method: "addModInst", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbGroup", field: "add_power_net", method: "addPowerNet", kind: "setter", ret: "void", hand_written: false },
-    Unimpl { class: "dbGroup", field: "get_type", method: "getType", kind: "getter", ret: "dbGroupType", hand_written: false },
+    Unimpl { class: "dbGroup", field: "get_type", method: "getType", kind: "getter", ret: "dbGroupType", hand_written: true },
     Unimpl { class: "dbGroup", field: "remove_group", method: "removeGroup", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbGroup", field: "remove_inst", method: "removeInst", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbGroup", field: "remove_mod_inst", method: "removeModInst", kind: "setter", ret: "void", hand_written: false },
