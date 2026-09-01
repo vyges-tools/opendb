@@ -1672,6 +1672,32 @@ impl Db {
             self.r(), net, fixed, layer, rect.0, rect.1, rect.2, rect.3, shape,
         )?)
     }
+    /// A **diagonal** (octilinear) special wire — a 45-degree route segment.
+    ///
+    /// ⛔ **Endpoints and a width, not a rectangle.** `rect` here is the segment's two ends, and
+    /// `width` is carried separately; the reference's `dbSBox::create` takes a different overload
+    /// for this and deliberately discards the bounding box it computes for axis-aligned wires.
+    /// Passing a bbox to [`add_swire_box`](Self::add_swire_box) instead puts a rectangle where a
+    /// 45 belongs.
+    ///
+    /// ⚠️ Without this a caller has no way to express a diagonal at all, and skipping the piece
+    /// leaves the straight wires either side of it not meeting — a **disconnected** net rather
+    /// than a slightly shorter one.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
+    pub fn add_swire_octilinear(
+        &mut self,
+        net: &str,
+        layer: &str,
+        from: (i32, i32),
+        to: (i32, i32),
+        width: i32,
+        fixed: bool,
+        shape: &str,
+    ) -> Result<()> {
+        Ok(sys::swire_add_box_octilinear(
+            self.r(), net, fixed, layer, from.0, from.1, to.0, to.1, width, shape,
+        )?)
+    }
     /// Remove a net's **routed** special wires, keeping any marked fixed.
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn clear_routed_swires(&mut self, net: &str) -> Result<usize> {

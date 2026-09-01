@@ -188,6 +188,36 @@ fn cutting_rows_reaches_odb_and_names_an_unknown_blockage() {
 }
 
 #[test]
+fn a_diagonal_special_wire_can_be_written_at_all() {
+    // ⛔ A 45-degree route segment is NOT a rectangle: the reference passes the segment's two
+    // endpoints plus a width through a different `dbSBox::create` overload. Without this the
+    // caller can only write axis-aligned wires, and a router that produces diagonals has to drop
+    // them — which leaves the straight pieces either side not meeting, so the net comes out
+    // DISCONNECTED rather than merely shorter.
+    let mut db = Db::open(FIXTURE).expect("opens");
+    let layer = db
+        .layers_with_direction()
+        .expect("layers")
+        .into_iter()
+        .map(|(n, _)| n)
+        .find(|n| db.layer_get_type(n).unwrap_or_default() == "ROUTING")
+        .expect("a routing layer");
+    let net = db.net_names().into_iter().next().expect("the fixture has a net");
+
+    db.add_swire_octilinear(&net, &layer, (0, 0), (1000, 1000), 200, false, "IOWIRE")
+        .expect("a diagonal is writable");
+
+    // ⚠️ A zero or negative width is refused rather than stored: the width IS the wire here,
+    // since the endpoints are a centre line rather than a bounding box.
+    assert!(db
+        .add_swire_octilinear(&net, &layer, (0, 0), (1000, 1000), 0, false, "IOWIRE")
+        .is_err());
+    assert!(db
+        .add_swire_octilinear(&net, "no_such_layer_xyz", (0, 0), (1, 1), 200, false, "IOWIRE")
+        .is_err());
+}
+
+#[test]
 fn a_polygon_die_round_trips_and_a_degenerate_one_is_refused() {
     // The read side already existed; this is the write side. A polygon die is the only way the
     // floorplan's polygon form can store its outline -- the rectangle setter would silently keep
