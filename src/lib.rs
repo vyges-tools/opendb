@@ -1145,6 +1145,16 @@ impl Db {
         Ok(out)
     }
 
+    /// Start a fresh special wire on a net, so the wires written after it group separately.
+    ///
+    /// 🔑 The RDL router creates one `dbSWire` per **segment**, not one per net. The grouping is
+    /// visible in the DEF — each swire prints its own status keyword and its remaining wires print
+    /// `NEW` — so a writer that creates one per net emits a different file for identical geometry.
+    pub fn new_swire(&mut self, net: &str, fixed: bool) -> Result<()> {
+        sys::net_new_swire(self.r(), net, fixed)?;
+        Ok(())
+    }
+
     /// A boolean property on an instance terminal — `Some(value)`, or `None` when absent.
     ///
     /// ⚠️ **Absent is not false.** Callers that treat a missing property as `false` invert the

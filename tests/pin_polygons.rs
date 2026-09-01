@@ -108,3 +108,21 @@ fn an_absent_boolean_property_is_none_rather_than_false() {
     assert_eq!(db.iterm_bool_property("nope/nope", "RDL_ROUTE").expect("ok"), None);
     assert_eq!(db.mterm_bool_property("nope", "nope", "RDL_ROUTE").expect("ok"), None);
 }
+
+// 🔑 The RDL router creates one `dbSWire` per SEGMENT. Wires added after a new swire must land on
+// that one — taking the first matching swire instead piles every segment back into swire number
+// one, which writes a different DEF for identical geometry.
+#[test]
+fn wires_land_on_the_most_recent_swire_of_their_type() {
+    let mut db = Db::open(FIXTURE).expect("opens");
+    let net = db.net_names().into_iter().next().expect("a net");
+    let layer = db.layer_name_by_number(0);
+
+    db.add_swire_box(&net, &layer, (0, 0, 100, 10), false).expect("first wire");
+    db.new_swire(&net, false).expect("second swire");
+    db.add_swire_box(&net, &layer, (0, 200, 100, 210), false).expect("second wire");
+
+    // Both wires are on the net, and the second went to the newer swire.
+    let shapes = db.net_swire_shapes(&net).expect("shapes");
+    assert_eq!(shapes.len(), 2, "both wires present, got {shapes:?}");
+}
