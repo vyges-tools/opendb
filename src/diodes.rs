@@ -17,6 +17,12 @@
 //! orientation, different spelling — normalising the DEF tokens (`N`→`R0`, `FS`→`MX`, …) makes it
 //! exact. A comparison that skipped that step would have reported 648 failures.
 //!
+//! ℹ️ **Version provenance.** Correlated against `2.4.6`. `diodes.py` is byte-identical in `3.0.2`
+//! except that `--threshold` became `required=True` there, so the *"200 × minimum site width"*
+//! default this engine applies is `2.4.6`'s behaviour; `3.0.2` moved that decision up into the
+//! step's config. Applying it here is a convenience, not a divergence in the algorithm — pass
+//! `--threshold` and both versions agree exactly.
+//!
 //! ℹ️ **The reference under-reports its own work.** It printed *"Inserted 0 diodes"* for this run
 //! while creating 648, because its counter is only written by the std-cell path and every target
 //! here is a pad macro. Ours counts the plan.
