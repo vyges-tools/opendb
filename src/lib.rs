@@ -829,6 +829,16 @@ impl Db {
         Ok(sys::bump_master_create(self.r(), name, width, height)?)
     }
 
+    /// Does the LEF state an antenna DIFFUSION area for this pin?
+    pub fn mterm_has_diff_area(&self, master: &str, term: &str) -> bool {
+        sys::mterm_has_diff_area(self.r(), master, term)
+    }
+
+    /// Does the LEF state an antenna GATE area for this pin?
+    pub fn mterm_has_gate_area(&self, master: &str, term: &str) -> bool {
+        sys::mterm_has_gate_area(self.r(), master, term)
+    }
+
     /// A PAD-class site in the `FAKE_IO` library — `ICeWall::makeFakeSite`.
     ///
     /// For a pad ring whose LEF defines no IO site of its own. The library is found-or-created, so

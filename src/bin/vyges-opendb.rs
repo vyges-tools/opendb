@@ -46,6 +46,9 @@ commands:
 
   report-disconnected-pins  --input <f.odb>
                       Print a JSON list of pins/ports with no net (report).
+  check-antenna-properties  --input <f.odb> [--cell NAME]...
+                      Report pins whose LEF states no antenna gate/diffusion area (report).
+                      Defaults to every master the design instantiates.
 
   set-power-connections     --input <in.odb> --output <out.odb> [--config <cfg.json>]
                       Wire instance pins to (power) nets (SET_POWER_CONNECTIONS in the config).
@@ -146,6 +149,7 @@ fn run() -> Result<(), Fail> {
         "diodes-on-ports" => diodes_on_ports(args),
         "cell-frequency-tables" => cell_frequency_tables(args),
         "report-disconnected-pins" => report_disconnected_pins(args),
+        "check-antenna-properties" => check_antenna_properties(args),
         "set-power-connections" => set_power_connections(args),
         "add-obstructions" => add_obstructions(args),
         "remove-obstructions" => remove_obstructions(args),
@@ -208,6 +212,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "diodes-on-ports",
     "cell-frequency-tables",
     "report-disconnected-pins",
+    "check-antenna-properties",
     "set-power-connections",
     "add-obstructions",
     "remove-obstructions",
@@ -639,6 +644,57 @@ fn report_disconnected_pins(mut args: impl Iterator<Item = String>) -> Result<()
     let pins = report::disconnected_pins(&db);
     eprintln!("report-disconnected-pins: {} disconnected", pins.len());
     println!("{}", serde_json::to_string_pretty(&pins)?);
+    Ok(())
+}
+
+fn check_antenna_properties(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut cells) = (None, Vec::new());
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            // ⚠️ Repeatable, as the reference's `-c/--cell-name` is (`multiple=True`).
+            "--cell" | "-c" => cells.extend(args.next()),
+            "-h" | "--help" => {
+                eprintln!("usage: vyges-opendb check-antenna-properties --input <f.odb> \
+                           [--cell NAME]...");
+                return Ok(());
+            }
+            other => {
+                return Err(format!("check-antenna-properties: unknown argument: {other}").into())
+            }
+        }
+    }
+    let input = input.ok_or("check-antenna-properties: --input <f.odb> required")?;
+    let db = Db::open(&input)?;
+    // ⛔ No `--cell` means every master the design instantiates, not "nothing". The reference
+    // requires the flag, but its caller passes the macro list; defaulting to nothing here would
+    // make the common invocation report clean without looking at anything.
+    if cells.is_empty() {
+        let mut seen: std::collections::BTreeSet<String> = Default::default();
+        for i in 0..db.num_insts() {
+            seen.insert(db.inst_master(&db.nth_inst_name(i)));
+        }
+        cells = seen.into_iter().collect();
+    }
+    let report = report::antenna_properties(&db, &cells);
+    let flagged: usize = report.iter().map(|e| e.inout.len() + e.input.len() + e.output.len()).sum();
+    for e in &report {
+        if !e.inout.is_empty() {
+            eprintln!("[WARNING] Cell '{}' has ({}) inout pin(s) with neither antenna gate nor \
+                       diffusion information. They might be disconnected.", e.cell, e.inout.len());
+        }
+        if !e.input.is_empty() {
+            eprintln!("[WARNING] Cell '{}' has ({}) input pin(s) without antenna gate \
+                       information. They might not be connected to a gate.", e.cell, e.input.len());
+        }
+        if !e.output.is_empty() {
+            eprintln!("[WARNING] Cell '{}' has ({}) output pin(s) without antenna diffusion \
+                       information. They might not be driven.", e.cell, e.output.len());
+        }
+    }
+    eprintln!("check-antenna-properties: {} cell(s) checked, {flagged} pin(s) flagged",
+              report.len());
+    println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
 
@@ -2296,7 +2352,8 @@ mod surface_tests {
     /// config key it reads (`Add`/`RemovePDNObstructions` vs `Add`/`RemoveRoutingObstructions`);
     /// ours takes the rects from the config, so one command serves both. That is a difference in
     /// step granularity, not in capability, and counting them as one each is what made the
-    /// standing "15 of 21" a slight undercount — **measured 2026-09-02 it is 16**.
+    /// standing "15 of 21" a slight undercount — measured 2026-09-02 it was 16, and
+    /// `check-antenna-properties` took it to **18**.
     const LIBRELANE_ODB_STEPS: &[(&str, Option<&str>)] = &[
         ("AddPDNObstructions", Some("add-obstructions")),
         ("AddRoutingObstructions", Some("add-obstructions")),
@@ -2314,12 +2371,16 @@ mod surface_tests {
         ("ReportWireLength", Some("report-wire-length")),
         ("SetPowerConnections", Some("set-power-connections")),
         ("WriteVerilogHeader", Some("write-verilog-header")),
-        // ⬜ **The five that are NOT built, and they are one family.** Every one needs antenna
-        // analysis to decide WHERE a diode goes or WHETHER a property is right — the decision is
-        // the work, and the odb surgery afterwards is trivial. `vyges-ant` is the engine that
-        // would answer them; until it drives these, an applier here would be guessing.
-        ("CheckDesignAntennaProperties", None),
-        ("CheckMacroAntennaProperties", None),
+        // ✅ **Both added 2026-09-02, and reading the reference CORRECTED our own scoping.** These
+        // were filed as "antenna-driven" and therefore blocked on `vyges-ant`. They are not:
+        // `check_antenna_properties.py` performs NO antenna analysis — it asks whether the LEF
+        // states a gate/diffusion area for each pin at all. Pure property inspection, and the
+        // cheapest two of the five.
+        ("CheckDesignAntennaProperties", Some("check-antenna-properties")),
+        ("CheckMacroAntennaProperties", Some("check-antenna-properties")),
+        // ⬜ **The three that remain DO need antenna analysis** — each has to decide WHERE a diode
+        // goes, which is a different question from whether a net's ratio is clean. `vyges-ant`
+        // answers the second today and not the first.
         ("FuzzyDiodePlacement", None),
         ("HeuristicDiodeInsertion", None),
         ("PortDiodePlacement", None),
@@ -2350,8 +2411,8 @@ mod surface_tests {
         let covered: std::collections::BTreeSet<_> =
             LIBRELANE_ODB_STEPS.iter().filter_map(|(_, s)| *s).collect();
         let steps_covered = LIBRELANE_ODB_STEPS.iter().filter(|(_, s)| s.is_some()).count();
-        assert_eq!(steps_covered, 16, "16 of LibreLane's 21 Odb.* steps are covered");
-        assert_eq!(covered.len(), 14, "by 14 distinct subcommands");
+        assert_eq!(steps_covered, 18, "18 of LibreLane's 21 Odb.* steps are covered");
+        assert_eq!(covered.len(), 15, "by 15 distinct subcommands");
         // The remainder is one family. If this ever fails, the gap is no longer only antenna work
         // and the note above it is stale.
         for (step, sub) in LIBRELANE_ODB_STEPS.iter().filter(|(_, s)| s.is_none()) {

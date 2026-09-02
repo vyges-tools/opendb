@@ -112,3 +112,73 @@ pub fn verilog_header(db: &Db) -> String {
     v
 }
 
+/// One cell's antenna-property gaps — `Odb.Check{Macro,Design}AntennaProperties`.
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub struct AntennaProperties {
+    pub cell: String,
+    pub inout: Vec<String>,
+    pub input: Vec<String>,
+    pub output: Vec<String>,
+}
+
+/// Which pins of `cells` have no antenna information in the LEF.
+///
+/// Transcribed from LibreLane `scripts/odbpy/check_antenna_properties.py::check_cells`. The rule,
+/// per pin, skipping `GROUND`/`POWER`/`ANALOG`:
+///
+/// | direction | flagged when | what it suggests |
+/// | --- | --- | --- |
+/// | `INOUT` | no diffusion **and** no gate area | the pin may be disconnected |
+/// | `INPUT` | no gate area | may not be connected to a gate |
+/// | `OUTPUT` | no diffusion area | may not be driven |
+///
+/// 🔑 **It reads only PRESENCE, never the values** — `len(diff_area)`, `len(gate_area)` — which is
+/// why the bridge exposes predicates rather than the coordinate lists.
+///
+/// ⛔ **DELIBERATE DIVERGENCE: the reference checks only the FIRST cell.** Its `return report` sits
+/// INSIDE the `for cell in odb_cells` loop (`check_antenna_properties.py:68`, indented to the loop
+/// body at line 25), so `check_cells` returns after one iteration and every later cell is silently
+/// unexamined. Both `Odb.CheckMacroAntennaProperties` and `Odb.CheckDesignAntennaProperties` call
+/// it, so a design handing it several macros has one checked.
+///
+/// ⚠️ **We check ALL of them, on purpose**, and this is the one place the programme's
+/// transcribe-the-reference rule is knowingly set aside. The reasons are narrow and do not
+/// generalise: there is no golden to match here (the step emits a YAML report, not geometry), and
+/// a checker that stops after one cell is the `vacuous` class — a pass word from a run that did
+/// not do the job. Reproducing it would ship a checker that does not check.
+///
+/// ✅ **MEASURED against the reference 2026-09-02**, not merely read. Given `-c PADCELL_SIG_H
+/// -c PADCELL_SIG_V -c PADCELL_VDDIO_H`, LibreLane 2.4.6 emits **one** cell; we emit three. On the
+/// cell both emit, every list is identical:
+///
+/// ```text
+///   PADCELL_SIG_V   inout  [PAD]            == ref
+///                   input  [A, RETN, SNS]   == ref
+///                   output [OE, PU, Y]      == ref
+/// ```
+///
+/// ⟹ The RULE is transcribed exactly; only the loop bound differs, and it differs on purpose.
+pub fn antenna_properties(db: &crate::Db, cells: &[String]) -> Vec<AntennaProperties> {
+    cells
+        .iter()
+        .map(|cell| {
+            let mut e = AntennaProperties { cell: cell.clone(), ..Default::default() };
+            for term in db.master_get_m_terms(cell) {
+                // The reference skips supply and analog pins before anything else.
+                if matches!(db.mterm_get_sig_type(cell, &term).as_str(),
+                            "GROUND" | "POWER" | "ANALOG") {
+                    continue;
+                }
+                let diff = db.mterm_has_diff_area(cell, &term);
+                let gate = db.mterm_has_gate_area(cell, &term);
+                match db.mterm_get_io_type(cell, &term).as_str() {
+                    "INOUT" if !(diff || gate) => e.inout.push(term),
+                    "INPUT" if !gate => e.input.push(term),
+                    "OUTPUT" if !diff => e.output.push(term),
+                    _ => {}
+                }
+            }
+            e
+        })
+        .collect()
+}
