@@ -2378,9 +2378,19 @@ mod surface_tests {
         // cheapest two of the five.
         ("CheckDesignAntennaProperties", Some("check-antenna-properties")),
         ("CheckMacroAntennaProperties", Some("check-antenna-properties")),
-        // ⬜ **The three that remain DO need antenna analysis** — each has to decide WHERE a diode
-        // goes, which is a different question from whether a net's ratio is clean. `vyges-ant`
-        // answers the second today and not the first.
+        // ⛔ **CORRECTED 2026-09-02, second time in this table.** The three below were filed as
+        // needing antenna analysis. They do not. `FuzzyDiodePlacement` and `PortDiodePlacement`
+        // both invoke `librelane/scripts/odbpy/diodes.py place`, which is a **geometric
+        // heuristic**: `span = net_manhattan_distance / dbu`, skip anything under a threshold
+        // (default `200 * minimum site width`), otherwise insert a diode on each iterm — plus a
+        // `--port-protect` rule that always diodes I/O-connected nets. There is no PAR/CAR/PSR/CSR
+        // anywhere in it, and no LEF antenna rule is read. `HeuristicDiodeInsertion` and
+        // `DiodesOnPorts` are `CompositeStep`s over those two.
+        //
+        // 🔑 **So NONE of the five ever needed `ant`**, and the label survived two rounds of
+        // scheduling because nobody had opened the script. ⚠️ Antenna REPAIR — deciding a diode
+        // from a computed ratio — is `OpenROAD.RepairAntennas`, a different step that is genuinely
+        // `ant`-adjacent and is not in this list.
         ("FuzzyDiodePlacement", None),
         ("HeuristicDiodeInsertion", None),
         ("PortDiodePlacement", None),
