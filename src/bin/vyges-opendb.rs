@@ -2285,6 +2285,85 @@ mod surface_tests {
 
     use super::{TOOL_DESCRIBE, USAGE};
 
+    /// LibreLane's 21 `Odb.*` steps -> the subcommand here that performs it, or `None`.
+    ///
+    /// 🔑 **This is the libodb-applier target list** (`vyges-tools-internal/docs/librelane/
+    /// librelane-architecture.md`), and it is pinned here rather than counted in a document
+    /// because the count is a claim ABOUT THIS BINARY. A doc saying "15 of 21" cannot notice a
+    /// subcommand being renamed; this test fails the moment one is.
+    ///
+    /// ⚠️ **Two of ours each cover TWO of theirs.** LibreLane splits obstruction handling by which
+    /// config key it reads (`Add`/`RemovePDNObstructions` vs `Add`/`RemoveRoutingObstructions`);
+    /// ours takes the rects from the config, so one command serves both. That is a difference in
+    /// step granularity, not in capability, and counting them as one each is what made the
+    /// standing "15 of 21" a slight undercount — **measured 2026-09-02 it is 16**.
+    const LIBRELANE_ODB_STEPS: &[(&str, Option<&str>)] = &[
+        ("AddPDNObstructions", Some("add-obstructions")),
+        ("AddRoutingObstructions", Some("add-obstructions")),
+        ("ApplyDEFTemplate", Some("apply-def-template")),
+        ("CellFrequencyTables", Some("cell-frequency-tables")),
+        ("CustomIOPlacement", Some("custom-io-placement")),
+        ("DiodesOnPorts", Some("diodes-on-ports")),
+        ("InsertECOBuffers", Some("insert-eco-buffers")),
+        ("InsertECODiodes", Some("insert-eco-diodes")),
+        ("ManualGlobalPlacement", Some("manual-global-placement")),
+        ("ManualMacroPlacement", Some("manual-macro-placement")),
+        ("RemovePDNObstructions", Some("remove-obstructions")),
+        ("RemoveRoutingObstructions", Some("remove-obstructions")),
+        ("ReportDisconnectedPins", Some("report-disconnected-pins")),
+        ("ReportWireLength", Some("report-wire-length")),
+        ("SetPowerConnections", Some("set-power-connections")),
+        ("WriteVerilogHeader", Some("write-verilog-header")),
+        // ⬜ **The five that are NOT built, and they are one family.** Every one needs antenna
+        // analysis to decide WHERE a diode goes or WHETHER a property is right — the decision is
+        // the work, and the odb surgery afterwards is trivial. `vyges-ant` is the engine that
+        // would answer them; until it drives these, an applier here would be guessing.
+        ("CheckDesignAntennaProperties", None),
+        ("CheckMacroAntennaProperties", None),
+        ("FuzzyDiodePlacement", None),
+        ("HeuristicDiodeInsertion", None),
+        ("PortDiodePlacement", None),
+    ];
+
+    #[test]
+    fn every_claimed_librelane_odb_step_names_a_subcommand_that_exists() {
+        assert_eq!(LIBRELANE_ODB_STEPS.len(), 21, "LibreLane ships 21 `Odb.*` steps");
+        let have = dispatched();
+        for (step, sub) in LIBRELANE_ODB_STEPS {
+            if let Some(name) = sub {
+                assert!(
+                    have.iter().any(|d| d == name),
+                    "Odb.{step} is claimed as covered by `{name}`, which run() does not dispatch"
+                );
+                assert!(
+                    USAGE.contains(name),
+                    "Odb.{step} is claimed as covered by `{name}`, which is not in --help"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_librelane_odb_coverage_count_is_what_we_say_it_is() {
+        // ⛔ Distinct subcommands, not rows: two rows share `add-obstructions` and two share
+        // `remove-obstructions`, so counting rows would claim 16 commands where there are 14.
+        let covered: std::collections::BTreeSet<_> =
+            LIBRELANE_ODB_STEPS.iter().filter_map(|(_, s)| *s).collect();
+        let steps_covered = LIBRELANE_ODB_STEPS.iter().filter(|(_, s)| s.is_some()).count();
+        assert_eq!(steps_covered, 16, "16 of LibreLane's 21 Odb.* steps are covered");
+        assert_eq!(covered.len(), 14, "by 14 distinct subcommands");
+        // The remainder is one family. If this ever fails, the gap is no longer only antenna work
+        // and the note above it is stale.
+        for (step, sub) in LIBRELANE_ODB_STEPS.iter().filter(|(_, s)| s.is_none()) {
+            let _ = sub;
+            assert!(
+                step.contains("Antenna") || step.contains("Diode"),
+                "`{step}` is uncovered but is not antenna/diode work — the recorded reason for \
+                 the gap no longer holds"
+            );
+        }
+    }
+
     /// Every `"name" => fn(args)` arm of `run()`'s dispatch, minus the flag arms.
     fn dispatched() -> Vec<String> {
         let src = include_str!("vyges-opendb.rs");
