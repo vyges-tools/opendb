@@ -829,6 +829,20 @@ impl Db {
         Ok(sys::bump_master_create(self.r(), name, width, height)?)
     }
 
+    /// A PAD-class site in the `FAKE_IO` library — `ICeWall::makeFakeSite`.
+    ///
+    /// For a pad ring whose LEF defines no IO site of its own. The library is found-or-created, so
+    /// repeated calls share one `FAKE_IO` rather than accumulating libraries.
+    ///
+    /// ⚠️ **`width` and `height` are DATABASE UNITS.** Upstream's `make_fake_io_site` takes microns
+    /// and converts with `ord::microns_to_dbu` in Tcl; the conversion belongs at the command
+    /// boundary, not here.
+    /// ⛔ **NOT TRANSACTIONAL** — library and site creation are not journaled; see
+    /// [`eco_try`](Self::eco_try).
+    pub fn create_fake_site(&mut self, name: &str, width: i32, height: i32) -> Result<()> {
+        Ok(sys::fake_site_create(self.r(), name, width, height)?)
+    }
+
     /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn create_inst(&mut self, master: &str, name: &str) -> Result<()> {
         Ok(sys::create_inst(self.r(), master, name)?)
