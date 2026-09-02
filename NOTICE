@@ -1,13 +1,13 @@
-vyges-odb
+vyges-opendb
 Copyright 2026 Vyges
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This crate builds on vyges-odb-sys, which compiles a standalone `libodb` from OpenROAD's
+This crate builds on vyges-opendb-lib, which compiles a standalone `libodb` from OpenROAD's
 OpenDB source:
   OpenROAD — https://github.com/The-OpenROAD-Project/OpenROAD
   Copyright (c) 2018-2025, The OpenROAD Authors. Licensed under BSD-3-Clause.
 
 Binary artifacts linking this crate embed OpenROAD-derived code (libodb) and are therefore
 subject to OpenROAD's BSD-3-Clause license; distributions reproduce its copyright notice and
-license text (see vyges-odb-sys).
+license text (see vyges-opendb-lib).
