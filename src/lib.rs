@@ -2067,3 +2067,37 @@ impl Db {
         self.chipinst_set_loc(chip, inst, x, y, z)
     }
 }
+
+/// `RDLSegment::preprocess`'s geometry — does a segment's source terminal already touch this
+/// destination, and if only within spacing, what stubs bridge the gap?
+///
+/// Takes no database handle: it is pure geometry, so it can be tested without a design.
+///
+/// Returns `(verdict, stubs)`:
+/// - `0` — no contact even bloated; the segment needs a route.
+/// - `1` — the shapes **interact** as they are: upstream locks the segment and writes **no wire at
+///   all**.
+/// - `2` — they interact once bloated by `min_dist` (the LAYER's spacing, not the command's
+///   `-spacing`): locked, and `stubs` are written in place of a route.
+///
+/// 🔑 **Bound, not reimplemented, and `interact` is why.** `polygon_90_set_data::interact` is TOUCH
+/// connectivity — it decomposes the set, builds a touch graph through `touch_90_operation` (the
+/// same scanline machinery behind `connectivity_extraction_90`), and keeps WHOLE polygons whose
+/// label meets the other set. Two shapes sharing an edge with zero gap interact while their
+/// intersection is empty, so writing `a & b` instead looks like an obvious simplification and
+/// silently routes a pair the reference locks. `tests/rdl_preprocess.rs` fails on that substitution.
+#[allow(clippy::type_complexity)]
+pub fn rdl_preprocess(
+    source_rects: &[(i32, i32, i32, i32)],
+    dest_rects: &[(i32, i32, i32, i32)],
+    min_dist: i32,
+) -> Result<(i32, Vec<(i32, i32, i32, i32)>)> {
+    let flat = |v: &[(i32, i32, i32, i32)]| -> Vec<i32> {
+        v.iter().flat_map(|r| [r.0, r.1, r.2, r.3]).collect()
+    };
+    let out = sys::rdl_preprocess(&flat(source_rects), &flat(dest_rects), min_dist)?;
+    let Some((&verdict, rest)) = out.split_first() else {
+        return Ok((0, Vec::new()));
+    };
+    Ok((verdict, rest.chunks_exact(4).map(|c| (c[0], c[1], c[2], c[3])).collect()))
+}
