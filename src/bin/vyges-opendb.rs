@@ -2438,7 +2438,7 @@ mod surface_tests {
     /// ours takes the rects from the config, so one command serves both. That is a difference in
     /// step granularity, not in capability, and counting them as one each is what made the
     /// standing "15 of 21" a slight undercount — measured 2026-09-02 it was 16, and
-    /// `check-antenna-properties` took it to **18**.
+    /// `check-antenna-properties` took it to 18 and `place-diodes` to **21 — all of them**.
     const LIBRELANE_ODB_STEPS: &[(&str, Option<&str>)] = &[
         ("AddPDNObstructions", Some("add-obstructions")),
         ("AddRoutingObstructions", Some("add-obstructions")),
@@ -2463,7 +2463,12 @@ mod surface_tests {
         // cheapest two of the five.
         ("CheckDesignAntennaProperties", Some("check-antenna-properties")),
         ("CheckMacroAntennaProperties", Some("check-antenna-properties")),
-        // ⛔ **CORRECTED 2026-09-02, second time in this table.** The three below were filed as
+        // ✅ **All three closed 2026-09-02** by `place-diodes`, correlated at 648 of 648 diodes
+        // against LibreLane 2.4.6 on `skywater130_caravel`'s golden DEF.
+        ("FuzzyDiodePlacement", Some("place-diodes")),
+        ("PortDiodePlacement", Some("place-diodes")),
+        ("HeuristicDiodeInsertion", Some("place-diodes")),
+        // ⛔ **CORRECTED 2026-09-02, second time in this table.** The three above were filed as
         // needing antenna analysis. They do not. `FuzzyDiodePlacement` and `PortDiodePlacement`
         // both invoke `librelane/scripts/odbpy/diodes.py place`, which is a **geometric
         // heuristic**: `span = net_manhattan_distance / dbu`, skip anything under a threshold
@@ -2476,9 +2481,6 @@ mod surface_tests {
         // scheduling because nobody had opened the script. ⚠️ Antenna REPAIR — deciding a diode
         // from a computed ratio — is `OpenROAD.RepairAntennas`, a different step that is genuinely
         // `ant`-adjacent and is not in this list.
-        ("FuzzyDiodePlacement", None),
-        ("HeuristicDiodeInsertion", None),
-        ("PortDiodePlacement", None),
     ];
 
     #[test]
@@ -2506,18 +2508,14 @@ mod surface_tests {
         let covered: std::collections::BTreeSet<_> =
             LIBRELANE_ODB_STEPS.iter().filter_map(|(_, s)| *s).collect();
         let steps_covered = LIBRELANE_ODB_STEPS.iter().filter(|(_, s)| s.is_some()).count();
-        assert_eq!(steps_covered, 18, "18 of LibreLane's 21 Odb.* steps are covered");
-        assert_eq!(covered.len(), 15, "by 15 distinct subcommands");
-        // The remainder is one family. If this ever fails, the gap is no longer only antenna work
-        // and the note above it is stale.
-        for (step, sub) in LIBRELANE_ODB_STEPS.iter().filter(|(_, s)| s.is_none()) {
-            let _ = sub;
-            assert!(
-                step.contains("Antenna") || step.contains("Diode"),
-                "`{step}` is uncovered but is not antenna/diode work — the recorded reason for \
-                 the gap no longer holds"
-            );
-        }
+        assert_eq!(steps_covered, 21, "ALL 21 of LibreLane's Odb.* steps are covered");
+        assert_eq!(covered.len(), 16, "by 16 distinct subcommands");
+        // ⛔ **Nothing is uncovered any more.** If a row ever goes back to `None`, that is a
+        // REGRESSION rather than a known gap, and it should be argued for rather than assumed.
+        assert!(
+            LIBRELANE_ODB_STEPS.iter().all(|(_, s)| s.is_some()),
+            "an Odb.* step lost its subcommand — coverage was complete on 2026-09-02"
+        );
     }
 
     /// Every `"name" => fn(args)` arm of `run()`'s dispatch, minus the flag arms.
