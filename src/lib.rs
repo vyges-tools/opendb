@@ -33,6 +33,7 @@ pub mod blox;
 #[cfg(unix)]
 pub mod d2d;
 #[cfg(unix)]
+pub mod diodes;
 pub mod eco;
 #[cfg(unix)]
 pub mod nets3d;
@@ -827,6 +828,20 @@ impl Db {
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn create_bump_master(&mut self, name: &str, width: i32, height: i32) -> Result<()> {
         Ok(sys::bump_master_create(self.r(), name, width, height)?)
+    }
+
+    /// `dbITerm::isOutputSignal(io=true)` — OUTPUT **or INOUT**, and not a supply pin.
+    pub fn iterm_is_output_signal(&self, inst: &str, pin: &str) -> bool {
+        sys::iterm_is_output_signal(self.r(), inst, pin)
+    }
+
+    /// `dbBTerm::getFirstPinLocation` — centre of the first PLACED pin box.
+    ///
+    /// ⚠️ `None` means the port has no placed pin, which is not the same as being at the origin;
+    /// the reference distinguishes them and so must any caller.
+    pub fn bterm_first_pin_location(&self, bterm: &str) -> Option<(i32, i32)> {
+        let (mut x, mut y) = (0, 0);
+        sys::bterm_first_pin_location(self.r(), bterm, &mut x, &mut y).then_some((x, y))
     }
 
     /// Does the LEF state an antenna DIFFUSION area for this pin?

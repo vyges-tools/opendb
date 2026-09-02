@@ -46,6 +46,9 @@ commands:
 
   report-disconnected-pins  --input <f.odb>
                       Print a JSON list of pins/ports with no net (report).
+  place-diodes              --input <f.odb> [--output <f.odb>] [--threshold UM]
+                      Insert antenna diodes on long nets (LibreLane Odb.FuzzyDiodePlacement /
+                      Odb.PortDiodePlacement). Geometric heuristic, not ratio analysis.
   check-antenna-properties  --input <f.odb> [--cell NAME]...
                       Report pins whose LEF states no antenna gate/diffusion area (report).
                       Defaults to every master the design instantiates.
@@ -150,6 +153,7 @@ fn run() -> Result<(), Fail> {
         "cell-frequency-tables" => cell_frequency_tables(args),
         "report-disconnected-pins" => report_disconnected_pins(args),
         "check-antenna-properties" => check_antenna_properties(args),
+        "place-diodes" => place_diodes(args),
         "set-power-connections" => set_power_connections(args),
         "add-obstructions" => add_obstructions(args),
         "remove-obstructions" => remove_obstructions(args),
@@ -213,6 +217,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "cell-frequency-tables",
     "report-disconnected-pins",
     "check-antenna-properties",
+    "place-diodes",
     "set-power-connections",
     "add-obstructions",
     "remove-obstructions",
@@ -644,6 +649,86 @@ fn report_disconnected_pins(mut args: impl Iterator<Item = String>) -> Result<()
     let pins = report::disconnected_pins(&db);
     eprintln!("report-disconnected-pins: {} disconnected", pins.len());
     println!("{}", serde_json::to_string_pretty(&pins)?);
+    Ok(())
+}
+
+/// The narrowest site any row uses, in DBU — `0` when the design has no rows.
+fn min_site_width(db: &Db) -> i64 {
+    (0..db.num_rows().unwrap_or(0))
+        .filter_map(|i| db.nth_row(i).ok().flatten())
+        .map(|(_, site, _)| db.site_get_width(&site) as i64)
+        .filter(|w| *w > 0)
+        .min()
+        .unwrap_or(0)
+}
+
+fn place_diodes(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    use vyges_opendb::diodes::{self, PortProtect, SideStrategy};
+    let (mut input, mut output) = (None, None);
+    let mut cell = "sky130_fd_sc_hd__diode_2".to_string();
+    let mut pin = "DIODE".to_string();
+    let (mut side, mut protect) = (SideStrategy::Source, PortProtect::In);
+    let (mut threshold_um, mut seed, mut dry) = (None::<f64>, 1u64, false);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--diode-cell" | "-c" => cell = args.next().unwrap_or(cell),
+            "--diode-pin" | "-p" => pin = args.next().unwrap_or(pin),
+            "--side-strategy" => {
+                let v = args.next().unwrap_or_default();
+                side = SideStrategy::parse(&v)
+                    .ok_or("--side-strategy: source|pin|balanced|random")?;
+            }
+            "--port-protect" => {
+                let v = args.next().unwrap_or_default();
+                protect = PortProtect::parse(&v).ok_or("--port-protect: none|in|out|both")?;
+            }
+            "--threshold" | "-t" => {
+                threshold_um = Some(args.next().unwrap_or_default().parse()
+                    .map_err(|_| "--threshold wants microns")?);
+            }
+            "--seed" => seed = args.next().unwrap_or_default().parse().unwrap_or(1),
+            "--dry-run" => dry = true,
+            "-h" | "--help" => {
+                eprintln!("usage: vyges-opendb place-diodes --input <f.odb> [--output <f.odb>] \
+                           [--diode-cell M] [--diode-pin P] [--side-strategy S] \
+                           [--port-protect none|in|out|both] [--threshold UM] [--dry-run]");
+                return Ok(());
+            }
+            other => return Err(format!("place-diodes: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("place-diodes: --input <f.odb> required")?;
+    let mut db = Db::open(&input)?;
+    let dbu = db.dbu_per_micron().max(1) as f64;
+    // ⚠️ **The default is `200 x the MINIMUM site width`**, as the reference documents, and it is
+    // resolved from the design rather than hard-coded — a hard-coded micron default would be
+    // wrong on every technology but the one it was measured on.
+    let threshold_dbu = match threshold_um {
+        Some(um) => (um * dbu) as i64,
+        // The MINIMUM site width across the design's rows — resolved from the technology, not
+        // hard-coded, because a micron default is wrong on every process but the measured one.
+        None => 200 * min_site_width(&db),
+    };
+    let opts = diodes::Options {
+        diode_cell: cell, diode_pin: pin, threshold_dbu, side_strategy: side,
+        port_protect: protect, seed,
+    };
+    let plan = diodes::plan(&db, &opts);
+    eprintln!("place-diodes: threshold {} dbu, {} diode(s) planned", threshold_dbu, plan.len());
+    if !dry {
+        // 🔒 Reuses the existing transactional leaf-tie primitive rather than raw setters, so
+        // these edits are journaled and `eco_try` can roll them back.
+        for d in &plan {
+            db.insert_diode_on_net(&d.net, &opts.diode_cell, &d.name, d.x, d.y)?;
+            db.set_inst_orient(&d.name, &d.orient)?;
+        }
+        if let Some(out) = output.as_deref() {
+            db.write(out)?;
+        }
+    }
+    println!("{}", serde_json::to_string_pretty(&plan)?);
     Ok(())
 }
 
