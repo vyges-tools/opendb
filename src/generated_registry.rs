@@ -1163,7 +1163,7 @@ pub const UNIMPLEMENTED: &[Unimpl] = &[
     Unimpl { class: "dbITerm", field: "get_name", method: "getName", kind: "other", ret: "std::string", hand_written: false },
     Unimpl { class: "dbITerm", field: "get_pref_access_points", method: "getPrefAccessPoints", kind: "getter", ret: "std::vector<dbAccessPoint*>", hand_written: false },
     Unimpl { class: "dbITerm", field: "is_input_signal", method: "isInputSignal", kind: "predicate", ret: "bool", hand_written: false },
-    Unimpl { class: "dbITerm", field: "is_output_signal", method: "isOutputSignal", kind: "predicate", ret: "bool", hand_written: false },
+    Unimpl { class: "dbITerm", field: "is_output_signal", method: "isOutputSignal", kind: "predicate", ret: "bool", hand_written: true },
     Unimpl { class: "dbITerm", field: "set_access_point", method: "setAccessPoint", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbITerm", field: "sta_set_vertex_id", method: "staSetVertexId", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbInst", field: "bind_block", method: "bindBlock", kind: "other", ret: "bool", hand_written: false },
