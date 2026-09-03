@@ -1142,6 +1142,24 @@ impl Db {
         }
         Ok(Some((v[0], v[1], v[2], v[3], v[4] != 0)))
     }
+    /// Every terminal of a master, as `(name, signal type)` — `POWER`, `GROUND`, `SIGNAL`, …
+    ///
+    /// 🔑 **The signal type is why this exists.** Selecting a master's supply pins — which is how
+    /// `dpl` decides whether a cell's power rails line up with a row's — needs the `dbSigType`,
+    /// and no other accessor here carries it for a master terminal.
+    ///
+    /// ⚠️ Empty for an unknown master, which is indistinguishable from a master with no terminals.
+    /// Check the master exists first if that distinction matters.
+    pub fn master_mterms(&self, master: &str) -> Result<Vec<(String, String)>> {
+        Ok(sys::master_mterms(self.r(), master)?
+            .into_iter()
+            .filter_map(|row| {
+                let (n, t) = row.split_once('\t')?;
+                Some((n.to_string(), t.to_string()))
+            })
+            .collect())
+    }
+
     /// Pin rectangles of **one** terminal, as `(layer number, x0, y0, x1, y1)` in master coordinates.
     ///
     /// ⚠️ [`Self::master_pin_boxes`] merges every terminal's shapes together, which throws away
