@@ -1386,8 +1386,29 @@ impl Db {
             .collect())
     }
     /// Obstruction rectangles as `(layer number, x0, y0, x1, y1)`.
+    ///
+    /// ⚠️ ALL routing obstructions. For metal fill you almost certainly want
+    /// [`Self::fill_obstruction_boxes`] — a routing obstruction does not exclude fill.
     pub fn obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
         Ok(sys::obstruction_boxes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
+    /// Obstructions that forbid metal FILL — those declared `+ FILLS` in DEF — as
+    /// `(layer number, x0, y0, x1, y1)`.
+    ///
+    /// Upstream rule (OpenROAD `src/fin/src/DensityFill.cpp`, `orNonFills()`, PR #11380 for
+    /// our issue #11285): only `isFillObstruction()` blockages exclude fill. A plain routing
+    /// obstruction constrains the router, not the filler, and upstream keeps filling inside it.
+    ///
+    /// The predicate is applied in the C++ shim, NOT by pairing [`Self::obstruction_boxes`]
+    /// with `obs_is_fill_obstruction(idx)`: that accessor indexes the full obstruction list
+    /// while `obstruction_boxes` skips layer-less boxes, so the indices are not the same
+    /// sequence.
+    pub fn fill_obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::fill_obstruction_boxes(self.r())?
             .chunks(5)
             .filter(|c| c.len() == 5)
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
