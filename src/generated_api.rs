@@ -503,6 +503,8 @@ impl Db {
     pub fn modnet_get_const_name(&self, name: &str) -> String { sys::modnet_get_const_name(self.r(), name) }
     pub fn modnet_get_hierarchical_name(&self, name: &str) -> String { sys::modnet_get_hierarchical_name(self.r(), name) }
     pub fn modnet_find_related_net(&self, name: &str) -> String { sys::modnet_find_related_net(self.r(), name) }
+    pub fn modnet_is_connected_to_input_port(&self, name: &str) -> bool { sys::modnet_is_connected_to_input_port(self.r(), name) }
+    pub fn modnet_is_connected_to_output_port(&self, name: &str) -> bool { sys::modnet_is_connected_to_output_port(self.r(), name) }
     pub fn modnet_get_next_mod_nets_in_fanin(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_next_mod_nets_in_fanin(self.r(), name)).map(|i| sys::nth_modnet_get_next_mod_nets_in_fanin(self.r(), name, i)).collect() }
     pub fn modnet_get_next_mod_nets_in_fanout(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_next_mod_nets_in_fanout(self.r(), name)).map(|i| sys::nth_modnet_get_next_mod_nets_in_fanout(self.r(), name, i)).collect() }
     pub fn modnet_get_first_parent_mod_net(&self, name: &str) -> String { sys::modnet_get_first_parent_mod_net(self.r(), name) }
@@ -909,6 +911,7 @@ impl Db {
     pub fn chipconn_get_bottom_region_path(&self, chip: &str, conn: &str) -> Vec<String> { (0..sys::num_chipconn_get_bottom_region_path(self.r(), chip, conn)).map(|i| sys::nth_chipconn_get_bottom_region_path(self.r(), chip, conn, i)).collect() }
     pub fn chipnet_get_name(&self, chip: &str, net: &str) -> String { sys::chipnet_get_name(self.r(), chip, net) }
     pub fn chipnet_get_chip(&self, chip: &str, net: &str) -> String { sys::chipnet_get_chip(self.r(), chip, net) }
+    pub fn chipnet_get_total_capacitance(&self, chip: &str, net: &str) -> f32 { sys::chipnet_get_total_capacitance(self.r(), chip, net) }
     pub fn chipnet_get_num_bump_insts(&self, chip: &str, net: &str) -> u32 { sys::chipnet_get_num_bump_insts(self.r(), chip, net) }
     pub fn chippath_get_name(&self, chip: &str, path: &str) -> String { sys::chippath_get_name(self.r(), chip, path) }
     pub fn chippath_get_chip(&self, chip: &str, path: &str) -> String { sys::chippath_get_chip(self.r(), chip, path) }
