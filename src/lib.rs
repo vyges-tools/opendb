@@ -1393,6 +1393,25 @@ impl Db {
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
             .collect())
     }
+    /// Obstruction rectangles marked `+ FILLS`, as `(layer, x0, y0, x1, y1)`.
+    ///
+    /// ⛔ **Only these exclude metal fill.** Upstream `DensityFill.cpp::orNonFills()`:
+    /// `if (obstruction->isFillObstruction() && box->getTechLayer() == layer)`. A plain ROUTING
+    /// obstruction does NOT exclude fill — it constrains the router, and fill is not routed.
+    /// Our issue [#11285] → upstream PR#11380.
+    ///
+    /// 🔑 **Do not reimplement this by filtering [`Self::obstruction_boxes`] with
+    /// `obs_is_fill_obstruction(i)`.** That function skips any obstruction whose box carries no
+    /// tech layer, so its output is not a dense index into the obstruction list, and the pairing
+    /// would be off by one per skipped obstruction — silently, and only on designs that have one.
+    /// The filtering is done in the shim where the obstruction pointer is in hand.
+    pub fn fill_obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::fill_obstruction_boxes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
     /// Placement blockage rectangles as `(x0, y0, x1, y1)`.
     ///
     /// ⚠️ Distinct from [`Self::obstruction_boxes`], which are *routing* obstructions and carry a
