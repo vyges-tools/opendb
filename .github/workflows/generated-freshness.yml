@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: Apache-2.0
+# Freshness gate for the machine-generated binding surface — the SECOND half of it.
+#
+# `generated_api.rs`, `generated_registry.rs` and `generated_write_api.rs` in THIS repo are written
+# by `generate-bindings.py`, which lives in the sibling `opendb-lib`. The generator therefore
+# straddles two repositories, and so does its output.
+#
+# ⚠️ Why this job exists at all, given opendb-lib already runs the same script: a cross-repo
+# generator change lands in TWO pushes and there is no way to make them atomic. Whichever repo is
+# pushed FIRST gets a CI run that diffs against a sibling whose half has not landed yet, and fails
+# on drift that is real but transient. On 2026-09-20 the `dbGuide` binding hit exactly that: the
+# opendb-lib run went red naming only THIS repo's three generated files, and a re-run after the
+# second push passed untouched.
+#
+# ⟹ With the gate on both sides, whichever push lands SECOND turns the pair green, so the
+# invariant is restored within minutes instead of depending on someone remembering to re-run a job.
+# A transient red between two pushes is expected; a red that survives both pushes is a real drift.
+name: generated-freshness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: generated files match a fresh run
+    runs-on: ubuntu-latest
+    steps:
+      # Sibling layout, the same one `check-generated.sh` resolves against ("$here/../vyges-tools-opendb").
+      - uses: actions/checkout@v4
+        with:
+          path: vyges-tools-opendb
+      - uses: actions/checkout@v4
+        with:
+          repository: vyges-tools/opendb-lib
+          path: vyges-tools-opendb-lib
+
+      - name: Regenerate from db.h and fail on drift
+        working-directory: vyges-tools-opendb-lib
+        # The generator lives in the sibling; it writes into BOTH repos and diffs BOTH, so running
+        # it from either side checks the same invariant. `fetch-odb-src.sh` pulls the pinned
+        # OpenROAD odb subtree (for db.h) when it is absent.
+        run: scripts/check-generated.sh
