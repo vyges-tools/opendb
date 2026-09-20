@@ -886,6 +886,31 @@ impl Db {
     pub fn add_obstruction(&mut self, layer: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
         Ok(sys::add_obstruction(self.r(), layer, x1, y1, x2, y2)?)
     }
+    /// Add a global-route guide on `net`, covering the DBU rect, on `layer`.
+    ///
+    /// `via_layer` is **not** optional in odb's signature: a wire segment passes the same layer
+    /// twice, and only a via segment passes two different ones. `getViaLayer()` is how a reader
+    /// tells the two apart, and upstream's `.guideok` goldens distinguish them — so a caller that
+    /// always passes `layer` twice silently writes wire guides where vias belong.
+    ///
+    /// The rect is normalised by `odb::Rect` (`xlo,xhi = minmax(x1,x2)`), so corner order is free.
+    ///
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try). ⚠️ Verified against
+    /// `odb/src/db/dbJournal.cpp:1776,1941`, which handles `dbGuideObj` in BOTH directions
+    /// (undo-create destroys, undo-delete re-creates). Guides are **not** in the same category as
+    /// obstructions and blockages, whose geometry the journal does not carry.
+    pub fn add_guide(&mut self, net: &str, layer: &str, via_layer: &str,
+                     x1: i32, y1: i32, x2: i32, y2: i32, is_congested: bool) -> Result<()> {
+        Ok(sys::add_guide(self.r(), net, layer, via_layer, x1, y1, x2, y2, is_congested)?)
+    }
+    /// Number of guides on `net`.
+    pub fn num_guides(&self, net: &str) -> usize { self.num_net_get_guides(net) }
+    /// Drop every net's guides across the whole block; returns how many were removed.
+    ///
+    /// Per-net clearing is [`net_clear_guides`](Self::net_clear_guides); this is the block-wide
+    /// sweep `global_route` does before it writes a fresh set.
+    /// 🔒 **Transactional** — see [`add_guide`](Self::add_guide).
+    pub fn clear_guides(&mut self) -> usize { sys::clear_guides(self.r()) }
     /// Number of obstructions currently in the block.
     pub fn num_obstructions(&self) -> usize { sys::num_obstructions(self.r()) }
     /// Destroy all obstructions; returns the count removed.

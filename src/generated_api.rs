@@ -164,6 +164,7 @@ impl Db {
     pub fn net_get_term_b_box_dy(&self, net: &str) -> i32 { sys::net_get_term_b_box_dy(self.r(), net) }
     pub fn net_find_main_parent_mod_inst(&self, net: &str) -> String { sys::net_find_main_parent_mod_inst(self.r(), net) }
     pub fn net_find_main_parent_module(&self, net: &str) -> String { sys::net_find_main_parent_module(self.r(), net) }
+    pub fn num_net_get_guides(&self, net: &str) -> usize { sys::num_net_get_guides(self.r(), net) }
     pub fn net_has_jumpers(&self, net: &str) -> bool { sys::net_has_jumpers(self.r(), net) }
     pub fn net_is_auto_taper_enabled(&self, net: &str) -> bool { sys::net_is_auto_taper_enabled(self.r(), net) }
     pub fn net_find_mod_net_in_highest_hier(&self, net: &str) -> String { sys::net_find_mod_net_in_highest_hier(self.r(), net) }
@@ -397,6 +398,18 @@ impl Db {
     pub fn swire_get_wire_type(&self, net: &str, idx: usize) -> String { sys::swire_get_wire_type(self.r(), net, idx) }
     pub fn swire_get_shield(&self, net: &str, idx: usize) -> String { sys::swire_get_shield(self.r(), net, idx) }
     pub fn num_swire_get_wires(&self, net: &str, idx: usize) -> usize { sys::num_swire_get_wires(self.r(), net, idx) }
+    pub fn guide_get_box_x_min(&self, net: &str, idx: usize) -> i32 { sys::guide_get_box_x_min(self.r(), net, idx) }
+    pub fn guide_get_box_y_min(&self, net: &str, idx: usize) -> i32 { sys::guide_get_box_y_min(self.r(), net, idx) }
+    pub fn guide_get_box_x_max(&self, net: &str, idx: usize) -> i32 { sys::guide_get_box_x_max(self.r(), net, idx) }
+    pub fn guide_get_box_y_max(&self, net: &str, idx: usize) -> i32 { sys::guide_get_box_y_max(self.r(), net, idx) }
+    pub fn guide_get_box_dx(&self, net: &str, idx: usize) -> i32 { sys::guide_get_box_dx(self.r(), net, idx) }
+    pub fn guide_get_box_dy(&self, net: &str, idx: usize) -> i32 { sys::guide_get_box_dy(self.r(), net, idx) }
+    pub fn guide_get_net(&self, net: &str, idx: usize) -> String { sys::guide_get_net(self.r(), net, idx) }
+    pub fn guide_get_layer(&self, net: &str, idx: usize) -> String { sys::guide_get_layer(self.r(), net, idx) }
+    pub fn guide_get_via_layer(&self, net: &str, idx: usize) -> String { sys::guide_get_via_layer(self.r(), net, idx) }
+    pub fn guide_is_congested(&self, net: &str, idx: usize) -> bool { sys::guide_is_congested(self.r(), net, idx) }
+    pub fn guide_is_jumper(&self, net: &str, idx: usize) -> bool { sys::guide_is_jumper(self.r(), net, idx) }
+    pub fn guide_is_connected_to_term(&self, net: &str, idx: usize) -> bool { sys::guide_is_connected_to_term(self.r(), net, idx) }
     pub fn wire_get_block(&self, net: &str) -> String { sys::wire_get_block(self.r(), net) }
     pub fn wire_get_net(&self, net: &str) -> String { sys::wire_get_net(self.r(), net) }
     pub fn wire_is_global_wire(&self, net: &str) -> bool { sys::wire_is_global_wire(self.r(), net) }

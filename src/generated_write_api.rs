@@ -152,6 +152,8 @@ impl Db {
     pub fn obs_set_min_spacing(&mut self, idx: usize, w: i32) -> crate::Result<()> { Ok(sys::obs_set_min_spacing(self.r(), idx, w)?) }
     pub fn obs_set_is_system_reserved(&mut self, idx: usize, is_system_reserved: bool) -> crate::Result<()> { Ok(sys::obs_set_is_system_reserved(self.r(), idx, is_system_reserved)?) }
     pub fn swire_set_wire_type(&mut self, net: &str, idx: usize, a0: &str) -> crate::Result<()> { Ok(sys::swire_set_wire_type(self.r(), net, idx, a0)?) }
+    pub fn guide_set_is_jumper(&mut self, net: &str, idx: usize, jumper: bool) -> crate::Result<()> { Ok(sys::guide_set_is_jumper(self.r(), net, idx, jumper)?) }
+    pub fn guide_set_is_connected_to_term(&mut self, net: &str, idx: usize, is_connected: bool) -> crate::Result<()> { Ok(sys::guide_set_is_connected_to_term(self.r(), net, idx, is_connected)?) }
     pub fn wire_set_property(&mut self, net: &str, jid: i32, property: i32) -> crate::Result<()> { Ok(sys::wire_set_property(self.r(), net, jid, property)?) }
     pub fn box_set_soft(&mut self, idx: usize, value: bool) -> crate::Result<()> { Ok(sys::box_set_soft(self.r(), idx, value)?) }
     pub fn box_set_layer_mask(&mut self, idx: usize, mask: u32) -> crate::Result<()> { Ok(sys::box_set_layer_mask(self.r(), idx, mask)?) }
