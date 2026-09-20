@@ -5,6 +5,12 @@
 //! Shape mirrored from `FastRouteCore::updateDbCongestion`: get-or-create the grid, reset it,
 //! re-add the X/Y patterns, then write capacity and usage per `(layer, x, y)`.
 
+// ⚠️ The whole file needs the L2/write surface: `gcell_set_capacity` / `gcell_set_usage` are
+// GENERATED setters and live behind `gen-write`. CI builds a default surface too, and a test file
+// that referenced them unconditionally broke that job while passing every local run made with the
+// feature on.
+#![cfg(feature = "gen-write")]
+
 use vyges_opendb::Db;
 
 const FIXTURE: &str = "tests/fixtures/counter.odb";
