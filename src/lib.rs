@@ -918,6 +918,16 @@ impl Db {
                      x1: i32, y1: i32, x2: i32, y2: i32, is_congested: bool) -> Result<()> {
         Ok(sys::add_guide(self.r(), net, layer, via_layer, x1, y1, x2, y2, is_congested)?)
     }
+    /// Put `net`'s guides back into **creation order**; returns whether a reversal happened.
+    ///
+    /// ⛔ **`saveGuides` does this and it is easy to miss** — it sits after the loop that does the
+    /// visible work. odb's `dbSet` prepends, so a freshly written set iterates newest-first;
+    /// upstream normalises that away so the guide file comes out in the order the segments were
+    /// emitted. An engine that writes guides and skips this produces the right guides in the
+    /// wrong order, and every `.guideok` golden is an ordered diff.
+    pub fn reverse_guides(&mut self, net: &str) -> Result<bool> {
+        Ok(sys::reverse_guides(self.r(), net)?)
+    }
     /// Number of guides on `net`.
     pub fn num_guides(&self, net: &str) -> usize { self.num_net_get_guides(net) }
     /// Drop every net's guides across the whole block; returns how many were removed.

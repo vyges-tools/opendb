@@ -216,3 +216,29 @@ fn guides_are_transactional_unlike_obstructions() {
     assert!(kept);
     assert_eq!(db.num_guides(&net), 1);
 }
+
+#[test]
+fn reverse_guides_restores_creation_order_as_saveGuides_does() {
+    // ⛔ The rule that `a_dbset_of_guides_iterates_NEWEST_FIRST` is only half of. odb prepends,
+    // so a freshly written set reads back reversed — and `GlobalRouter::saveGuides` ENDS by
+    // undoing exactly that:
+    //
+    //   auto dbGuides = db_net->getGuides();
+    //   if (dbGuides.orderReversed() && dbGuides.reversible()) dbGuides.reverse();
+    //
+    // so the guide file comes out in the order the segments were emitted. An engine that writes
+    // guides and skips this produces the right guides in the wrong order, and .guideok is an
+    // ordered diff — it would fail on every multi-segment net and look like a routing bug.
+    let mut db = open_cleared();
+    let net = a_net(&db);
+    let layer = a_layer(&db);
+    for i in 1..=3 {
+        db.add_guide(&net, &layer, &layer, i * 10, 0, i * 10 + 5, 5, false).expect("create");
+    }
+    let raw: Vec<i32> = (0..3).map(|i| db.guide_get_box_x_min(&net, i)).collect();
+    assert_eq!(raw, vec![30, 20, 10], "raw dbSet order is newest-first");
+
+    assert!(db.reverse_guides(&net).expect("reverse"), "a prepended set reports orderReversed");
+    let fixed: Vec<i32> = (0..3).map(|i| db.guide_get_box_x_min(&net, i)).collect();
+    assert_eq!(fixed, vec![10, 20, 30], "creation order, which is what saveGuides emits");
+}
