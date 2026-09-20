@@ -63,6 +63,10 @@ impl Db {
     pub fn block_get_regions(&self) -> Vec<String> { (0..sys::num_block_get_regions(self.r())).map(|i| sys::nth_block_get_regions(self.r(), i)).collect() }
     pub fn block_get_non_default_rules(&self) -> Vec<String> { (0..sys::num_block_get_non_default_rules(self.r())).map(|i| sys::nth_block_get_non_default_rules(self.r(), i)).collect() }
     pub fn block_get_marker_categories(&self) -> Vec<String> { (0..sys::num_block_get_marker_categories(self.r())).map(|i| sys::nth_block_get_marker_categories(self.r(), i)).collect() }
+    pub fn block_get_ext_count_num_of_net(&self) -> i32 { sys::block_get_ext_count_num_of_net(self.r()) }
+    pub fn block_get_ext_count_num_of_r_seg(&self) -> i32 { sys::block_get_ext_count_num_of_r_seg(self.r()) }
+    pub fn block_get_ext_count_num_of_cap_node(&self) -> i32 { sys::block_get_ext_count_num_of_cap_node(self.r()) }
+    pub fn block_get_ext_count_num_of_c_c_seg(&self) -> i32 { sys::block_get_ext_count_num_of_c_c_seg(self.r()) }
     pub fn inst_get_name(&self, inst: &str) -> String { sys::inst_get_name(self.r(), inst) }
     pub fn inst_get_const_name(&self, inst: &str) -> String { sys::inst_get_const_name(self.r(), inst) }
     pub fn inst_get_origin_x(&self, inst: &str) -> i32 { sys::inst_get_origin_x(self.r(), inst) }
@@ -410,6 +414,9 @@ impl Db {
     pub fn guide_is_congested(&self, net: &str, idx: usize) -> bool { sys::guide_is_congested(self.r(), net, idx) }
     pub fn guide_is_jumper(&self, net: &str, idx: usize) -> bool { sys::guide_is_jumper(self.r(), net, idx) }
     pub fn guide_is_connected_to_term(&self, net: &str, idx: usize) -> bool { sys::guide_is_connected_to_term(self.r(), net, idx) }
+    pub fn gcell_get_block(&self) -> String { sys::gcell_get_block(self.r()) }
+    pub fn gcell_get_num_grid_patterns_x(&self) -> i32 { sys::gcell_get_num_grid_patterns_x(self.r()) }
+    pub fn gcell_get_num_grid_patterns_y(&self) -> i32 { sys::gcell_get_num_grid_patterns_y(self.r()) }
     pub fn wire_get_block(&self, net: &str) -> String { sys::wire_get_block(self.r(), net) }
     pub fn wire_get_net(&self, net: &str) -> String { sys::wire_get_net(self.r(), net) }
     pub fn wire_is_global_wire(&self, net: &str) -> bool { sys::wire_is_global_wire(self.r(), net) }
@@ -479,6 +486,9 @@ impl Db {
     pub fn trackgrid_get_block(&self, idx: usize) -> String { sys::trackgrid_get_block(self.r(), idx) }
     pub fn trackgrid_get_num_grid_patterns_x(&self, idx: usize) -> i32 { sys::trackgrid_get_num_grid_patterns_x(self.r(), idx) }
     pub fn trackgrid_get_num_grid_patterns_y(&self, idx: usize) -> i32 { sys::trackgrid_get_num_grid_patterns_y(self.r(), idx) }
+    pub fn trackgrid_get_average_track_spacing_track_step(&self, idx: usize) -> i32 { sys::trackgrid_get_average_track_spacing_track_step(self.r(), idx) }
+    pub fn trackgrid_get_average_track_spacing_track_init(&self, idx: usize) -> i32 { sys::trackgrid_get_average_track_spacing_track_init(self.r(), idx) }
+    pub fn trackgrid_get_average_track_spacing_num_tracks(&self, idx: usize) -> i32 { sys::trackgrid_get_average_track_spacing_num_tracks(self.r(), idx) }
     pub fn marker_cat_get_name(&self, category: &str) -> String { sys::marker_cat_get_name(self.r(), category) }
     pub fn marker_cat_get_description(&self, category: &str) -> String { sys::marker_cat_get_description(self.r(), category) }
     pub fn marker_cat_get_max_markers(&self, category: &str) -> i32 { sys::marker_cat_get_max_markers(self.r(), category) }

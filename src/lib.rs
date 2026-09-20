@@ -217,6 +217,21 @@ pub struct Db {
 }
 
 #[cfg(unix)]
+/// One gcell of a congestion map — the `dbMatrix<GCellData>` flattened to a row.
+///
+/// odb stores congestion as a matrix per layer (or per direction); that type does not cross the
+/// FFI, and reading a whole layer one `gcell_capacity` call at a time is O(nx*ny) round trips —
+/// which is exactly what a correlation gate does for every layer of every design. So the matrix
+/// comes back as rows, in the matrix's own row-major order.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GCellCongestion {
+    pub x_idx: u32,
+    pub y_idx: u32,
+    pub usage: f32,
+    pub capacity: f32,
+}
+
+#[cfg(unix)]
 /// The lattice that top-layer pins are placed on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TopLayerGrid {
@@ -911,6 +926,97 @@ impl Db {
     /// sweep `global_route` does before it writes a fresh set.
     /// 🔒 **Transactional** — see [`add_guide`](Self::add_guide).
     pub fn clear_guides(&mut self) -> usize { sys::clear_guides(self.r()) }
+    /// A block-level bool property, or `None` when it is not set.
+    ///
+    /// ⚠️ **Absent and `false` are different facts**, which is why this is an `Option` rather than
+    /// a `bool`. `grt` stamps `use_cugr` on the block in `saveGuides`, so a reader can tell which
+    /// router produced the guides — and "nobody recorded it" must not read as "FastRoute".
+    pub fn block_bool_property(&self, name: &str) -> Result<Option<bool>> {
+        Ok(match sys::block_bool_property(self.r(), name)? {
+            0 => Some(false),
+            1 => Some(true),
+            _ => None,
+        })
+    }
+    /// Set a block-level bool property, creating it if absent and updating it in place if not.
+    pub fn block_set_bool_property(&mut self, name: &str, value: bool) -> Result<()> {
+        Ok(sys::block_set_bool_property(self.r(), name, value)?)
+    }
+
+    // ---- global-routing congestion grid (dbGCellGrid) ----
+    //
+    // `grt`'s `FastRouteCore::updateDbCongestion` is the shape these mirror: get-or-create the
+    // grid, reset it, re-add the X/Y patterns, then write capacity and usage per (layer, x, y).
+    // `gcell_set_capacity` / `gcell_set_usage` are GENERATED and live in the `gen-write` surface.
+
+    /// Get-or-create the block's gcell grid. An existing grid is left alone.
+    /// ⚠️ Every other `gcell_*` call errors until this has run — a block need not have one.
+    pub fn ensure_gcell_grid(&mut self) -> Result<()> { Ok(sys::ensure_gcell_grid(self.r())?) }
+    /// Whether the block has a gcell grid at all.
+    pub fn has_gcell_grid(&self) -> bool { sys::has_gcell_grid(self.r()) }
+    /// Drop the congestion data **and the grid patterns**.
+    /// ⚠️ Not the same as [`gcell_reset_congestion_map`](Self::gcell_reset_congestion_map), which
+    /// keeps the patterns. `grt` calls THIS one, then re-adds its patterns immediately.
+    pub fn gcell_reset_grid(&mut self) -> Result<()> { Ok(sys::gcell_reset_grid(self.r())?) }
+    /// Zero usage and capacity, keeping the grid patterns.
+    pub fn gcell_reset_congestion_map(&mut self) -> Result<()> { Ok(sys::gcell_reset_congestion_map(self.r())?) }
+    /// Add an X grid pattern: `count` lines from `origin`, `step` apart (DBU).
+    pub fn gcell_add_grid_pattern_x(&mut self, origin: i32, count: i32, step: i32) -> Result<()> {
+        Ok(sys::gcell_add_grid_pattern_x(self.r(), origin, count, step)?)
+    }
+    /// Add a Y grid pattern: `count` lines from `origin`, `step` apart (DBU).
+    pub fn gcell_add_grid_pattern_y(&mut self, origin: i32, count: i32, step: i32) -> Result<()> {
+        Ok(sys::gcell_add_grid_pattern_y(self.r(), origin, count, step)?)
+    }
+    /// The X grid lines the patterns expand to (DBU).
+    pub fn gcell_grid_x(&self) -> Result<Vec<i32>> { Ok(sys::gcell_grid_x(self.r())?.into_iter().collect()) }
+    /// The Y grid lines the patterns expand to (DBU).
+    pub fn gcell_grid_y(&self) -> Result<Vec<i32>> { Ok(sys::gcell_grid_y(self.r())?.into_iter().collect()) }
+    /// X pattern `i` as `(origin, line_count, step)`.
+    pub fn gcell_grid_pattern_x(&self, i: usize) -> Result<(i32, i32, i32)> {
+        let v = sys::gcell_grid_pattern_x(self.r(), i)?;
+        Ok((v[0], v[1], v[2]))
+    }
+    /// Y pattern `i` as `(origin, line_count, step)`.
+    pub fn gcell_grid_pattern_y(&self, i: usize) -> Result<(i32, i32, i32)> {
+        let v = sys::gcell_grid_pattern_y(self.r(), i)?;
+        Ok((v[0], v[1], v[2]))
+    }
+    /// The gcell column containing DBU `x`.
+    pub fn gcell_x_idx(&self, x: i32) -> Result<u32> { Ok(sys::gcell_x_idx(self.r(), x)?) }
+    /// The gcell row containing DBU `y`.
+    pub fn gcell_y_idx(&self, y: i32) -> Result<u32> { Ok(sys::gcell_y_idx(self.r(), y)?) }
+    /// Capacity of one gcell on `layer`.
+    pub fn gcell_capacity(&self, layer: &str, x: u32, y: u32) -> Result<f32> {
+        Ok(sys::gcell_capacity(self.r(), layer, x, y)?)
+    }
+    /// Usage of one gcell on `layer`.
+    pub fn gcell_usage(&self, layer: &str, x: u32, y: u32) -> Result<f32> {
+        Ok(sys::gcell_usage(self.r(), layer, x, y)?)
+    }
+    /// A whole layer's congestion, as rows — one [`GCellCongestion`] per gcell, row-major.
+    ///
+    /// 🔑 **One FFI call for the layer**, not one per cell; see [`GCellCongestion`].
+    pub fn gcell_layer_congestion(&self, layer: &str) -> Result<Vec<GCellCongestion>> {
+        Ok(Self::rows(sys::gcell_layer_congestion(self.r(), layer)?))
+    }
+    /// The same, aggregated over every layer of one direction — `"HORIZONTAL"` or `"VERTICAL"`,
+    /// odb's own spelling.
+    pub fn gcell_direction_congestion(&self, direction: &str) -> Result<Vec<GCellCongestion>> {
+        Ok(Self::rows(sys::gcell_direction_congestion(self.r(), direction)?))
+    }
+    /// 4 doubles per gcell -> typed rows. The indices are integral in f64, so they round-trip.
+    fn rows(flat: Vec<f64>) -> Vec<GCellCongestion> {
+        flat.chunks_exact(4)
+            .map(|c| GCellCongestion {
+                x_idx: c[0] as u32,
+                y_idx: c[1] as u32,
+                usage: c[2] as f32,
+                capacity: c[3] as f32,
+            })
+            .collect()
+    }
+
     /// Number of obstructions currently in the block.
     pub fn num_obstructions(&self) -> usize { sys::num_obstructions(self.r()) }
     /// Destroy all obstructions; returns the count removed.

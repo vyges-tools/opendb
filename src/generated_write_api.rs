@@ -128,6 +128,7 @@ impl Db {
     pub fn layer_set_min_step(&mut self, layer: &str, min_step: u32) -> crate::Result<()> { Ok(sys::layer_set_min_step(self.r(), layer, min_step)?) }
     pub fn layer_set_min_step_max_length(&mut self, layer: &str, length: u32) -> crate::Result<()> { Ok(sys::layer_set_min_step_max_length(self.r(), layer, length)?) }
     pub fn layer_set_min_step_max_edges(&mut self, layer: &str, edges: u32) -> crate::Result<()> { Ok(sys::layer_set_min_step_max_edges(self.r(), layer, edges)?) }
+    pub fn layer_set_protrusion(&mut self, layer: &str, pt_width: u32, pt_length: u32, pt_from_width: u32) -> crate::Result<()> { Ok(sys::layer_set_protrusion(self.r(), layer, pt_width, pt_length, pt_from_width)?) }
     pub fn layer_set_resistance(&mut self, layer: &str, res: f64) -> crate::Result<()> { Ok(sys::layer_set_resistance(self.r(), layer, res)?) }
     pub fn layer_set_capacitance(&mut self, layer: &str, cap: f64) -> crate::Result<()> { Ok(sys::layer_set_capacitance(self.r(), layer, cap)?) }
     pub fn layer_set_edge_capacitance(&mut self, layer: &str, cap: f64) -> crate::Result<()> { Ok(sys::layer_set_edge_capacitance(self.r(), layer, cap)?) }
@@ -154,6 +155,8 @@ impl Db {
     pub fn swire_set_wire_type(&mut self, net: &str, idx: usize, a0: &str) -> crate::Result<()> { Ok(sys::swire_set_wire_type(self.r(), net, idx, a0)?) }
     pub fn guide_set_is_jumper(&mut self, net: &str, idx: usize, jumper: bool) -> crate::Result<()> { Ok(sys::guide_set_is_jumper(self.r(), net, idx, jumper)?) }
     pub fn guide_set_is_connected_to_term(&mut self, net: &str, idx: usize, is_connected: bool) -> crate::Result<()> { Ok(sys::guide_set_is_connected_to_term(self.r(), net, idx, is_connected)?) }
+    pub fn gcell_set_capacity(&mut self, layer: &str, x_idx: u32, y_idx: u32, capacity: f32) -> crate::Result<()> { Ok(sys::gcell_set_capacity(self.r(), layer, x_idx, y_idx, capacity)?) }
+    pub fn gcell_set_usage(&mut self, layer: &str, x_idx: u32, y_idx: u32, a3: f32) -> crate::Result<()> { Ok(sys::gcell_set_usage(self.r(), layer, x_idx, y_idx, a3)?) }
     pub fn wire_set_property(&mut self, net: &str, jid: i32, property: i32) -> crate::Result<()> { Ok(sys::wire_set_property(self.r(), net, jid, property)?) }
     pub fn box_set_soft(&mut self, idx: usize, value: bool) -> crate::Result<()> { Ok(sys::box_set_soft(self.r(), idx, value)?) }
     pub fn box_set_layer_mask(&mut self, idx: usize, mask: u32) -> crate::Result<()> { Ok(sys::box_set_layer_mask(self.r(), idx, mask)?) }
@@ -371,6 +374,8 @@ impl Db {
     pub fn cutspacingtablerule_set_prl_horizontal(&mut self, layer: &str, idx: usize, prl_horizontal: bool) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_prl_horizontal(self.r(), layer, idx, prl_horizontal)?) }
     pub fn cutspacingtablerule_set_vertical(&mut self, layer: &str, idx: usize, vertical: bool) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_vertical(self.r(), layer, idx, vertical)?) }
     pub fn cutspacingtablerule_set_prl_vertical(&mut self, layer: &str, idx: usize, prl_vertical: bool) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_prl_vertical(self.r(), layer, idx, prl_vertical)?) }
+    pub fn cutspacingtablerule_set_non_opposite_enclosure_spacing_valid(&mut self, layer: &str, idx: usize, non_opposite_enclosure_spacing_valid: bool) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_non_opposite_enclosure_spacing_valid(self.r(), layer, idx, non_opposite_enclosure_spacing_valid)?) }
+    pub fn cutspacingtablerule_set_opposite_enclosure_resize_spacing_valid(&mut self, layer: &str, idx: usize, opposite_enclosure_resize_spacing_valid: bool) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_opposite_enclosure_resize_spacing_valid(self.r(), layer, idx, opposite_enclosure_resize_spacing_valid)?) }
     pub fn layerantenna_set_gate_plus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_gate_plus_diff_factor(self.r(), layer, factor)?) }
     pub fn layerantenna_set_area_minus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_area_minus_diff_factor(self.r(), layer, factor)?) }
     pub fn layerantenna_set_area_factor(&mut self, layer: &str, factor: f64, diffuse: bool) -> crate::Result<()> { Ok(sys::layerantenna_set_area_factor(self.r(), layer, factor, diffuse)?) }
