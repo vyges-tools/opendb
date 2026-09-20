@@ -2428,10 +2428,9 @@ mod surface_tests {
 
     /// LibreLane's 21 `Odb.*` steps -> the subcommand here that performs it, or `None`.
     ///
-    /// 🔑 **This is the libodb-applier target list** (`vyges-tools-internal/docs/librelane/
-    /// librelane-architecture.md`), and it is pinned here rather than counted in a document
-    /// because the count is a claim ABOUT THIS BINARY. A doc saying "15 of 21" cannot notice a
-    /// subcommand being renamed; this test fails the moment one is.
+    /// 🔑 **This is the libodb-applier target list**, and it is pinned here rather than counted
+    /// in a document because the count is a claim ABOUT THIS BINARY. A doc saying "15 of 21"
+    /// cannot notice a subcommand being renamed; this test fails the moment one is.
     ///
     /// ⚠️ **Two of ours each cover TWO of theirs.** LibreLane splits obstruction handling by which
     /// config key it reads (`Add`/`RemovePDNObstructions` vs `Add`/`RemoveRoutingObstructions`);
