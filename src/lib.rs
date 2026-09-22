@@ -1919,6 +1919,29 @@ impl Db {
     ///
     /// ⚠️ `WITHIN` is not returned because the generator never consults it: it decides adjacency
     /// from the array's own shape, not from a distance.
+    /// Whether the net has a routed-wire object (`dbNet::getWire() != nullptr`).
+    pub fn net_has_wire(&self, net: &str) -> bool {
+        sys::net_has_wire(self.r(), net)
+    }
+
+    /// Whether a tech via carries the string property `name` (e.g. `OR_DEFAULT`, which is NOT
+    /// the via's `DEFAULT` flag).
+    pub fn techvia_has_string_property(&self, via: &str, name: &str) -> bool {
+        sys::techvia_has_string_property(self.r(), via, name)
+    }
+
+    /// A layer's LEF 5.4 spacing rules, in the technology's order: each rule's spacing, and the
+    /// `(min, max)` width range it is limited to where it has one.
+    pub fn layer_v54_spacing_rules(&self, layer: &str) -> Result<Vec<(u32, Option<(u32, u32)>)>> {
+        let n = sys::num_v54_spacing_rules(self.r(), layer)?;
+        Ok((0..n)
+            .map(|i| {
+                let range = sys::v54_spacing_rule_range(self.r(), layer, i);
+                (sys::v54_spacing_rule_spacing(self.r(), layer, i), (range.len() == 2).then(|| (range[0], range[1])))
+            })
+            .collect())
+    }
+
     pub fn layer_v54_adjacent_cut_rules(&self, layer: &str) -> Result<Vec<(u32, i32, bool)>> {
         let n = sys::num_v54_spacing_rules(self.r(), layer)?;
         let mut out = Vec::new();
