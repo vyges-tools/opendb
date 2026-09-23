@@ -1202,6 +1202,28 @@ impl Db {
         let p = sys::tech_cell_edge_spacing_params(self.r())?;
         Ok((0..t.len() / 2).map(|i| (t[2 * i].clone(), t[2 * i + 1].clone(), p[3 * i], p[3 * i + 1] != 0, p[3 * i + 2] != 0)).collect())
     }
+    /// Create a block non-default rule (`dbTechNonDefaultRule::create`, as `create_ndr` does).
+    /// `false` when a rule of that name already exists.
+    /// ⛔ **NOT TRANSACTIONAL** — see [`eco_try`](Self::eco_try).
+    pub fn ndr_create(&mut self, name: &str) -> Result<bool> {
+        Ok(sys::ndr_create(self.r(), name)?)
+    }
+    /// Set an NDR's WIDTH on a layer (DBU), creating the layer rule when absent (`getLayerRule`,
+    /// else `dbTechLayerRule::create`). `false` when the rule or the layer is unknown.
+    pub fn ndr_set_layer_width(&mut self, ndr: &str, layer: &str, width: i32) -> Result<bool> {
+        Ok(sys::ndr_layer_rule_set(self.r(), ndr, layer, 0, width)?)
+    }
+    /// Set an NDR's SPACING on a layer (DBU), creating the layer rule when absent.
+    pub fn ndr_set_layer_spacing(&mut self, ndr: &str, layer: &str, spacing: i32) -> Result<bool> {
+        Ok(sys::ndr_layer_rule_set(self.r(), ndr, layer, 1, spacing)?)
+    }
+    /// An NDR's layer rules (`getLayerRules`), in the database's order: `(layer, width, spacing)`.
+    /// Empty when the rule is unknown. A width or spacing never set reads 0.
+    pub fn ndr_layer_rules(&self, ndr: &str) -> Result<Vec<(String, i32, i32)>> {
+        let layers = sys::ndr_layer_rule_layers(self.r(), ndr)?;
+        let p = sys::ndr_layer_rule_params(self.r(), ndr)?;
+        Ok(layers.into_iter().enumerate().map(|(i, l)| (l, p[2 * i], p[2 * i + 1])).collect())
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
