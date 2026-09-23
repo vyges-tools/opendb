@@ -2135,6 +2135,11 @@ impl Db {
     pub fn iterm_id(&self, inst: &str, pin: &str) -> Result<u32> {
         Ok(sys::iterm_get_id(self.r(), inst, pin)?)
     }
+    /// A block terminal's database id — with [`iterm_id`](Self::iterm_id), what the timer orders
+    /// pins by (`PinIdLess`: an instance terminal's id doubled, a block terminal's doubled plus one).
+    pub fn bterm_id(&self, bterm: &str) -> Result<u32> {
+        Ok(sys::bterm_get_id(self.r(), bterm)?)
+    }
     /// The database's own identifier for an instance. Maps keyed by instance iterate in this order.
     pub fn inst_id(&self, inst: &str) -> Result<u32> {
         Ok(sys::inst_get_id(self.r(), inst)?)
