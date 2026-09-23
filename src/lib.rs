@@ -1177,6 +1177,26 @@ impl Db {
             })
             .collect()
     }
+    /// A master's placement boundary (`getPlacementBoundary`) in master coordinates,
+    /// `[x_min, y_min, x_max, y_max]`; empty for an unknown master.
+    pub fn master_placement_boundary(&self, master: &str) -> Result<Vec<i32>> {
+        Ok(sys::master_placement_boundary(self.r(), master)?)
+    }
+    /// A master's LEF58 cell edges (`getEdgeTypes`), in the database's order:
+    /// `(edge type, dir, cell_row, half_row, range_begin, range_end)`, where `dir` is
+    /// `dbMasterEdgeType::EdgeDir` — TOP 0, RIGHT 1, LEFT 2, BOTTOM 3 — and `-1` means unset.
+    pub fn master_edge_types(&self, master: &str) -> Result<Vec<(String, i32, i32, i32, i32, i32)>> {
+        let names = sys::master_edge_type_names(self.r(), master)?;
+        let p = sys::master_edge_type_params(self.r(), master)?;
+        Ok(names.into_iter().enumerate().map(|(i, n)| (n, p[5 * i], p[5 * i + 1], p[5 * i + 2], p[5 * i + 3], p[5 * i + 4])).collect())
+    }
+    /// The technology's LEF58 cell-edge spacing table (`getCellEdgeSpacingTable`), in order:
+    /// `(first edge type, second edge type, spacing, is_exact, is_except_abutted)`.
+    pub fn tech_cell_edge_spacing(&self) -> Result<Vec<(String, String, i32, bool, bool)>> {
+        let t = sys::tech_cell_edge_spacing_types(self.r())?;
+        let p = sys::tech_cell_edge_spacing_params(self.r())?;
+        Ok((0..t.len() / 2).map(|i| (t[2 * i].clone(), t[2 * i + 1].clone(), p[3 * i], p[3 * i + 1] != 0, p[3 * i + 2] != 0)).collect())
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
