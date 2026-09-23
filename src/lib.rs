@@ -1546,6 +1546,29 @@ impl Db {
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
             .collect())
     }
+    /// The WIRE (non-via) boxes of every SPECIAL net: `(layer number, x0, y0, x1, y1, shape)`,
+    /// `shape` the `dbWireShapeType` name (`"STRIPE"`, `"DRCFILL"`, …).
+    ///
+    /// ⛔ **Not [`Self::swire_boxes`] filtered.** That one serves density fill — vias decomposed onto
+    /// their layers, every shape kept, specialness not asked — and detailed placement's
+    /// `Grid::markBlocked` asks the other way on all three.
+    pub fn special_wire_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32, String)>> {
+        let flat = sys::special_wire_boxes(self.r())?;
+        let mut names: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+        let mut out = Vec::with_capacity(flat.len() / 6);
+        for c in flat.chunks(6).filter(|c| c.len() == 6) {
+            let shape = match names.get(&c[5]) {
+                Some(n) => n.clone(),
+                None => {
+                    let n = sys::wire_shape_type_name(c[5] as i32)?;
+                    names.insert(c[5], n.clone());
+                    n
+                }
+            };
+            out.push((c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32, shape));
+        }
+        Ok(out)
+    }
     /// Obstruction rectangles as `(layer number, x0, y0, x1, y1)`.
     pub fn obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
         Ok(sys::obstruction_boxes(self.r())?
