@@ -1496,7 +1496,7 @@ pub const UNIMPLEMENTED: &[Unimpl] = &[
     Unimpl { class: "dbTechLayer", field: "find_tech_layer_cut_class_rule", method: "findTechLayerCutClassRule", kind: "relation", ret: "dbTechLayerCutClassRule*", hand_written: false },
     Unimpl { class: "dbTechLayer", field: "find_tw_spacing", method: "findTwSpacing", kind: "other", ret: "int", hand_written: true },
     Unimpl { class: "dbTechLayer", field: "find_v55_spacing", method: "findV55Spacing", kind: "other", ret: "int", hand_written: true },
-    Unimpl { class: "dbTechLayer", field: "get_area", method: "getArea", kind: "getter", ret: "int64_t", hand_written: false },
+    Unimpl { class: "dbTechLayer", field: "get_area", method: "getArea", kind: "getter", ret: "int64_t", hand_written: true },
     Unimpl { class: "dbTechLayer", field: "get_default_antenna_rule", method: "getDefaultAntennaRule", kind: "relation", ret: "dbTechLayerAntennaRule*", hand_written: false },
     Unimpl { class: "dbTechLayer", field: "get_direction", method: "getDirection", kind: "getter", ret: "dbTechLayerDir", hand_written: false },
     Unimpl { class: "dbTechLayer", field: "get_min_cut_rules", method: "getMinCutRules", kind: "iterator", ret: "dbSet<dbTechMinCutRule>", hand_written: false },

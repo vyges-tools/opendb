@@ -257,6 +257,15 @@ fn chunk5(v: Vec<i32>) -> Vec<(i64, i32, i32, i32, i32)> {
         .collect()
 }
 
+/// A layer's V55 parallel-run spacing table, as [`Db::layer_v55_spacing_table`] reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct V55Table {
+    /// `getV55SpacingWidthsAndLengths`: `(widths, lengths)`, `None` when the call returns false.
+    pub widths_and_lengths: Option<(Vec<u32>, Vec<u32>)>,
+    /// `getV55SpacingTable`: rows by width, columns by length; `None` when the call returns false.
+    pub table: Option<Vec<Vec<u32>>>,
+}
+
 impl Db {
     /// Read a `.odb` file.
     pub fn open(path: impl AsRef<Path>) -> Result<Db> {
@@ -1848,6 +1857,50 @@ impl Db {
     /// Returns 0 where the layer sets no minimum, which is the common case.
     pub fn layer_min_area(&self, layer: &str) -> Result<i64> {
         Ok(sys::layer_min_area(self.r(), layer)?)
+    }
+    /// A layer's own minimum AREA (`dbTechLayer::getArea`): its AREA value, 0 when it sets none.
+    ///
+    /// ⚠️ **Not [`Self::layer_min_area`]**, which lets LEF58 AREA rules govern. A reader that takes
+    /// the raw field — CUGR's min-length rule does — gets a different number from that one on any
+    /// layer carrying LEF58 rules.
+    pub fn layer_get_area(&self, layer: &str) -> Result<i64> {
+        Ok(sys::layer_get_area(self.r(), layer)?)
+    }
+    /// A layer's V55 parallel-run spacing table exactly as its two getters return it.
+    ///
+    /// The two are independent calls upstream and fail independently:
+    /// `getV55SpacingWidthsAndLengths` is `None` unless the layer has V55 rules, and
+    /// `getV55SpacingTable` is `None` when the matrix holds no element. Rows are widths, columns
+    /// lengths.
+    pub fn layer_v55_spacing_table(&self, layer: &str) -> Result<V55Table> {
+        let v = sys::layer_v55_spacing_table(self.r(), layer)?;
+        let (nw, nl) = (v[1] as usize, v[2] as usize);
+        let widths_and_lengths = (v[0] == 1).then(|| (v[3..3 + nw].to_vec(), v[3 + nw..3 + nw + nl].to_vec()));
+        let t = 3 + nw + nl;
+        let (rows, cols) = (v[t + 1] as usize, v[t + 2] as usize);
+        let table = (v[t] == 1).then(|| v[t + 3..t + 3 + rows * cols].chunks(cols.max(1)).map(<[u32]>::to_vec).collect());
+        Ok(V55Table { widths_and_lengths, table })
+    }
+    /// `dbNet::getFirstDriverTerm`, by name: `I:<inst>/<mterm>` for an instance terminal,
+    /// `B:<bterm>` for a block terminal, empty when there is none.
+    ///
+    /// The rule it answers (odb's): the first instance terminal, in the net's order, that is not
+    /// supply, not clocked, and is OUTPUT or INOUT; failing that the first non-supply block terminal
+    /// that is INPUT or INOUT. A supply net has no driver.
+    pub fn net_first_driver_term(&self, net: &str) -> Result<String> {
+        Ok(sys::net_first_driver_term(self.r(), net)?)
+    }
+    /// Every box of a net's special wires with each via EXPANDED into its shapes
+    /// (`dbSBox::getViaBoxes`), as `(layer_number, from_via, x0, y0, x1, y1)`, in `getSWires()` then
+    /// `getWires()` order. A box with no tech layer reports layer number -1.
+    ///
+    /// ⚠️ Distinct from [`Self::net_swire_obstacles`], which skips via boxes entirely.
+    pub fn net_swire_expanded_boxes(&self, net: &str) -> Result<Vec<(i64, bool, i32, i32, i32, i32)>> {
+        Ok(sys::net_swire_expanded_boxes(self.r(), net)?
+            .chunks(6)
+            .filter(|c| c.len() == 6)
+            .map(|c| (c[0], c[1] != 0, c[2] as i32, c[3] as i32, c[4] as i32, c[5] as i32))
+            .collect())
     }
     /// Every box of a named tech via as `(layer_number, x0, y0, x1, y1)`.
     ///
