@@ -896,6 +896,11 @@ impl Db {
     pub fn set_inst_orient(&mut self, inst: &str, orient: &str) -> Result<()> {
         Ok(sys::set_inst_orient(self.r(), inst, orient)?)
     }
+    /// `dbInst::setLocationOrient` — change the orient keeping the bounding box's lower-left fixed
+    /// ([`Self::set_inst_orient`] keeps the ORIGIN, which moves the box). For mirroring in place.
+    pub fn set_inst_location_orient(&mut self, inst: &str, orient: &str) -> Result<()> {
+        Ok(sys::set_inst_location_orient(self.r(), inst, orient)?)
+    }
     /// Add a routing/PDN obstruction rectangle on `layer` (DBU). Errors if the layer is unknown.
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
     pub fn add_obstruction(&mut self, layer: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
