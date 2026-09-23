@@ -1224,6 +1224,11 @@ impl Db {
         let p = sys::ndr_layer_rule_params(self.r(), ndr)?;
         Ok(layers.into_iter().enumerate().map(|(i, l)| (l, p[2 * i], p[2 * i + 1])).collect())
     }
+    /// How many access points the block's terminals carry: instance terminals' preferred ones plus
+    /// block pins'. grt reads pin positions from them when present; zero means none to model.
+    pub fn block_access_point_count(&self) -> Result<usize> {
+        Ok(sys::block_access_point_count(self.r())?)
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
