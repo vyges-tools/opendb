@@ -1238,6 +1238,20 @@ impl Db {
     pub fn block_access_point_count(&self) -> Result<usize> {
         Ok(sys::block_access_point_count(self.r())?)
     }
+    /// An instance terminal's PREFERRED access points (the detailed router's), in
+    /// `getPrefAccessPoints` order (by master pin), as `(x, y, routing level)` — the point as
+    /// stored, relative to the instance's location.
+    pub fn iterm_pref_access_points(&self, inst: &str, pin: &str) -> Result<Vec<(i32, i32, i32)>> {
+        Ok(sys::iterm_pref_access_points(self.r(), inst, pin)?.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect())
+    }
+    /// How many access points an instance terminal has over all its master pins.
+    pub fn iterm_access_point_count(&self, inst: &str, pin: &str) -> Result<usize> {
+        Ok(sys::iterm_access_point_count(self.r(), inst, pin)?)
+    }
+    /// A block pin's access points, stored order, as `(x, y, routing level)` in absolute DBU.
+    pub fn bpin_access_points(&self, bterm: &str, pin: usize) -> Result<Vec<(i32, i32, i32)>> {
+        Ok(sys::bpin_access_points(self.r(), bterm, pin)?.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect())
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
