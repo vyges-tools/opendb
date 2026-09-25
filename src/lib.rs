@@ -1248,6 +1248,42 @@ impl Db {
     pub fn iterm_access_point_count(&self, inst: &str, pin: &str) -> Result<usize> {
         Ok(sys::iterm_access_point_count(self.r(), inst, pin)?)
     }
+    /// A net's global-route guides in stored order: `(layer, via layer (empty for a wire guide),
+    /// box, congested)`.
+    #[allow(clippy::type_complexity)]
+    pub fn net_guides(&self, net: &str) -> Result<Vec<(String, String, [i32; 4], bool)>> {
+        Ok(sys::net_guides(self.r(), net)?
+            .into_iter()
+            .filter_map(|g| {
+                let f: Vec<&str> = g.split(',').collect();
+                let n = |i: usize| f.get(i)?.parse::<i32>().ok();
+                Some((f.first()?.to_string(), f.get(1)?.to_string(), [n(2)?, n(3)?, n(4)?, n(5)?], n(6)? != 0))
+            })
+            .collect())
+    }
+    /// A layer's LEF58_TYPE (`NWELL`, `PWELL`, `DIFFUSION`, …; `NONE` when it has none; empty
+    /// when the layer is unknown).
+    pub fn layer_lef58_type(&self, layer: &str) -> String {
+        sys::layer_lef58_type(self.r(), layer)
+    }
+    /// Which rule families a layer carries, `(family, count)` for each present — for a consumer
+    /// to REFUSE what it does not model rather than silently ignore it. Families: `min_step`,
+    /// `lef58_min_step`, `min_cut`, `lef58_min_cut`, `two_widths_spacing`, `v55_influence`,
+    /// `lef58_cut_class`, `lef58_cut_spacing`, `lef58_cut_spacing_table`, `lef58_spacing_eol`,
+    /// `lef58_eol_keepout`, `lef58_eol_extension`, `lef58_spacing_table_prl`,
+    /// `lef58_corner_spacing`, `lef58_area`, `lef58_forbidden_spacing`, `lef58_keepout_zone`,
+    /// `cut_spacing` (plain LEF 5.4 cut spacing), `cut_spacing_with_clauses` (stacking, centre
+    /// to centre, same net, parallel overlap, second layer or adjacent cuts),
+    /// `metal_width_via_map` (on its cut layer).
+    pub fn layer_rule_census(&self, layer: &str) -> Vec<(String, usize)> {
+        sys::layer_rule_census(self.r(), layer)
+            .into_iter()
+            .filter_map(|e| {
+                let (k, v) = e.split_once('=')?;
+                Some((k.to_string(), v.parse().ok()?))
+            })
+            .collect()
+    }
     /// A block pin's access points, stored order, as `(x, y, routing level)` in absolute DBU.
     pub fn bpin_access_points(&self, bterm: &str, pin: usize) -> Result<Vec<(i32, i32, i32)>> {
         Ok(sys::bpin_access_points(self.r(), bterm, pin)?.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect())
