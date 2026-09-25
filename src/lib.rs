@@ -1252,6 +1252,24 @@ impl Db {
     pub fn bpin_access_points(&self, bterm: &str, pin: usize) -> Result<Vec<(i32, i32, i32)>> {
         Ok(sys::bpin_access_points(self.r(), bterm, pin)?.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect())
     }
+    /// Add an access point to a master pin (`pin`-th of the terminal) at unique-class index
+    /// `pin_access_idx`: point relative to the class, layer, accesses (bits N 1, S 2, E 4, W 8,
+    /// U 16, D 32), low/high cost type (on-grid 0 … nearby 4), single-cut vias by name, segments
+    /// (`x0 y0 x1 y1 begin_trunc end_trunc` each). Returns its index among the pin's points there.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mpin_add_access_point(&mut self, master: &str, term: &str, pin: usize, pin_access_idx: u32, point: (i32, i32), layer: &str, accesses: u8, types: (i32, i32), vias: &[String], segs: &[i32]) -> Result<i32> {
+        Ok(sys::mpin_add_access_point(self.r(), master, term, pin, pin_access_idx, point.0, point.1, layer, accesses, types.0, types.1, vias, segs)?)
+    }
+    /// Set an instance terminal pin's preferred access point: the `ap`-th of its master pin's
+    /// points at `pin_access_idx`, or none.
+    pub fn iterm_set_access_point(&mut self, inst: &str, term: &str, pin: usize, pin_access_idx: u32, ap: Option<usize>) -> Result<()> {
+        Ok(sys::iterm_set_access_point(self.r(), inst, term, pin, pin_access_idx, ap.map_or(-1, |a| a as i32))?)
+    }
+    /// Add an access point to a block pin (absolute point; the rest as `mpin_add_access_point`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn bpin_add_access_point(&mut self, bterm: &str, pin: usize, point: (i32, i32), layer: &str, accesses: u8, types: (i32, i32), vias: &[String], segs: &[i32]) -> Result<()> {
+        Ok(sys::bpin_add_access_point(self.r(), bterm, pin, point.0, point.1, layer, accesses, types.0, types.1, vias, segs)?)
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
