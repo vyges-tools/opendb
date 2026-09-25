@@ -1231,6 +1231,18 @@ impl Db {
     pub fn ndr_add_use_via(&mut self, ndr: &str, via: &str) -> Result<bool> {
         Ok(sys::ndr_add_use_via(self.r(), ndr, via)?)
     }
+    /// An NDR's use-vias (`getUseVias`), in order.
+    pub fn ndr_use_vias(&self, ndr: &str) -> Result<Vec<String>> {
+        Ok(sys::ndr_use_vias(self.r(), ndr)?)
+    }
+    /// An NDR's use-via generate rules (`getUseViaRules`), in order.
+    pub fn ndr_use_via_rules(&self, ndr: &str) -> Result<Vec<String>> {
+        Ok(sys::ndr_use_via_rules(self.r(), ndr)?)
+    }
+    /// An NDR's wire extension per layer rule (`getWireExtension`), in [`ndr_layer_rules`](Self::ndr_layer_rules) order.
+    pub fn ndr_layer_rule_wire_exts(&self, ndr: &str) -> Result<Vec<i32>> {
+        Ok(sys::ndr_layer_rule_wire_exts(self.r(), ndr)?)
+    }
     /// An NDR's layer rules (`getLayerRules`), in the database's order: `(layer, width, spacing)`.
     /// Empty when the rule is unknown. A width or spacing never set reads 0.
     pub fn ndr_layer_rules(&self, ndr: &str) -> Result<Vec<(String, i32, i32)>> {
