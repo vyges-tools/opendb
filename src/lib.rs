@@ -2102,6 +2102,23 @@ impl Db {
             .collect())
     }
 
+    /// A layer's LEF 5.4 END-OF-LINE spacing rules, in the technology's order: `(spacing, eol
+    /// width, within, parallel edge)`, the parallel edge as `(space, within, two edges)`.
+    #[allow(clippy::type_complexity)]
+    pub fn layer_v54_eol_rules(&self, layer: &str) -> Result<Vec<(u32, i32, i32, Option<(i32, i32, bool)>)>> {
+        let n = sys::num_v54_spacing_rules(self.r(), layer)?;
+        let mut out = Vec::new();
+        for i in 0..n {
+            let e = sys::v54_spacing_rule_eol(self.r(), layer, i)?;
+            if e.len() != 6 {
+                continue;
+            }
+            let par = (e[2] != 0).then_some((e[3], e[4], e[5] != 0));
+            out.push((sys::v54_spacing_rule_spacing(self.r(), layer, i), e[0], e[1], par));
+        }
+        Ok(out)
+    }
+
     pub fn layer_v54_adjacent_cut_rules(&self, layer: &str) -> Result<Vec<(u32, i32, bool)>> {
         let n = sys::num_v54_spacing_rules(self.r(), layer)?;
         let mut out = Vec::new();
