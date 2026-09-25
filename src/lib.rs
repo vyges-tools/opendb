@@ -1226,6 +1226,11 @@ impl Db {
     pub fn ndr_set_layer_spacing(&mut self, ndr: &str, layer: &str, spacing: i32) -> Result<bool> {
         Ok(sys::ndr_layer_rule_set(self.r(), ndr, layer, 1, spacing)?)
     }
+    /// Add a technology via to an NDR's use-vias (`addUseVia`, as `create_ndr -via` does, in
+    /// order). `false` when the rule or the via is unknown.
+    pub fn ndr_add_use_via(&mut self, ndr: &str, via: &str) -> Result<bool> {
+        Ok(sys::ndr_add_use_via(self.r(), ndr, via)?)
+    }
     /// An NDR's layer rules (`getLayerRules`), in the database's order: `(layer, width, spacing)`.
     /// Empty when the rule is unknown. A width or spacing never set reads 0.
     pub fn ndr_layer_rules(&self, ndr: &str) -> Result<Vec<(String, i32, i32)>> {
@@ -1305,6 +1310,23 @@ impl Db {
     #[allow(clippy::too_many_arguments)]
     pub fn bpin_add_access_point(&mut self, bterm: &str, pin: usize, point: (i32, i32), layer: &str, accesses: u8, types: (i32, i32), vias: &[String], segs: &[i32]) -> Result<()> {
         Ok(sys::bpin_add_access_point(self.r(), bterm, pin, point.0, point.1, layer, accesses, types.0, types.1, vias, segs)?)
+    }
+    /// Replace a net's routing with paths from a flat op stream (records): `0 layer ndr` a new
+    /// ROUTED path on `names[layer]` (ndr 1: with the net's rule for that layer), `1 x y` a
+    /// point, `2 x y ext` a point with its extension, `3 via` the tech via `names[via]`, `4 via`
+    /// the block via `names[via]`, `5 xl yl xh yh` a rectangle about the last point.
+    pub fn net_write_wire(&mut self, net: &str, ops: &[i32], names: &[String]) -> Result<()> {
+        Ok(sys::net_write_wire(self.r(), net, ops, names)?)
+    }
+    /// A router-made via as a default block via (nothing when one of the name exists): `boxes`
+    /// records `(0 layer1 | 1 cut | 2 layer2, xl, yl, xh, yh)`, created in order.
+    pub fn block_create_via(&mut self, name: &str, layers: (&str, &str, &str), boxes: &[i32]) -> Result<()> {
+        Ok(sys::block_create_via(self.r(), name, layers.0, layers.1, layers.2, boxes)?)
+    }
+    /// The block's gcell grid set to one uniform pattern per axis `(origin, count, step)`: created
+    /// when absent, kept when identical, an error when different.
+    pub fn block_set_gcell_grid(&mut self, x: (i32, i32, i32), y: (i32, i32, i32)) -> Result<()> {
+        Ok(sys::block_set_gcell_grid(self.r(), x.0, x.1, x.2, y.0, y.1, y.2)?)
     }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {

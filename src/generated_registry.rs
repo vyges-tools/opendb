@@ -1564,7 +1564,7 @@ pub const UNIMPLEMENTED: &[Unimpl] = &[
     Unimpl { class: "dbTechLayerCutSpacingTableDefRule", field: "get_spacing_table", method: "getSpacingTable", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbTechLayerCutSpacingTableDefRule", field: "is_prl_for_aligned_cut_classes", method: "isPrlForAlignedCutClasses", kind: "predicate", ret: "bool", hand_written: false },
     Unimpl { class: "dbTechLayerCutSpacingTableDefRule", field: "set_spacing_table", method: "setSpacingTable", kind: "setter", ret: "void", hand_written: false },
-    Unimpl { class: "dbTechNonDefaultRule", field: "add_use_via", method: "addUseVia", kind: "setter", ret: "void", hand_written: false },
+    Unimpl { class: "dbTechNonDefaultRule", field: "add_use_via", method: "addUseVia", kind: "setter", ret: "void", hand_written: true },
     Unimpl { class: "dbTechNonDefaultRule", field: "add_use_via_rule", method: "addUseViaRule", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbTechNonDefaultRule", field: "find_same_net_rule", method: "findSameNetRule", kind: "relation", ret: "dbTechSameNetRule*", hand_written: false },
     Unimpl { class: "dbTechNonDefaultRule", field: "get_layer_rule", method: "getLayerRule", kind: "relation", ret: "dbTechLayerRule*", hand_written: false },
