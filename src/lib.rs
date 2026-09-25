@@ -1265,6 +1265,13 @@ impl Db {
     pub fn iterm_access_point_count(&self, inst: &str, pin: &str) -> Result<usize> {
         Ok(sys::iterm_access_point_count(self.r(), inst, pin)?)
     }
+    /// A net's routed wire as the wire decoder walks it: `T|<wire type>`, then one record per op
+    /// (`<opcode>|fields`, opcodes numbered as the decoder's: 0–3 path kinds `|layer`, 4 point
+    /// `|x|y`, 5 point with extension `|x|y|ext`, 6 block via / 7 tech via `|name|bottom|top`, 8
+    /// rect `|l|b|r|t`, 9 iterm, 10 bterm, 11 rule), ending `12`. Empty without a wire.
+    pub fn net_wire_decode(&self, net: &str) -> Result<Vec<String>> {
+        Ok(sys::net_wire_decode(self.r(), net)?)
+    }
     /// A net's global-route guides in stored order: `(layer, via layer (empty for a wire guide),
     /// box, congested)`.
     #[allow(clippy::type_complexity)]
