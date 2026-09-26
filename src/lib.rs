@@ -62,8 +62,110 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 impl From<cxx::Exception> for Error {
     fn from(e: cxx::Exception) -> Self {
-        Error::Odb(e.what().to_string())
+        Error::Odb(explain(e.what()))
     }
+}
+
+/// Turn libodb's exception text into a reason a user can act on.
+///
+/// ⛔ `utl::Logger::error` throws an exception whose text is ONLY the code (`ODB-0421`); the message
+/// went to the log. And the readers log the real input mistakes as warnings prefixed `error:` before
+/// failing with a generic error — `ODB-0421 DEF parser returns an error!` after a thousand
+/// `ODB-0092 error: unknown library cell referenced (…) for instance (…)`. Reported as-is, the user
+/// gets `ODB-0421` and nothing to go on.
+///
+/// So a bare code is rebuilt from what libodb recorded (see `vyges_opendb_lib::take_diagnostics`):
+/// the error's own message, then each `error:` warning that preceded it — grouped by code, counted,
+/// with its first occurrence — and a hint for the input mistakes that have one. Any other exception
+/// text passes through unchanged.
+#[cfg(unix)]
+fn explain(what: &str) -> String {
+    if !is_bare_code(what) {
+        return what.to_string();
+    }
+    explain_from(what, &sys::take_diagnostics())
+}
+#[cfg(not(unix))]
+fn explain(what: &str) -> String {
+    what.to_string()
+}
+
+/// `ODB-0421`, `GRT-0116` — a tool name and a four-digit id, nothing else.
+fn is_bare_code(s: &str) -> bool {
+    let Some((tool, id)) = s.split_once('-') else { return false };
+    !tool.is_empty() && tool.bytes().all(|b| b.is_ascii_uppercase()) && id.len() == 4 && id.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// `[WARNING ODB-0092] error: unknown …` -> (`ODB-0092`, `unknown …`). The `error:` prefix is how the
+/// readers mark a warning that is really an input error; it is dropped from the text, not the meaning.
+fn split_diagnostic(text: &str) -> Option<(String, String)> {
+    let rest = text.trim().strip_prefix('[')?;
+    let (head, body) = rest.split_once(']')?;
+    let code = head.split_whitespace().find(|t| is_bare_code(t))?.to_string();
+    let body = body.trim();
+    let body = body.strip_prefix("error:").or_else(|| body.strip_prefix("Error:")).unwrap_or(body).trim();
+    Some((code, body.to_string()))
+}
+
+/// The rebuilt reason. Pure, so it is testable without a database.
+fn explain_from(code: &str, diagnostics: &[(i32, String)]) -> String {
+    const SPDLOG_ERR: i32 = 4;
+    let parsed: Vec<(i32, bool, String, String)> = diagnostics
+        .iter()
+        .filter_map(|(level, text)| {
+            let marked = text.contains("] error:") || text.contains("] Error:");
+            split_diagnostic(text).map(|(c, b)| (*level, marked, c, b))
+        })
+        .collect();
+    // The error's own message: the last error-level record with this code.
+    let own = parsed.iter().rev().find(|(l, _, c, _)| *l >= SPDLOG_ERR && c == code).map(|(_, _, _, b)| b.clone());
+    let mut out = match own {
+        Some(m) => format!("{code}: {m}"),
+        None => code.to_string(),
+    };
+    // Its causes: the warnings the reader marked as errors, grouped by code in first-seen order.
+    let mut groups: Vec<(String, String, usize, bool)> = Vec::new(); // code, first text, count, saturated
+    for (level, marked, c, b) in &parsed {
+        if *level >= SPDLOG_ERR || !*marked && !b.starts_with("message limit") {
+            continue;
+        }
+        let saturated = b.starts_with("message limit");
+        match groups.iter_mut().find(|g| &g.0 == c) {
+            Some(g) if saturated => g.3 = true,
+            Some(g) => g.2 += 1,
+            None if saturated => {}
+            None => groups.push((c.clone(), b.clone(), 1, false)),
+        }
+    }
+    for (c, first, n, saturated) in &groups {
+        let count = if *saturated { format!("{n}+") } else { n.to_string() };
+        let times = if *n == 1 && !*saturated { String::new() } else { format!(" ({count} times; first shown)") };
+        out.push_str(&format!("; caused by {c}: {first}{times}"));
+        if let Some(h) = hint(c) {
+            out.push_str(&format!(" — {h}"));
+        }
+    }
+    if groups.is_empty() {
+        if let Some(h) = hint(code) {
+            out.push_str(&format!(" — {h}"));
+        }
+    }
+    out
+}
+
+/// What to do about the input mistakes the LEF/DEF readers report. Each is read from the message the
+/// pinned source logs for that code, and says only what that message supports.
+fn hint(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "ODB-0092" => "a LEF defining that cell was not read: add the LEF of the library it belongs to (standard cells, filler/decap/tap cells, or a macro), before the DEF",
+        "ODB-0148" => "check the DEF path and that it is readable",
+        "ODB-0240" => "check the LEF path and that it is readable",
+        "ODB-0191" | "ODB-0193" | "ODB-0212" => "the technology LEF that was read does not define it: read the technology LEF for the DEF's process and metal stack, before the DEF",
+        "ODB-0122" | "ODB-0123" => "the DEF names a pin its cell's LEF does not have: the LEF and the DEF are from different library versions",
+        "ODB-0228" => "read the technology LEF before any cell LEF or DEF",
+        "ODB-0099" => "follows from an earlier error: the component was never created, usually because its cell is unknown",
+        _ => return None,
+    })
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -274,6 +376,8 @@ pub struct V55Table {
 impl Db {
     /// Read a `.odb` file.
     pub fn open(path: impl AsRef<Path>) -> Result<Db> {
+        // A failure below is explained from what THIS read logs, never an earlier one's warnings.
+        sys::clear_diagnostics();
         let inner = sys::open_db(&path_str(path)?)?;
         Ok(Db { inner })
     }
@@ -334,10 +438,14 @@ impl Db {
     /// ⛔ **This is what lets a design be built without OpenROAD at all** — `read_def` needs a tech
     /// and libs, and nothing on our side could create them before.
     pub fn read_lef(&mut self, lef_path: impl AsRef<Path>) -> Result<()> {
+        // A failure below is explained from what THIS read logs, never an earlier one's warnings.
+        sys::clear_diagnostics();
         Ok(sys::read_lef(self.r(), &path_str(lef_path)?)?)
     }
 
     pub fn read_def(&mut self, def_path: impl AsRef<Path>, mode: &str) -> Result<()> {
+        // A failure below is explained from what THIS read logs, never an earlier one's warnings.
+        sys::clear_diagnostics();
         Ok(sys::read_def(self.r(), &path_str(def_path)?, mode)?)
     }
 
@@ -2605,3 +2713,51 @@ pub fn rdl_preprocess(
     };
     Ok((verdict, rest.chunks_exact(4).map(|c| (c[0], c[1], c[2], c[3])).collect()))
 }
+
+#[cfg(test)]
+mod explain_tests {
+    use super::{explain_from, is_bare_code, split_diagnostic};
+
+    const WARN: i32 = 3;
+    const ERR: i32 = 4;
+
+    #[test]
+    fn a_bare_code_is_recognised_and_a_message_is_not() {
+        assert!(is_bare_code("ODB-0421"));
+        assert!(is_bare_code("GRT-0116"));
+        assert!(!is_bare_code("ODB-421"));
+        assert!(!is_bare_code("ODB-0421: DEF parser returns an error!"));
+        assert!(!is_bare_code("cannot open x.def"));
+    }
+
+    #[test]
+    fn the_error_prefix_is_dropped_from_the_text() {
+        let (c, b) = split_diagnostic("[WARNING ODB-0092] error: unknown library cell referenced (X) for instance (u1)").unwrap();
+        assert_eq!((c.as_str(), b.as_str()), ("ODB-0092", "unknown library cell referenced (X) for instance (u1)"));
+    }
+
+    /// The case that motivated this: a DEF using cells no LEF defined. The reason carries the error,
+    /// its cause with the first instance and the count (saturated at libodb's message limit), and
+    /// the hint — and not the unrelated obsolete-syntax warning.
+    #[test]
+    fn a_def_read_failure_names_its_cause_count_and_fix() {
+        let mut d = vec![(WARN, "[WARNING ODB-0220] WARNING (LEFPARS-2008): NOWIREEXTENSIONATPIN statement is obsolete".to_string())];
+        for i in 0..3 {
+            d.push((WARN, format!("[WARNING ODB-0092] error: unknown library cell referenced (decap_40_12) for instance (FILLER_{i})")));
+        }
+        d.push((WARN, "[WARNING ODB-0092] message limit (1000) reached. This message will no longer print.".to_string()));
+        d.push((ERR, "[ERROR ODB-0421] DEF parser returns an error!".to_string()));
+        let r = explain_from("ODB-0421", &d);
+        assert!(r.starts_with("ODB-0421: DEF parser returns an error!; caused by ODB-0092: unknown library cell referenced (decap_40_12) for instance (FILLER_0) (3+ times; first shown) — a LEF defining that cell was not read"), "{r}");
+        assert!(!r.contains("LEFPARS"), "an unmarked warning is not a cause: {r}");
+    }
+
+    /// With nothing recorded (a capture held the log), the code still comes back — never an empty
+    /// or invented reason.
+    #[test]
+    fn nothing_recorded_leaves_the_code() {
+        assert_eq!(explain_from("ODB-0421", &[]), "ODB-0421");
+        assert_eq!(explain_from("ODB-0148", &[]), "ODB-0148 — check the DEF path and that it is readable");
+    }
+}
+
