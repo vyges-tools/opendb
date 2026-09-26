@@ -1466,6 +1466,11 @@ impl Db {
     pub fn block_reset_gcell_grid(&mut self, x: (i32, i32, i32), y: (i32, i32, i32)) -> Result<()> {
         Ok(sys::block_reset_gcell_grid(self.r(), x.0, x.1, x.2, y.0, y.1, y.2)?)
     }
+    /// A layer's MINENCLOSEDAREA rules without a width (the detailed router skips those with one),
+    /// each rule's area. Empty when the layer has none.
+    pub fn layer_min_enclosed_areas(&self, layer: &str) -> Vec<i64> {
+        sys::layer_min_enclosed_areas(self.r(), layer)
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
