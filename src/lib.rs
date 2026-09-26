@@ -1460,6 +1460,12 @@ impl Db {
     pub fn block_set_gcell_grid(&mut self, x: (i32, i32, i32), y: (i32, i32, i32)) -> Result<()> {
         Ok(sys::block_set_gcell_grid(self.r(), x.0, x.1, x.2, y.0, y.1, y.2)?)
     }
+    /// Replace the block's gcell grid with one pattern per axis — `resetGrid` first, as global
+    /// routing's `updateDbCongestion` does after every route. [`Db::block_set_gcell_grid`] keeps an
+    /// identical grid and refuses a different one; this replaces whatever is there.
+    pub fn block_reset_gcell_grid(&mut self, x: (i32, i32, i32), y: (i32, i32, i32)) -> Result<()> {
+        Ok(sys::block_reset_gcell_grid(self.r(), x.0, x.1, x.2, y.0, y.1, y.2)?)
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
