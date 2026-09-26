@@ -110,6 +110,11 @@ fn forward_libodb_log(level: i32, msg: &str) {
 /// Route libodb's native `utl::Logger` diagnostics (`[INFO ODB-0127] …`) through `vyges-events`,
 /// centralizing odb's C++ log output with the rest of the suite's causal trail. Call once at engine
 /// start; idempotent. Until called, libodb logs go only to its own stdout (unchanged behavior).
+///
+/// ⛔ Call it BEFORE the first [`Db::new`] / [`Db::open`]. A database created afterwards logs
+/// EVENTS-ONLY: libodb's stdout sink is detached, so an engine's stdout carries nothing but its own
+/// report. A database created before keeps writing to stdout as well. [`Db::with_captured_logs`]
+/// works in both modes.
 #[cfg(unix)]
 pub fn init_events_logging() {
     sys::set_log_sink(forward_libodb_log);
