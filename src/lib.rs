@@ -461,9 +461,13 @@ impl Db {
 
     /// Name of the `i`-th instance (empty if out of range).
     pub fn nth_inst_name(&self, i: usize) -> String { sys::nth_inst_name(self.r(), i) }
-    /// All instance names.
+    /// All instance names, in database order.
+    ///
+    /// ⛔ One pass (the generated `block_get_insts`, backed by `all_block_get_insts`), never
+    /// `nth_inst_name` per index: each of those walks the table from its start, so listing that way
+    /// is quadratic — 239,544 instances took 77 minutes.
     pub fn inst_names(&self) -> Vec<String> {
-        (0..self.num_insts()).map(|i| self.nth_inst_name(i)).collect()
+        self.block_get_insts()
     }
     /// First library master whose name contains `substr` (empty if none).
     pub fn find_master(&self, substr: &str) -> String { sys::find_master(self.r(), substr) }
@@ -481,7 +485,7 @@ impl Db {
     pub fn nth_bterm_name(&self, i: usize) -> String { sys::nth_bterm_name(self.r(), i) }
     /// All block port (bterm) names.
     pub fn bterm_names(&self) -> Vec<String> {
-        (0..self.num_bterms()).map(|i| self.nth_bterm_name(i)).collect()
+        self.block_get_b_terms()
     }
     /// Net connected to block port `bterm` (empty if none).
     pub fn bterm_net(&self, bterm: &str) -> String { sys::bterm_net(self.r(), bterm) }
@@ -923,23 +927,21 @@ impl Db {
     }
     /// All net names.
     pub fn net_names(&self) -> Vec<String> {
-        (0..self.num_nets()).map(|i| sys::nth_net_name(self.r(), i)).collect()
+        self.block_get_nets()
     }
     /// A net's signal type (`SIGNAL`/`POWER`/`GROUND`/`CLOCK`/…; empty if not found).
     pub fn net_sigtype(&self, net: &str) -> String { sys::net_sigtype(self.r(), net) }
     /// Whether `net` is a special (power/routing) net.
     pub fn net_is_special(&self, net: &str) -> bool { sys::net_is_special(self.r(), net) }
     /// The instance pins (`inst/pin`) connected to `net` — the net's instance-side connectivity.
+    ///
+    /// ⛔ One pass: through `nth_net_iterm` per index the list is quadratic in the net's fanout.
     pub fn net_iterms(&self, net: &str) -> Vec<String> {
-        (0..sys::num_net_iterms(self.r(), net))
-            .map(|i| sys::nth_net_iterm(self.r(), net, i))
-            .collect()
+        self.net_get_i_terms(net)
     }
     /// The block ports (bterms) connected to `net`.
     pub fn net_bterms(&self, net: &str) -> Vec<String> {
-        (0..sys::num_net_bterms(self.r(), net))
-            .map(|i| sys::nth_net_bterm(self.r(), net, i))
-            .collect()
+        self.net_get_b_terms(net)
     }
 
     // ---- write primitives ----------------------------------------------------

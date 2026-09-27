@@ -11,28 +11,28 @@ impl Db {
     pub fn block_get_parent(&self) -> String { sys::block_get_parent(self.r()) }
     pub fn block_get_parent_inst(&self) -> String { sys::block_get_parent_inst(self.r()) }
     pub fn block_get_top_module(&self) -> String { sys::block_get_top_module(self.r()) }
-    pub fn block_get_children(&self) -> Vec<String> { (0..sys::num_block_get_children(self.r())).map(|i| sys::nth_block_get_children(self.r(), i)).collect() }
-    pub fn block_get_b_terms(&self) -> Vec<String> { (0..sys::num_block_get_b_terms(self.r())).map(|i| sys::nth_block_get_b_terms(self.r(), i)).collect() }
-    pub fn block_get_i_terms(&self) -> Vec<String> { (0..sys::num_block_get_i_terms(self.r())).map(|i| sys::nth_block_get_i_terms(self.r(), i)).collect() }
-    pub fn block_get_insts(&self) -> Vec<String> { (0..sys::num_block_get_insts(self.r())).map(|i| sys::nth_block_get_insts(self.r(), i)).collect() }
-    pub fn block_get_modules(&self) -> Vec<String> { (0..sys::num_block_get_modules(self.r())).map(|i| sys::nth_block_get_modules(self.r(), i)).collect() }
-    pub fn block_get_mod_insts(&self) -> Vec<String> { (0..sys::num_block_get_mod_insts(self.r())).map(|i| sys::nth_block_get_mod_insts(self.r(), i)).collect() }
-    pub fn block_get_mod_nets(&self) -> Vec<String> { (0..sys::num_block_get_mod_nets(self.r())).map(|i| sys::nth_block_get_mod_nets(self.r(), i)).collect() }
-    pub fn block_get_mod_b_terms(&self) -> Vec<String> { (0..sys::num_block_get_mod_b_terms(self.r())).map(|i| sys::nth_block_get_mod_b_terms(self.r(), i)).collect() }
-    pub fn block_get_mod_i_terms(&self) -> Vec<String> { (0..sys::num_block_get_mod_i_terms(self.r())).map(|i| sys::nth_block_get_mod_i_terms(self.r(), i)).collect() }
-    pub fn block_get_power_domains(&self) -> Vec<String> { (0..sys::num_block_get_power_domains(self.r())).map(|i| sys::nth_block_get_power_domains(self.r(), i)).collect() }
-    pub fn block_get_logic_ports(&self) -> Vec<String> { (0..sys::num_block_get_logic_ports(self.r())).map(|i| sys::nth_block_get_logic_ports(self.r(), i)).collect() }
-    pub fn block_get_power_switches(&self) -> Vec<String> { (0..sys::num_block_get_power_switches(self.r())).map(|i| sys::nth_block_get_power_switches(self.r(), i)).collect() }
-    pub fn block_get_isolations(&self) -> Vec<String> { (0..sys::num_block_get_isolations(self.r())).map(|i| sys::nth_block_get_isolations(self.r(), i)).collect() }
-    pub fn block_get_level_shifters(&self) -> Vec<String> { (0..sys::num_block_get_level_shifters(self.r())).map(|i| sys::nth_block_get_level_shifters(self.r(), i)).collect() }
-    pub fn block_get_groups(&self) -> Vec<String> { (0..sys::num_block_get_groups(self.r())).map(|i| sys::nth_block_get_groups(self.r(), i)).collect() }
-    pub fn block_get_component_mask_shift(&self) -> Vec<String> { (0..sys::num_block_get_component_mask_shift(self.r())).map(|i| sys::nth_block_get_component_mask_shift(self.r(), i)).collect() }
+    pub fn block_get_children(&self) -> Vec<String> { sys::all_block_get_children(self.r()) }
+    pub fn block_get_b_terms(&self) -> Vec<String> { sys::all_block_get_b_terms(self.r()) }
+    pub fn block_get_i_terms(&self) -> Vec<String> { sys::all_block_get_i_terms(self.r()) }
+    pub fn block_get_insts(&self) -> Vec<String> { sys::all_block_get_insts(self.r()) }
+    pub fn block_get_modules(&self) -> Vec<String> { sys::all_block_get_modules(self.r()) }
+    pub fn block_get_mod_insts(&self) -> Vec<String> { sys::all_block_get_mod_insts(self.r()) }
+    pub fn block_get_mod_nets(&self) -> Vec<String> { sys::all_block_get_mod_nets(self.r()) }
+    pub fn block_get_mod_b_terms(&self) -> Vec<String> { sys::all_block_get_mod_b_terms(self.r()) }
+    pub fn block_get_mod_i_terms(&self) -> Vec<String> { sys::all_block_get_mod_i_terms(self.r()) }
+    pub fn block_get_power_domains(&self) -> Vec<String> { sys::all_block_get_power_domains(self.r()) }
+    pub fn block_get_logic_ports(&self) -> Vec<String> { sys::all_block_get_logic_ports(self.r()) }
+    pub fn block_get_power_switches(&self) -> Vec<String> { sys::all_block_get_power_switches(self.r()) }
+    pub fn block_get_isolations(&self) -> Vec<String> { sys::all_block_get_isolations(self.r()) }
+    pub fn block_get_level_shifters(&self) -> Vec<String> { sys::all_block_get_level_shifters(self.r()) }
+    pub fn block_get_groups(&self) -> Vec<String> { sys::all_block_get_groups(self.r()) }
+    pub fn block_get_component_mask_shift(&self) -> Vec<String> { sys::all_block_get_component_mask_shift(self.r()) }
     pub fn num_block_get_obstructions(&self) -> usize { sys::num_block_get_obstructions(self.r()) }
     pub fn num_block_get_blockages(&self) -> usize { sys::num_block_get_blockages(self.r()) }
-    pub fn block_get_nets(&self) -> Vec<String> { (0..sys::num_block_get_nets(self.r())).map(|i| sys::nth_block_get_nets(self.r(), i)).collect() }
+    pub fn block_get_nets(&self) -> Vec<String> { sys::all_block_get_nets(self.r()) }
     pub fn num_block_get_cap_nodes(&self) -> usize { sys::num_block_get_cap_nodes(self.r()) }
     pub fn num_block_get_r_segs(&self) -> usize { sys::num_block_get_r_segs(self.r()) }
-    pub fn block_get_vias(&self) -> Vec<String> { (0..sys::num_block_get_vias(self.r())).map(|i| sys::nth_block_get_vias(self.r(), i)).collect() }
+    pub fn block_get_vias(&self) -> Vec<String> { sys::all_block_get_vias(self.r()) }
     pub fn block_get_def_units(&self) -> i32 { sys::block_get_def_units(self.r()) }
     pub fn block_get_db_units_per_micron(&self) -> i32 { sys::block_get_db_units_per_micron(self.r()) }
     pub fn block_get_corner_count(&self) -> i32 { sys::block_get_corner_count(self.r()) }
@@ -40,7 +40,7 @@ impl Db {
     pub fn block_get_ext_db_count(&self) -> i32 { sys::block_get_ext_db_count(self.r()) }
     pub fn block_get_corner_name_list(&self) -> String { sys::block_get_corner_name_list(self.r()) }
     pub fn num_block_get_track_grids(&self) -> usize { sys::num_block_get_track_grids(self.r()) }
-    pub fn block_get_rows(&self) -> Vec<String> { (0..sys::num_block_get_rows(self.r())).map(|i| sys::nth_block_get_rows(self.r(), i)).collect() }
+    pub fn block_get_rows(&self) -> Vec<String> { sys::all_block_get_rows(self.r()) }
     pub fn num_block_get_fills(&self) -> usize { sys::num_block_get_fills(self.r()) }
     pub fn block_get_die_area_x_min(&self) -> i32 { sys::block_get_die_area_x_min(self.r()) }
     pub fn block_get_die_area_y_min(&self) -> i32 { sys::block_get_die_area_y_min(self.r()) }
@@ -60,9 +60,9 @@ impl Db {
     pub fn block_get_max_layer_for_clock(&self) -> i32 { sys::block_get_max_layer_for_clock(self.r()) }
     pub fn block_get_g_cell_tile_size(&self) -> i32 { sys::block_get_g_cell_tile_size(self.r()) }
     pub fn num_block_get_c_c_segs(&self) -> usize { sys::num_block_get_c_c_segs(self.r()) }
-    pub fn block_get_regions(&self) -> Vec<String> { (0..sys::num_block_get_regions(self.r())).map(|i| sys::nth_block_get_regions(self.r(), i)).collect() }
-    pub fn block_get_non_default_rules(&self) -> Vec<String> { (0..sys::num_block_get_non_default_rules(self.r())).map(|i| sys::nth_block_get_non_default_rules(self.r(), i)).collect() }
-    pub fn block_get_marker_categories(&self) -> Vec<String> { (0..sys::num_block_get_marker_categories(self.r())).map(|i| sys::nth_block_get_marker_categories(self.r(), i)).collect() }
+    pub fn block_get_regions(&self) -> Vec<String> { sys::all_block_get_regions(self.r()) }
+    pub fn block_get_non_default_rules(&self) -> Vec<String> { sys::all_block_get_non_default_rules(self.r()) }
+    pub fn block_get_marker_categories(&self) -> Vec<String> { sys::all_block_get_marker_categories(self.r()) }
     pub fn block_get_ext_count_num_of_net(&self) -> i32 { sys::block_get_ext_count_num_of_net(self.r()) }
     pub fn block_get_ext_count_num_of_r_seg(&self) -> i32 { sys::block_get_ext_count_num_of_r_seg(self.r()) }
     pub fn block_get_ext_count_num_of_cap_node(&self) -> i32 { sys::block_get_ext_count_num_of_cap_node(self.r()) }
@@ -87,14 +87,14 @@ impl Db {
     pub fn inst_get_block(&self, inst: &str) -> String { sys::inst_get_block(self.r(), inst) }
     pub fn inst_get_master(&self, inst: &str) -> String { sys::inst_get_master(self.r(), inst) }
     pub fn inst_get_group(&self, inst: &str) -> String { sys::inst_get_group(self.r(), inst) }
-    pub fn inst_get_i_terms(&self, inst: &str) -> Vec<String> { (0..sys::num_inst_get_i_terms(self.r(), inst)).map(|i| sys::nth_inst_get_i_terms(self.r(), inst, i)).collect() }
+    pub fn inst_get_i_terms(&self, inst: &str) -> Vec<String> { sys::all_inst_get_i_terms(self.r(), inst) }
     pub fn inst_get_first_input(&self, inst: &str) -> String { sys::inst_get_first_input(self.r(), inst) }
     pub fn inst_get_first_output(&self, inst: &str) -> String { sys::inst_get_first_output(self.r(), inst) }
     pub fn inst_get_region(&self, inst: &str) -> String { sys::inst_get_region(self.r(), inst) }
     pub fn inst_get_module(&self, inst: &str) -> String { sys::inst_get_module(self.r(), inst) }
     pub fn inst_get_child(&self, inst: &str) -> String { sys::inst_get_child(self.r(), inst) }
     pub fn inst_get_parent(&self, inst: &str) -> String { sys::inst_get_parent(self.r(), inst) }
-    pub fn inst_get_children(&self, inst: &str) -> Vec<String> { (0..sys::num_inst_get_children(self.r(), inst)).map(|i| sys::nth_inst_get_children(self.r(), inst, i)).collect() }
+    pub fn inst_get_children(&self, inst: &str) -> Vec<String> { sys::all_inst_get_children(self.r(), inst) }
     pub fn inst_is_hierarchical(&self, inst: &str) -> bool { sys::inst_is_hierarchical(self.r(), inst) }
     pub fn inst_is_physical_only(&self, inst: &str) -> bool { sys::inst_is_physical_only(self.r(), inst) }
     pub fn inst_get_transformed_halo_x_min(&self, inst: &str) -> i32 { sys::inst_get_transformed_halo_x_min(self.r(), inst) }
@@ -131,11 +131,11 @@ impl Db {
     pub fn net_is_spef(&self, net: &str) -> bool { sys::net_is_spef(self.r(), net) }
     pub fn net_is_do_not_touch(&self, net: &str) -> bool { sys::net_is_do_not_touch(self.r(), net) }
     pub fn net_get_block(&self, net: &str) -> String { sys::net_get_block(self.r(), net) }
-    pub fn net_get_i_terms(&self, net: &str) -> Vec<String> { (0..sys::num_net_get_i_terms(self.r(), net)).map(|i| sys::nth_net_get_i_terms(self.r(), net, i)).collect() }
+    pub fn net_get_i_terms(&self, net: &str) -> Vec<String> { sys::all_net_get_i_terms(self.r(), net) }
     pub fn net_get1st_i_term(&self, net: &str) -> String { sys::net_get1st_i_term(self.r(), net) }
     pub fn net_get_first_driver_inst(&self, net: &str) -> String { sys::net_get_first_driver_inst(self.r(), net) }
     pub fn net_get_first_output(&self, net: &str) -> String { sys::net_get_first_output(self.r(), net) }
-    pub fn net_get_b_terms(&self, net: &str) -> Vec<String> { (0..sys::num_net_get_b_terms(self.r(), net)).map(|i| sys::nth_net_get_b_terms(self.r(), net, i)).collect() }
+    pub fn net_get_b_terms(&self, net: &str) -> Vec<String> { sys::all_net_get_b_terms(self.r(), net) }
     pub fn net_get1st_b_term(&self, net: &str) -> String { sys::net_get1st_b_term(self.r(), net) }
     pub fn num_net_get_s_wires(&self, net: &str) -> usize { sys::num_net_get_s_wires(self.r(), net) }
     pub fn net_is_connected_by_abutment(&self, net: &str) -> bool { sys::net_is_connected_by_abutment(self.r(), net) }
@@ -223,7 +223,7 @@ impl Db {
     pub fn master_get_symmetry_x(&self, master: &str) -> bool { sys::master_get_symmetry_x(self.r(), master) }
     pub fn master_get_symmetry_y(&self, master: &str) -> bool { sys::master_get_symmetry_y(self.r(), master) }
     pub fn master_get_symmetry_r90(&self, master: &str) -> bool { sys::master_get_symmetry_r90(self.r(), master) }
-    pub fn master_get_m_terms(&self, master: &str) -> Vec<String> { (0..sys::num_master_get_m_terms(self.r(), master)).map(|i| sys::nth_master_get_m_terms(self.r(), master, i)).collect() }
+    pub fn master_get_m_terms(&self, master: &str) -> Vec<String> { sys::all_master_get_m_terms(self.r(), master) }
     pub fn master_get_lib(&self, master: &str) -> String { sys::master_get_lib(self.r(), master) }
     pub fn master_is_frozen(&self, master: &str) -> bool { sys::master_is_frozen(self.r(), master) }
     pub fn master_is_sequential(&self, master: &str) -> bool { sys::master_is_sequential(self.r(), master) }
@@ -272,7 +272,7 @@ impl Db {
     pub fn layer_get_wrong_way_width(&self, layer: &str) -> u32 { sys::layer_get_wrong_way_width(self.r(), layer) }
     pub fn layer_get_wrong_way_min_width(&self, layer: &str) -> u32 { sys::layer_get_wrong_way_min_width(self.r(), layer) }
     pub fn layer_get_layer_adjustment(&self, layer: &str) -> f32 { sys::layer_get_layer_adjustment(self.r(), layer) }
-    pub fn layer_get_tech_layer_cut_class_rules(&self, layer: &str) -> Vec<String> { (0..sys::num_layer_get_tech_layer_cut_class_rules(self.r(), layer)).map(|i| sys::nth_layer_get_tech_layer_cut_class_rules(self.r(), layer, i)).collect() }
+    pub fn layer_get_tech_layer_cut_class_rules(&self, layer: &str) -> Vec<String> { sys::all_layer_get_tech_layer_cut_class_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_cut_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_spacing_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_cut_enclosure_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_enclosure_rules(self.r(), layer) }
     pub fn layer_is_rect_only(&self, layer: &str) -> bool { sys::layer_is_rect_only(self.r(), layer) }
@@ -452,29 +452,29 @@ impl Db {
     pub fn module_get_parent_module(&self, module: &str) -> String { sys::module_get_parent_module(self.r(), module) }
     pub fn module_get_hierarchical_name(&self, module: &str) -> String { sys::module_get_hierarchical_name(self.r(), module) }
     pub fn module_get_owner(&self, module: &str) -> String { sys::module_get_owner(self.r(), module) }
-    pub fn module_get_children(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_children(self.r(), module)).map(|i| sys::nth_module_get_children(self.r(), module, i)).collect() }
-    pub fn module_get_mod_insts(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_mod_insts(self.r(), module)).map(|i| sys::nth_module_get_mod_insts(self.r(), module, i)).collect() }
-    pub fn module_get_mod_nets(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_mod_nets(self.r(), module)).map(|i| sys::nth_module_get_mod_nets(self.r(), module, i)).collect() }
-    pub fn module_get_ports(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_ports(self.r(), module)).map(|i| sys::nth_module_get_ports(self.r(), module, i)).collect() }
-    pub fn module_get_mod_b_terms(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_mod_b_terms(self.r(), module)).map(|i| sys::nth_module_get_mod_b_terms(self.r(), module, i)).collect() }
-    pub fn module_get_insts(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_insts(self.r(), module)).map(|i| sys::nth_module_get_insts(self.r(), module, i)).collect() }
-    pub fn module_get_leaf_insts(&self, module: &str) -> Vec<String> { (0..sys::num_module_get_leaf_insts(self.r(), module)).map(|i| sys::nth_module_get_leaf_insts(self.r(), module, i)).collect() }
+    pub fn module_get_children(&self, module: &str) -> Vec<String> { sys::all_module_get_children(self.r(), module) }
+    pub fn module_get_mod_insts(&self, module: &str) -> Vec<String> { sys::all_module_get_mod_insts(self.r(), module) }
+    pub fn module_get_mod_nets(&self, module: &str) -> Vec<String> { sys::all_module_get_mod_nets(self.r(), module) }
+    pub fn module_get_ports(&self, module: &str) -> Vec<String> { sys::all_module_get_ports(self.r(), module) }
+    pub fn module_get_mod_b_terms(&self, module: &str) -> Vec<String> { sys::all_module_get_mod_b_terms(self.r(), module) }
+    pub fn module_get_insts(&self, module: &str) -> Vec<String> { sys::all_module_get_insts(self.r(), module) }
+    pub fn module_get_leaf_insts(&self, module: &str) -> Vec<String> { sys::all_module_get_leaf_insts(self.r(), module) }
     pub fn module_get_mod_inst_count(&self, module: &str) -> i32 { sys::module_get_mod_inst_count(self.r(), module) }
     pub fn module_get_db_inst_count(&self, module: &str) -> i32 { sys::module_get_db_inst_count(self.r(), module) }
     pub fn module_is_top(&self, module: &str) -> bool { sys::module_is_top(self.r(), module) }
     pub fn group_get_name(&self, group: &str) -> String { sys::group_get_name(self.r(), group) }
     pub fn group_get_parent_group(&self, group: &str) -> String { sys::group_get_parent_group(self.r(), group) }
     pub fn group_get_region(&self, group: &str) -> String { sys::group_get_region(self.r(), group) }
-    pub fn group_get_mod_insts(&self, group: &str) -> Vec<String> { (0..sys::num_group_get_mod_insts(self.r(), group)).map(|i| sys::nth_group_get_mod_insts(self.r(), group, i)).collect() }
-    pub fn group_get_insts(&self, group: &str) -> Vec<String> { (0..sys::num_group_get_insts(self.r(), group)).map(|i| sys::nth_group_get_insts(self.r(), group, i)).collect() }
-    pub fn group_get_groups(&self, group: &str) -> Vec<String> { (0..sys::num_group_get_groups(self.r(), group)).map(|i| sys::nth_group_get_groups(self.r(), group, i)).collect() }
-    pub fn group_get_power_nets(&self, group: &str) -> Vec<String> { (0..sys::num_group_get_power_nets(self.r(), group)).map(|i| sys::nth_group_get_power_nets(self.r(), group, i)).collect() }
-    pub fn group_get_ground_nets(&self, group: &str) -> Vec<String> { (0..sys::num_group_get_ground_nets(self.r(), group)).map(|i| sys::nth_group_get_ground_nets(self.r(), group, i)).collect() }
+    pub fn group_get_mod_insts(&self, group: &str) -> Vec<String> { sys::all_group_get_mod_insts(self.r(), group) }
+    pub fn group_get_insts(&self, group: &str) -> Vec<String> { sys::all_group_get_insts(self.r(), group) }
+    pub fn group_get_groups(&self, group: &str) -> Vec<String> { sys::all_group_get_groups(self.r(), group) }
+    pub fn group_get_power_nets(&self, group: &str) -> Vec<String> { sys::all_group_get_power_nets(self.r(), group) }
+    pub fn group_get_ground_nets(&self, group: &str) -> Vec<String> { sys::all_group_get_ground_nets(self.r(), group) }
     pub fn region_get_name(&self, region: &str) -> String { sys::region_get_name(self.r(), region) }
-    pub fn region_get_region_insts(&self, region: &str) -> Vec<String> { (0..sys::num_region_get_region_insts(self.r(), region)).map(|i| sys::nth_region_get_region_insts(self.r(), region, i)).collect() }
+    pub fn region_get_region_insts(&self, region: &str) -> Vec<String> { sys::all_region_get_region_insts(self.r(), region) }
     pub fn region_is_invalid(&self, region: &str) -> bool { sys::region_is_invalid(self.r(), region) }
     pub fn num_region_get_boundaries(&self, region: &str) -> usize { sys::num_region_get_boundaries(self.r(), region) }
-    pub fn region_get_groups(&self, region: &str) -> Vec<String> { (0..sys::num_region_get_groups(self.r(), region)).map(|i| sys::nth_region_get_groups(self.r(), region, i)).collect() }
+    pub fn region_get_groups(&self, region: &str) -> Vec<String> { sys::all_region_get_groups(self.r(), region) }
     pub fn region_get_block(&self, region: &str) -> String { sys::region_get_block(self.r(), region) }
     pub fn blockage_get_instance(&self, idx: usize) -> String { sys::blockage_get_instance(self.r(), idx) }
     pub fn blockage_is_pushed_down(&self, idx: usize) -> bool { sys::blockage_is_pushed_down(self.r(), idx) }
@@ -492,8 +492,8 @@ impl Db {
     pub fn marker_cat_get_name(&self, category: &str) -> String { sys::marker_cat_get_name(self.r(), category) }
     pub fn marker_cat_get_description(&self, category: &str) -> String { sys::marker_cat_get_description(self.r(), category) }
     pub fn marker_cat_get_max_markers(&self, category: &str) -> i32 { sys::marker_cat_get_max_markers(self.r(), category) }
-    pub fn marker_cat_get_markers(&self, category: &str) -> Vec<String> { (0..sys::num_marker_cat_get_markers(self.r(), category)).map(|i| sys::nth_marker_cat_get_markers(self.r(), category, i)).collect() }
-    pub fn marker_cat_get_marker_categories(&self, category: &str) -> Vec<String> { (0..sys::num_marker_cat_get_marker_categories(self.r(), category)).map(|i| sys::nth_marker_cat_get_marker_categories(self.r(), category, i)).collect() }
+    pub fn marker_cat_get_markers(&self, category: &str) -> Vec<String> { sys::all_marker_cat_get_markers(self.r(), category) }
+    pub fn marker_cat_get_marker_categories(&self, category: &str) -> Vec<String> { sys::all_marker_cat_get_marker_categories(self.r(), category) }
     pub fn marker_cat_get_top_category(&self, category: &str) -> String { sys::marker_cat_get_top_category(self.r(), category) }
     pub fn marker_cat_get_source(&self, category: &str) -> String { sys::marker_cat_get_source(self.r(), category) }
     pub fn marker_cat_get_marker_count(&self, category: &str) -> i32 { sys::marker_cat_get_marker_count(self.r(), category) }
@@ -516,20 +516,20 @@ impl Db {
     pub fn modinst_get_master(&self, path: &str) -> String { sys::modinst_get_master(self.r(), path) }
     pub fn modinst_get_group(&self, path: &str) -> String { sys::modinst_get_group(self.r(), path) }
     pub fn modinst_get_hierarchical_name(&self, path: &str) -> String { sys::modinst_get_hierarchical_name(self.r(), path) }
-    pub fn modinst_get_mod_i_terms(&self, path: &str) -> Vec<String> { (0..sys::num_modinst_get_mod_i_terms(self.r(), path)).map(|i| sys::nth_modinst_get_mod_i_terms(self.r(), path, i)).collect() }
+    pub fn modinst_get_mod_i_terms(&self, path: &str) -> Vec<String> { sys::all_modinst_get_mod_i_terms(self.r(), path) }
     pub fn modnet_get_parent(&self, name: &str) -> String { sys::modnet_get_parent(self.r(), name) }
-    pub fn modnet_get_mod_i_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_mod_i_terms(self.r(), name)).map(|i| sys::nth_modnet_get_mod_i_terms(self.r(), name, i)).collect() }
-    pub fn modnet_get_mod_b_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_mod_b_terms(self.r(), name)).map(|i| sys::nth_modnet_get_mod_b_terms(self.r(), name, i)).collect() }
-    pub fn modnet_get_i_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_i_terms(self.r(), name)).map(|i| sys::nth_modnet_get_i_terms(self.r(), name, i)).collect() }
-    pub fn modnet_get_b_terms(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_b_terms(self.r(), name)).map(|i| sys::nth_modnet_get_b_terms(self.r(), name, i)).collect() }
+    pub fn modnet_get_mod_i_terms(&self, name: &str) -> Vec<String> { sys::all_modnet_get_mod_i_terms(self.r(), name) }
+    pub fn modnet_get_mod_b_terms(&self, name: &str) -> Vec<String> { sys::all_modnet_get_mod_b_terms(self.r(), name) }
+    pub fn modnet_get_i_terms(&self, name: &str) -> Vec<String> { sys::all_modnet_get_i_terms(self.r(), name) }
+    pub fn modnet_get_b_terms(&self, name: &str) -> Vec<String> { sys::all_modnet_get_b_terms(self.r(), name) }
     pub fn modnet_get_name(&self, name: &str) -> String { sys::modnet_get_name(self.r(), name) }
     pub fn modnet_get_const_name(&self, name: &str) -> String { sys::modnet_get_const_name(self.r(), name) }
     pub fn modnet_get_hierarchical_name(&self, name: &str) -> String { sys::modnet_get_hierarchical_name(self.r(), name) }
     pub fn modnet_find_related_net(&self, name: &str) -> String { sys::modnet_find_related_net(self.r(), name) }
     pub fn modnet_is_connected_to_input_port(&self, name: &str) -> bool { sys::modnet_is_connected_to_input_port(self.r(), name) }
     pub fn modnet_is_connected_to_output_port(&self, name: &str) -> bool { sys::modnet_is_connected_to_output_port(self.r(), name) }
-    pub fn modnet_get_next_mod_nets_in_fanin(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_next_mod_nets_in_fanin(self.r(), name)).map(|i| sys::nth_modnet_get_next_mod_nets_in_fanin(self.r(), name, i)).collect() }
-    pub fn modnet_get_next_mod_nets_in_fanout(&self, name: &str) -> Vec<String> { (0..sys::num_modnet_get_next_mod_nets_in_fanout(self.r(), name)).map(|i| sys::nth_modnet_get_next_mod_nets_in_fanout(self.r(), name, i)).collect() }
+    pub fn modnet_get_next_mod_nets_in_fanin(&self, name: &str) -> Vec<String> { sys::all_modnet_get_next_mod_nets_in_fanin(self.r(), name) }
+    pub fn modnet_get_next_mod_nets_in_fanout(&self, name: &str) -> Vec<String> { sys::all_modnet_get_next_mod_nets_in_fanout(self.r(), name) }
     pub fn modnet_get_first_parent_mod_net(&self, name: &str) -> String { sys::modnet_get_first_parent_mod_net(self.r(), name) }
     pub fn modbterm_get_name(&self, module: &str, idx: usize) -> String { sys::modbterm_get_name(self.r(), module, idx) }
     pub fn modbterm_get_parent(&self, module: &str, idx: usize) -> String { sys::modbterm_get_parent(self.r(), module, idx) }
@@ -550,9 +550,9 @@ impl Db {
     pub fn pwr_domain_is_top(&self, name: &str) -> bool { sys::pwr_domain_is_top(self.r(), name) }
     pub fn pwr_domain_get_parent(&self, name: &str) -> String { sys::pwr_domain_get_parent(self.r(), name) }
     pub fn pwr_domain_get_voltage(&self, name: &str) -> f32 { sys::pwr_domain_get_voltage(self.r(), name) }
-    pub fn pwr_domain_get_power_switches(&self, name: &str) -> Vec<String> { (0..sys::num_pwr_domain_get_power_switches(self.r(), name)).map(|i| sys::nth_pwr_domain_get_power_switches(self.r(), name, i)).collect() }
-    pub fn pwr_domain_get_isolations(&self, name: &str) -> Vec<String> { (0..sys::num_pwr_domain_get_isolations(self.r(), name)).map(|i| sys::nth_pwr_domain_get_isolations(self.r(), name, i)).collect() }
-    pub fn pwr_domain_get_level_shifters(&self, name: &str) -> Vec<String> { (0..sys::num_pwr_domain_get_level_shifters(self.r(), name)).map(|i| sys::nth_pwr_domain_get_level_shifters(self.r(), name, i)).collect() }
+    pub fn pwr_domain_get_power_switches(&self, name: &str) -> Vec<String> { sys::all_pwr_domain_get_power_switches(self.r(), name) }
+    pub fn pwr_domain_get_isolations(&self, name: &str) -> Vec<String> { sys::all_pwr_domain_get_isolations(self.r(), name) }
+    pub fn pwr_domain_get_level_shifters(&self, name: &str) -> Vec<String> { sys::all_pwr_domain_get_level_shifters(self.r(), name) }
     pub fn pwr_switch_get_name(&self, name: &str) -> String { sys::pwr_switch_get_name(self.r(), name) }
     pub fn pwr_switch_get_power_domain(&self, name: &str) -> String { sys::pwr_switch_get_power_domain(self.r(), name) }
     pub fn pwr_switch_get_lib_cell(&self, name: &str) -> String { sys::pwr_switch_get_lib_cell(self.r(), name) }
@@ -563,7 +563,7 @@ impl Db {
     pub fn isolation_get_isolation_sense(&self, name: &str) -> String { sys::isolation_get_isolation_sense(self.r(), name) }
     pub fn isolation_get_location(&self, name: &str) -> String { sys::isolation_get_location(self.r(), name) }
     pub fn isolation_get_power_domain(&self, name: &str) -> String { sys::isolation_get_power_domain(self.r(), name) }
-    pub fn isolation_get_isolation_cells(&self, name: &str) -> Vec<String> { (0..sys::num_isolation_get_isolation_cells(self.r(), name)).map(|i| sys::nth_isolation_get_isolation_cells(self.r(), name, i)).collect() }
+    pub fn isolation_get_isolation_cells(&self, name: &str) -> Vec<String> { sys::all_isolation_get_isolation_cells(self.r(), name) }
     pub fn level_shifter_get_name(&self, name: &str) -> String { sys::level_shifter_get_name(self.r(), name) }
     pub fn level_shifter_get_domain(&self, name: &str) -> String { sys::level_shifter_get_domain(self.r(), name) }
     pub fn level_shifter_get_source(&self, name: &str) -> String { sys::level_shifter_get_source(self.r(), name) }
@@ -586,10 +586,10 @@ impl Db {
     pub fn level_shifter_get_cell_output(&self, name: &str) -> String { sys::level_shifter_get_cell_output(self.r(), name) }
     pub fn tech_get_name(&self) -> String { sys::tech_get_name(self.r()) }
     pub fn tech_get_db_units_per_micron(&self) -> i32 { sys::tech_get_db_units_per_micron(self.r()) }
-    pub fn tech_get_layers(&self) -> Vec<String> { (0..sys::num_tech_get_layers(self.r())).map(|i| sys::nth_tech_get_layers(self.r(), i)).collect() }
+    pub fn tech_get_layers(&self) -> Vec<String> { sys::all_tech_get_layers(self.r()) }
     pub fn tech_first_frontside_routing_layer(&self) -> String { sys::tech_first_frontside_routing_layer(self.r()) }
     pub fn tech_first_backside_routing_layer(&self) -> String { sys::tech_first_backside_routing_layer(self.r()) }
-    pub fn tech_get_vias(&self) -> Vec<String> { (0..sys::num_tech_get_vias(self.r())).map(|i| sys::nth_tech_get_vias(self.r(), i)).collect() }
+    pub fn tech_get_vias(&self) -> Vec<String> { sys::all_tech_get_vias(self.r()) }
     pub fn tech_get_lef_units(&self) -> i32 { sys::tech_get_lef_units(self.r()) }
     pub fn tech_get_lef_version(&self) -> f64 { sys::tech_get_lef_version(self.r()) }
     pub fn tech_get_lef_version_str(&self) -> String { sys::tech_get_lef_version_str(self.r()) }
@@ -602,15 +602,15 @@ impl Db {
     pub fn tech_get_layer_count(&self) -> i32 { sys::tech_get_layer_count(self.r()) }
     pub fn tech_get_routing_layer_count(&self) -> i32 { sys::tech_get_routing_layer_count(self.r()) }
     pub fn tech_get_via_count(&self) -> i32 { sys::tech_get_via_count(self.r()) }
-    pub fn tech_get_non_default_rules(&self) -> Vec<String> { (0..sys::num_tech_get_non_default_rules(self.r())).map(|i| sys::nth_tech_get_non_default_rules(self.r(), i)).collect() }
-    pub fn tech_get_via_rules(&self) -> Vec<String> { (0..sys::num_tech_get_via_rules(self.r())).map(|i| sys::nth_tech_get_via_rules(self.r(), i)).collect() }
-    pub fn tech_get_via_generate_rules(&self) -> Vec<String> { (0..sys::num_tech_get_via_generate_rules(self.r())).map(|i| sys::nth_tech_get_via_generate_rules(self.r(), i)).collect() }
+    pub fn tech_get_non_default_rules(&self) -> Vec<String> { sys::all_tech_get_non_default_rules(self.r()) }
+    pub fn tech_get_via_rules(&self) -> Vec<String> { sys::all_tech_get_via_rules(self.r()) }
+    pub fn tech_get_via_generate_rules(&self) -> Vec<String> { sys::all_tech_get_via_generate_rules(self.r()) }
     pub fn lib_get_name(&self, name: &str) -> String { sys::lib_get_name(self.r(), name) }
     pub fn lib_get_const_name(&self, name: &str) -> String { sys::lib_get_const_name(self.r(), name) }
     pub fn lib_get_db_units_per_micron(&self, name: &str) -> i32 { sys::lib_get_db_units_per_micron(self.r(), name) }
     pub fn lib_get_tech(&self, name: &str) -> String { sys::lib_get_tech(self.r(), name) }
-    pub fn lib_get_masters(&self, name: &str) -> Vec<String> { (0..sys::num_lib_get_masters(self.r(), name)).map(|i| sys::nth_lib_get_masters(self.r(), name, i)).collect() }
-    pub fn lib_get_sites(&self, name: &str) -> Vec<String> { (0..sys::num_lib_get_sites(self.r(), name)).map(|i| sys::nth_lib_get_sites(self.r(), name, i)).collect() }
+    pub fn lib_get_masters(&self, name: &str) -> Vec<String> { sys::all_lib_get_masters(self.r(), name) }
+    pub fn lib_get_sites(&self, name: &str) -> Vec<String> { sys::all_lib_get_sites(self.r(), name) }
     pub fn lib_get_lef_units(&self, name: &str) -> i32 { sys::lib_get_lef_units(self.r(), name) }
     pub fn capnode_get_node(&self, idx: usize) -> u32 { sys::capnode_get_node(self.r(), idx) }
     pub fn capnode_get_shape_id(&self, idx: usize) -> u32 { sys::capnode_get_shape_id(self.r(), idx) }
@@ -880,14 +880,14 @@ impl Db {
     pub fn chip_get_scribe_line_north(&self, chip: &str) -> i32 { sys::chip_get_scribe_line_north(self.r(), chip) }
     pub fn chip_get_scribe_line_south(&self, chip: &str) -> i32 { sys::chip_get_scribe_line_south(self.r(), chip) }
     pub fn chip_is_tsv(&self, chip: &str) -> bool { sys::chip_is_tsv(self.r(), chip) }
-    pub fn chip_get_chip_regions(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_regions(self.r(), chip)).map(|i| sys::nth_chip_get_chip_regions(self.r(), chip, i)).collect() }
-    pub fn chip_get_marker_categories(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_marker_categories(self.r(), chip)).map(|i| sys::nth_chip_get_marker_categories(self.r(), chip, i)).collect() }
-    pub fn chip_get_chip_paths(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_paths(self.r(), chip)).map(|i| sys::nth_chip_get_chip_paths(self.r(), chip, i)).collect() }
+    pub fn chip_get_chip_regions(&self, chip: &str) -> Vec<String> { sys::all_chip_get_chip_regions(self.r(), chip) }
+    pub fn chip_get_marker_categories(&self, chip: &str) -> Vec<String> { sys::all_chip_get_marker_categories(self.r(), chip) }
+    pub fn chip_get_chip_paths(&self, chip: &str) -> Vec<String> { sys::all_chip_get_chip_paths(self.r(), chip) }
     pub fn chip_get_chip_type(&self, chip: &str) -> String { sys::chip_get_chip_type(self.r(), chip) }
     pub fn chip_get_block(&self, chip: &str) -> String { sys::chip_get_block(self.r(), chip) }
-    pub fn chip_get_chip_insts(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_insts(self.r(), chip)).map(|i| sys::nth_chip_get_chip_insts(self.r(), chip, i)).collect() }
-    pub fn chip_get_chip_conns(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_conns(self.r(), chip)).map(|i| sys::nth_chip_get_chip_conns(self.r(), chip, i)).collect() }
-    pub fn chip_get_chip_nets(&self, chip: &str) -> Vec<String> { (0..sys::num_chip_get_chip_nets(self.r(), chip)).map(|i| sys::nth_chip_get_chip_nets(self.r(), chip, i)).collect() }
+    pub fn chip_get_chip_insts(&self, chip: &str) -> Vec<String> { sys::all_chip_get_chip_insts(self.r(), chip) }
+    pub fn chip_get_chip_conns(&self, chip: &str) -> Vec<String> { sys::all_chip_get_chip_conns(self.r(), chip) }
+    pub fn chip_get_chip_nets(&self, chip: &str) -> Vec<String> { sys::all_chip_get_chip_nets(self.r(), chip) }
     pub fn chip_get_tech(&self, chip: &str) -> String { sys::chip_get_tech(self.r(), chip) }
     pub fn chip_get_b_box_x_min(&self, chip: &str) -> i32 { sys::chip_get_b_box_x_min(self.r(), chip) }
     pub fn chip_get_b_box_y_min(&self, chip: &str) -> i32 { sys::chip_get_b_box_y_min(self.r(), chip) }
@@ -930,8 +930,8 @@ impl Db {
     pub fn chipconn_get_name(&self, chip: &str, conn: &str) -> String { sys::chipconn_get_name(self.r(), chip, conn) }
     pub fn chipconn_get_thickness(&self, chip: &str, conn: &str) -> i32 { sys::chipconn_get_thickness(self.r(), chip, conn) }
     pub fn chipconn_get_parent_chip(&self, chip: &str, conn: &str) -> String { sys::chipconn_get_parent_chip(self.r(), chip, conn) }
-    pub fn chipconn_get_top_region_path(&self, chip: &str, conn: &str) -> Vec<String> { (0..sys::num_chipconn_get_top_region_path(self.r(), chip, conn)).map(|i| sys::nth_chipconn_get_top_region_path(self.r(), chip, conn, i)).collect() }
-    pub fn chipconn_get_bottom_region_path(&self, chip: &str, conn: &str) -> Vec<String> { (0..sys::num_chipconn_get_bottom_region_path(self.r(), chip, conn)).map(|i| sys::nth_chipconn_get_bottom_region_path(self.r(), chip, conn, i)).collect() }
+    pub fn chipconn_get_top_region_path(&self, chip: &str, conn: &str) -> Vec<String> { sys::all_chipconn_get_top_region_path(self.r(), chip, conn) }
+    pub fn chipconn_get_bottom_region_path(&self, chip: &str, conn: &str) -> Vec<String> { sys::all_chipconn_get_bottom_region_path(self.r(), chip, conn) }
     pub fn chipnet_get_name(&self, chip: &str, net: &str) -> String { sys::chipnet_get_name(self.r(), chip, net) }
     pub fn chipnet_get_chip(&self, chip: &str, net: &str) -> String { sys::chipnet_get_chip(self.r(), chip, net) }
     pub fn chipnet_get_total_capacitance(&self, chip: &str, net: &str) -> f32 { sys::chipnet_get_total_capacitance(self.r(), chip, net) }
@@ -940,7 +940,7 @@ impl Db {
     pub fn chippath_get_chip(&self, chip: &str, path: &str) -> String { sys::chippath_get_chip(self.r(), chip, path) }
     pub fn unfoldedchip_get_name(&self, path: &str) -> String { sys::unfoldedchip_get_name(self.r(), path) }
     pub fn num_unfoldedchip_get_regions(&self, path: &str) -> usize { sys::num_unfoldedchip_get_regions(self.r(), path) }
-    pub fn unfoldedchip_get_chip_inst_path(&self, path: &str) -> Vec<String> { (0..sys::num_unfoldedchip_get_chip_inst_path(self.r(), path)).map(|i| sys::nth_unfoldedchip_get_chip_inst_path(self.r(), path, i)).collect() }
+    pub fn unfoldedchip_get_chip_inst_path(&self, path: &str) -> Vec<String> { sys::all_unfoldedchip_get_chip_inst_path(self.r(), path) }
     pub fn unfoldedregion_get_parent_chip(&self, path: &str, idx: usize) -> String { sys::unfoldedregion_get_parent_chip(self.r(), path, idx) }
     pub fn unfoldedregion_get_effective_side(&self, path: &str, idx: usize) -> String { sys::unfoldedregion_get_effective_side(self.r(), path, idx) }
     pub fn unfoldedregion_is_top(&self, path: &str, idx: usize) -> bool { sys::unfoldedregion_is_top(self.r(), path, idx) }
