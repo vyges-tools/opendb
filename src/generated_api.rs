@@ -854,6 +854,11 @@ impl Db {
     pub fn cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(self.r(), layer, idx) }
     pub fn cutspacingtablerule_get_second_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_second_layer(self.r(), layer, idx) }
     pub fn cutspacingtablerule_get_tech_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_tech_layer(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_spacing_table_table(&self, layer: &str, idx: usize) -> Vec<i32> { sys::cutspacingtablerule_get_spacing_table_table(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_spacing_table_row_map_names(&self, layer: &str, idx: usize) -> Vec<String> { sys::cutspacingtablerule_get_spacing_table_row_map_names(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_spacing_table_row_map_indexes(&self, layer: &str, idx: usize) -> Vec<u32> { sys::cutspacingtablerule_get_spacing_table_row_map_indexes(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_spacing_table_col_map_names(&self, layer: &str, idx: usize) -> Vec<String> { sys::cutspacingtablerule_get_spacing_table_col_map_names(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_get_spacing_table_col_map_indexes(&self, layer: &str, idx: usize) -> Vec<u32> { sys::cutspacingtablerule_get_spacing_table_col_map_indexes(self.r(), layer, idx) }
     pub fn cutspacingtablerule_is_center_to_center(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> bool { sys::cutspacingtablerule_is_center_to_center(self.r(), layer, idx, cut_class1, cut_class2) }
     pub fn cutspacingtablerule_is_center_and_edge(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> bool { sys::cutspacingtablerule_is_center_and_edge(self.r(), layer, idx, cut_class1, cut_class2) }
     pub fn cutspacingtablerule_is_prl_for_aligned_cut_classes(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> bool { sys::cutspacingtablerule_is_prl_for_aligned_cut_classes(self.r(), layer, idx, cut_class1, cut_class2) }
