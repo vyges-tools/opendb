@@ -1539,6 +1539,14 @@ impl Db {
         Ok(chunk5(sys::master_obstruction_boxes(self.r(), master)?))
     }
 
+    /// Each of the master's obstructions' `(DESIGNRULEWIDTH, SPACING)`, in the order
+    /// [`Db::master_obstruction_boxes`] returns the boxes; `-1` where the LEF gave none. An
+    /// obstruction carrying either is a blockage with its own rule, not part of the layer's merged
+    /// shapes, so a reader that does not model that rule should refuse such a master.
+    pub fn master_obstruction_rules(&self, master: &str) -> Result<Vec<(i32, i32)>> {
+        Ok(sys::master_obstruction_rules(self.r(), master)?.chunks_exact(2).map(|c| (c[0], c[1])).collect())
+    }
+
     /// A master's pin shapes, in master coordinates: `(layer number, x0, y0, x1, y1)`.
     pub fn master_pin_boxes(&self, master: &str) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
         Ok(chunk5(sys::master_pin_boxes(self.r(), master)?))
