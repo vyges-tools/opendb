@@ -273,8 +273,13 @@ impl Db {
     pub fn layer_get_wrong_way_min_width(&self, layer: &str) -> u32 { sys::layer_get_wrong_way_min_width(self.r(), layer) }
     pub fn layer_get_layer_adjustment(&self, layer: &str) -> f32 { sys::layer_get_layer_adjustment(self.r(), layer) }
     pub fn layer_get_tech_layer_cut_class_rules(&self, layer: &str) -> Vec<String> { sys::all_layer_get_tech_layer_cut_class_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_spacing_eol_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_spacing_eol_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_cut_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_spacing_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_min_step_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_min_step_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_corner_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_corner_spacing_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_cut_enclosure_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_enclosure_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_eol_keep_out_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_eol_keep_out_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_min_cut_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_min_cut_rules(self.r(), layer) }
     pub fn layer_is_rect_only(&self, layer: &str) -> bool { sys::layer_is_rect_only(self.r(), layer) }
     pub fn layer_is_right_way_on_grid_only(&self, layer: &str) -> bool { sys::layer_is_right_way_on_grid_only(self.r(), layer) }
     pub fn layer_is_right_way_on_grid_only_check_mask(&self, layer: &str) -> bool { sys::layer_is_right_way_on_grid_only_check_mask(self.r(), layer) }
@@ -831,6 +836,139 @@ impl Db {
     pub fn cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(self.r(), layer, idx) }
     pub fn cutspacingtablerule_get_second_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_second_layer(self.r(), layer, idx) }
     pub fn cutspacingtablerule_get_tech_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_tech_layer(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_eol_width(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_backward_ext(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_backward_ext(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_forward_ext(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_forward_ext(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_side_ext(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_side_ext(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_within_low(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_within_low(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_within_high(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_within_high(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_get_class_name(&self, layer: &str, idx: usize) -> String { sys::eolkeepoutrule_get_class_name(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_is_class_valid(&self, layer: &str, idx: usize) -> bool { sys::eolkeepoutrule_is_class_valid(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_is_corner_only(&self, layer: &str, idx: usize) -> bool { sys::eolkeepoutrule_is_corner_only(self.r(), layer, idx) }
+    pub fn eolkeepoutrule_is_except_within(&self, layer: &str, idx: usize) -> bool { sys::eolkeepoutrule_is_except_within(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_eol_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_eol_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_eol_width(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_wrong_dir_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_wrong_dir_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_opposite_width(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_opposite_width(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_eol_within(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_eol_within(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_wrong_dir_within(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_wrong_dir_within(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_exact_width(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_exact_width(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_other_width(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_other_width(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_fill_triangle(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_fill_triangle(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_cut_class(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_cut_class(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_with_cut_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_with_cut_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_enclosure_end_width(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_enclosure_end_width(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_enclosure_end_within(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_enclosure_end_within(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_end_prl_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_end_prl_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_end_prl(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_end_prl(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_end_to_end_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_end_to_end_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_one_cut_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_one_cut_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_two_cut_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_two_cut_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_extension(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_extension(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_wrong_dir_extension(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_wrong_dir_extension(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_other_end_width(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_other_end_width(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_max_length(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_max_length(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_min_length(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_min_length(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_par_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_par_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_par_within(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_par_within(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_par_prl(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_par_prl(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_par_min_length(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_par_min_length(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_enclose_dist(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_enclose_dist(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_cut_to_metal_space(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_cut_to_metal_space(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_min_adj_length(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_min_adj_length(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_min_adj_length1(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_min_adj_length1(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_min_adj_length2(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_min_adj_length2(self.r(), layer, idx) }
+    pub fn spacingeolrule_get_notch_length(&self, layer: &str, idx: usize) -> i32 { sys::spacingeolrule_get_notch_length(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_exact_width_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_exact_width_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_wrong_dir_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_wrong_dir_spacing_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_opposite_width_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_opposite_width_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_within_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_within_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_wrong_dir_within_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_wrong_dir_within_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_same_mask_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_same_mask_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_except_exact_width_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_except_exact_width_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_fill_concave_corner_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_fill_concave_corner_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_withcut_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_withcut_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_cut_class_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_cut_class_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_with_cut_above_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_with_cut_above_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_enclosure_end_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_enclosure_end_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_enclosure_end_within_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_enclosure_end_within_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_end_prl_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_end_prl_spacing_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_prl_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_prl_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_end_to_end_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_end_to_end_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_cut_spaces_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_cut_spaces_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_extension_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_extension_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_wrong_dir_extension_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_wrong_dir_extension_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_other_end_width_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_other_end_width_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_max_length_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_max_length_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_min_length_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_min_length_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_two_sides_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_two_sides_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_equal_rect_width_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_equal_rect_width_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_parallel_edge_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_parallel_edge_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_subtract_eol_width_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_subtract_eol_width_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_par_prl_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_par_prl_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_par_min_length_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_par_min_length_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_two_edges_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_two_edges_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_same_metal_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_same_metal_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_non_eol_corner_only_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_non_eol_corner_only_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_parallel_same_mask_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_parallel_same_mask_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_enclose_cut_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_enclose_cut_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_below_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_below_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_above_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_above_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_cut_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_cut_spacing_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_all_cuts_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_all_cuts_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_to_concave_corner_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_to_concave_corner_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_min_adjacent_length_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_min_adjacent_length_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_two_min_adj_length_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_two_min_adj_length_valid(self.r(), layer, idx) }
+    pub fn spacingeolrule_is_to_notch_length_valid(&self, layer: &str, idx: usize) -> bool { sys::spacingeolrule_is_to_notch_length_valid(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_within(&self, layer: &str, idx: usize) -> i32 { sys::cornerspacingrule_get_within(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::cornerspacingrule_get_eol_width(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_jog_length(&self, layer: &str, idx: usize) -> i32 { sys::cornerspacingrule_get_jog_length(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_edge_length(&self, layer: &str, idx: usize) -> i32 { sys::cornerspacingrule_get_edge_length(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_min_length(&self, layer: &str, idx: usize) -> i32 { sys::cornerspacingrule_get_min_length(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_except_notch_length(&self, layer: &str, idx: usize) -> i32 { sys::cornerspacingrule_get_except_notch_length(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_same_mask(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_same_mask(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_corner_only(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_corner_only(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_except_eol(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_eol(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_except_jog_length(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_jog_length(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_edge_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_edge_length_valid(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_include_shape(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_include_shape(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_min_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_min_length_valid(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_except_notch(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_notch(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_except_notch_length_valid(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_notch_length_valid(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_except_same_net(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_same_net(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_except_same_metal(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_same_metal(self.r(), layer, idx) }
+    pub fn cornerspacingrule_is_corner_to_corner(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_corner_to_corner(self.r(), layer, idx) }
+    pub fn minsteprule_get_min_step_length(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_min_step_length(self.r(), layer, idx) }
+    pub fn minsteprule_get_max_edges(&self, layer: &str, idx: usize) -> u32 { sys::minsteprule_get_max_edges(self.r(), layer, idx) }
+    pub fn minsteprule_get_min_adj_length1(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_min_adj_length1(self.r(), layer, idx) }
+    pub fn minsteprule_get_min_adj_length2(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_min_adj_length2(self.r(), layer, idx) }
+    pub fn minsteprule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_eol_width(self.r(), layer, idx) }
+    pub fn minsteprule_get_min_between_length(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_min_between_length(self.r(), layer, idx) }
+    pub fn minsteprule_is_max_edges_valid(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_max_edges_valid(self.r(), layer, idx) }
+    pub fn minsteprule_is_min_adj_length1_valid(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_min_adj_length1_valid(self.r(), layer, idx) }
+    pub fn minsteprule_is_no_between_eol(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_no_between_eol(self.r(), layer, idx) }
+    pub fn minsteprule_is_min_adj_length2_valid(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_min_adj_length2_valid(self.r(), layer, idx) }
+    pub fn minsteprule_is_convex_corner(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_convex_corner(self.r(), layer, idx) }
+    pub fn minsteprule_is_min_between_length_valid(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_min_between_length_valid(self.r(), layer, idx) }
+    pub fn minsteprule_is_except_same_corners(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_except_same_corners(self.r(), layer, idx) }
+    pub fn minsteprule_is_concave_corner(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_concave_corner(self.r(), layer, idx) }
+    pub fn minsteprule_is_except_rectangle(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_except_rectangle(self.r(), layer, idx) }
+    pub fn minsteprule_is_no_adjacent_eol(&self, layer: &str, idx: usize) -> bool { sys::minsteprule_is_no_adjacent_eol(self.r(), layer, idx) }
+    pub fn mincutrule_get_num_cuts(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_num_cuts(self.r(), layer, idx) }
+    pub fn mincutrule_get_width(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_width(self.r(), layer, idx) }
+    pub fn mincutrule_get_within_cut_dist(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_within_cut_dist(self.r(), layer, idx) }
+    pub fn mincutrule_get_length(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_length(self.r(), layer, idx) }
+    pub fn mincutrule_get_length_within_dist(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_length_within_dist(self.r(), layer, idx) }
+    pub fn mincutrule_get_area_within_dist(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_area_within_dist(self.r(), layer, idx) }
+    pub fn mincutrule_is_per_cut_class(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_per_cut_class(self.r(), layer, idx) }
+    pub fn mincutrule_is_within_cut_dist_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_within_cut_dist_valid(self.r(), layer, idx) }
+    pub fn mincutrule_is_from_above(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_from_above(self.r(), layer, idx) }
+    pub fn mincutrule_is_from_below(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_from_below(self.r(), layer, idx) }
+    pub fn mincutrule_is_length_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_length_valid(self.r(), layer, idx) }
+    pub fn mincutrule_is_area_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_area_valid(self.r(), layer, idx) }
+    pub fn mincutrule_is_area_within_dist_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_area_within_dist_valid(self.r(), layer, idx) }
+    pub fn mincutrule_is_same_metal_overlap(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_same_metal_overlap(self.r(), layer, idx) }
+    pub fn mincutrule_is_fully_enclosed(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_fully_enclosed(self.r(), layer, idx) }
     pub fn layerantenna_is_valid(&self, layer: &str) -> bool { sys::layerantenna_is_valid(self.r(), layer) }
     pub fn layerantenna_has_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_area_factor(self.r(), layer) }
     pub fn layerantenna_has_side_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_side_area_factor(self.r(), layer) }
