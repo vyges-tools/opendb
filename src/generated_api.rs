@@ -67,6 +67,7 @@ impl Db {
     pub fn block_get_ext_count_num_of_r_seg(&self) -> i32 { sys::block_get_ext_count_num_of_r_seg(self.r()) }
     pub fn block_get_ext_count_num_of_cap_node(&self) -> i32 { sys::block_get_ext_count_num_of_cap_node(self.r()) }
     pub fn block_get_ext_count_num_of_c_c_seg(&self) -> i32 { sys::block_get_ext_count_num_of_c_c_seg(self.r()) }
+    pub fn block_get_ext_corner_index(&self, corner_name: &str) -> i32 { sys::block_get_ext_corner_index(self.r(), corner_name) }
     pub fn inst_get_name(&self, inst: &str) -> String { sys::inst_get_name(self.r(), inst) }
     pub fn inst_get_const_name(&self, inst: &str) -> String { sys::inst_get_const_name(self.r(), inst) }
     pub fn inst_get_origin_x(&self, inst: &str) -> i32 { sys::inst_get_origin_x(self.r(), inst) }
@@ -110,6 +111,7 @@ impl Db {
     pub fn inst_is_pad(&self, inst: &str) -> bool { sys::inst_is_pad(self.r(), inst) }
     pub fn inst_is_end_cap(&self, inst: &str) -> bool { sys::inst_is_end_cap(self.r(), inst) }
     pub fn inst_get_pin_access_idx(&self, inst: &str) -> u32 { sys::inst_get_pin_access_idx(self.r(), inst) }
+    pub fn inst_is_named(&self, inst: &str, name: &str) -> bool { sys::inst_is_named(self.r(), inst, name) }
     pub fn net_get_name(&self, net: &str) -> String { sys::net_get_name(self.r(), net) }
     pub fn net_get_const_name(&self, net: &str) -> String { sys::net_get_const_name(self.r(), net) }
     pub fn net_is_r_c_disconnected(&self, net: &str) -> bool { sys::net_is_r_c_disconnected(self.r(), net) }
@@ -253,6 +255,7 @@ impl Db {
     pub fn iterm_is_connected(&self, inst: &str, pin: &str) -> bool { sys::iterm_is_connected(self.r(), inst, pin) }
     pub fn iterm_get_b_term(&self, inst: &str, pin: &str) -> String { sys::iterm_get_b_term(self.r(), inst, pin) }
     pub fn iterm_sta_vertex_id(&self, inst: &str, pin: &str) -> u32 { sys::iterm_sta_vertex_id(self.r(), inst, pin) }
+    pub fn iterm_is_input_signal(&self, inst: &str, pin: &str, io: bool) -> bool { sys::iterm_is_input_signal(self.r(), inst, pin, io) }
     pub fn mterm_get_name(&self, master: &str, term: &str) -> String { sys::mterm_get_name(self.r(), master, term) }
     pub fn mterm_get_const_name(&self, master: &str, term: &str) -> String { sys::mterm_get_const_name(self.r(), master, term) }
     pub fn mterm_get_sig_type(&self, master: &str, term: &str) -> String { sys::mterm_get_sig_type(self.r(), master, term) }
@@ -341,6 +344,7 @@ impl Db {
     pub fn layer_get_max_wide_d_r_c_range_olength(&self, layer: &str) -> i32 { sys::layer_get_max_wide_d_r_c_range_olength(self.r(), layer) }
     pub fn layer_get_min_wide_d_r_c_range_owidth(&self, layer: &str) -> i32 { sys::layer_get_min_wide_d_r_c_range_owidth(self.r(), layer) }
     pub fn layer_get_min_wide_d_r_c_range_olength(&self, layer: &str) -> i32 { sys::layer_get_min_wide_d_r_c_range_olength(self.r(), layer) }
+    pub fn layer_get_spacing_width_length(&self, layer: &str, width: i32, length: i32) -> i32 { sys::layer_get_spacing_width_length(self.r(), layer, width, length) }
     pub fn row_get_name(&self, row: &str) -> String { sys::row_get_name(self.r(), row) }
     pub fn row_get_const_name(&self, row: &str) -> String { sys::row_get_const_name(self.r(), row) }
     pub fn row_get_site(&self, row: &str) -> String { sys::row_get_site(self.r(), row) }
@@ -430,11 +434,15 @@ impl Db {
     pub fn gcell_get_num_grid_patterns_y(&self) -> i32 { sys::gcell_get_num_grid_patterns_y(self.r()) }
     pub fn gcell_get_grid_x(&self) -> Vec<i32> { sys::gcell_get_grid_x(self.r()) }
     pub fn gcell_get_grid_y(&self) -> Vec<i32> { sys::gcell_get_grid_y(self.r()) }
+    pub fn gcell_get_x_idx(&self, x: i32) -> u32 { sys::gcell_get_x_idx(self.r(), x) }
+    pub fn gcell_get_y_idx(&self, y: i32) -> u32 { sys::gcell_get_y_idx(self.r(), y) }
     pub fn wire_get_block(&self, net: &str) -> String { sys::wire_get_block(self.r(), net) }
     pub fn wire_get_net(&self, net: &str) -> String { sys::wire_get_net(self.r(), net) }
     pub fn wire_is_global_wire(&self, net: &str) -> bool { sys::wire_is_global_wire(self.r(), net) }
     pub fn wire_length(&self, net: &str) -> u32 { sys::wire_length(self.r(), net) }
     pub fn wire_count(&self, net: &str) -> u32 { sys::wire_count(self.r(), net) }
+    pub fn wire_get_term_shape_junction_id(&self, net: &str, term_id: i32) -> u32 { sys::wire_get_term_shape_junction_id(self.r(), net, term_id) }
+    pub fn wire_get_data(&self, net: &str, n: i32) -> i32 { sys::wire_get_data(self.r(), net, n) }
     pub fn fill_needs_o_p_c(&self, idx: usize) -> bool { sys::fill_needs_o_p_c(self.r(), idx) }
     pub fn fill_mask_number(&self, idx: usize) -> u32 { sys::fill_mask_number(self.r(), idx) }
     pub fn fill_get_tech_layer(&self, idx: usize) -> String { sys::fill_get_tech_layer(self.r(), idx) }
@@ -846,6 +854,14 @@ impl Db {
     pub fn cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(&self, layer: &str, idx: usize) -> bool { sys::cutspacingtablerule_is_opposite_enclosure_resize_spacing_valid(self.r(), layer, idx) }
     pub fn cutspacingtablerule_get_second_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_second_layer(self.r(), layer, idx) }
     pub fn cutspacingtablerule_get_tech_layer(&self, layer: &str, idx: usize) -> String { sys::cutspacingtablerule_get_tech_layer(self.r(), layer, idx) }
+    pub fn cutspacingtablerule_is_center_to_center(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> bool { sys::cutspacingtablerule_is_center_to_center(self.r(), layer, idx, cut_class1, cut_class2) }
+    pub fn cutspacingtablerule_is_center_and_edge(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> bool { sys::cutspacingtablerule_is_center_and_edge(self.r(), layer, idx, cut_class1, cut_class2) }
+    pub fn cutspacingtablerule_is_prl_for_aligned_cut_classes(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> bool { sys::cutspacingtablerule_is_prl_for_aligned_cut_classes(self.r(), layer, idx, cut_class1, cut_class2) }
+    pub fn cutspacingtablerule_get_prl_entry(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str) -> i32 { sys::cutspacingtablerule_get_prl_entry(self.r(), layer, idx, cut_class1, cut_class2) }
+    pub fn cutspacingtablerule_get_max_spacing_cut_class_side(&self, layer: &str, idx: usize, cut_class: &str, side: bool) -> i32 { sys::cutspacingtablerule_get_max_spacing_cut_class_side(self.r(), layer, idx, cut_class, side) }
+    pub fn cutspacingtablerule_get_exact_aligned_spacing(&self, layer: &str, idx: usize, cut_class: &str) -> i32 { sys::cutspacingtablerule_get_exact_aligned_spacing(self.r(), layer, idx, cut_class) }
+    pub fn cutspacingtablerule_get_max_spacing_cut_class1_cut_class2_strategy(&self, layer: &str, idx: usize, cut_class1: &str, cut_class2: &str, strategy: &str) -> i32 { sys::cutspacingtablerule_get_max_spacing_cut_class1_cut_class2_strategy(self.r(), layer, idx, cut_class1, cut_class2, strategy) }
+    pub fn cutspacingtablerule_get_spacing(&self, layer: &str, idx: usize, class1: &str, side1: bool, class2: &str, side2: bool, strategy: &str) -> i32 { sys::cutspacingtablerule_get_spacing(self.r(), layer, idx, class1, side1, class2, side2, strategy) }
     pub fn eolkeepoutrule_get_eol_width(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_eol_width(self.r(), layer, idx) }
     pub fn eolkeepoutrule_get_backward_ext(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_backward_ext(self.r(), layer, idx) }
     pub fn eolkeepoutrule_get_forward_ext(&self, layer: &str, idx: usize) -> i32 { sys::eolkeepoutrule_get_forward_ext(self.r(), layer, idx) }
