@@ -349,7 +349,6 @@ impl Db {
     pub fn cutspacingrule_set_prl_valid(&mut self, layer: &str, idx: usize, prl_valid: bool) -> crate::Result<()> { Ok(sys::cutspacingrule_set_prl_valid(self.r(), layer, idx, prl_valid)?) }
     pub fn cutspacingrule_set_below(&mut self, layer: &str, idx: usize, below: bool) -> crate::Result<()> { Ok(sys::cutspacingrule_set_below(self.r(), layer, idx, below)?) }
     pub fn cutspacingrule_set_par_within_enclosure_valid(&mut self, layer: &str, idx: usize, par_within_enclosure_valid: bool) -> crate::Result<()> { Ok(sys::cutspacingrule_set_par_within_enclosure_valid(self.r(), layer, idx, par_within_enclosure_valid)?) }
-    pub fn cutspacingtablerule_set_default(&mut self, layer: &str, idx: usize, spacing: i32) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_default(self.r(), layer, idx, spacing)?) }
     pub fn cutspacingtablerule_set_second_layer(&mut self, layer: &str, idx: usize, second_layer: &str) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_second_layer(self.r(), layer, idx, second_layer)?) }
     pub fn cutspacingtablerule_set_prl(&mut self, layer: &str, idx: usize, prl: i32) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_prl(self.r(), layer, idx, prl)?) }
     pub fn cutspacingtablerule_set_extension(&mut self, layer: &str, idx: usize, extension: i32) -> crate::Result<()> { Ok(sys::cutspacingtablerule_set_extension(self.r(), layer, idx, extension)?) }
@@ -511,6 +510,23 @@ impl Db {
     pub fn mincutrule_set_same_metal_overlap(&mut self, layer: &str, idx: usize, same_metal_overlap: bool) -> crate::Result<()> { Ok(sys::mincutrule_set_same_metal_overlap(self.r(), layer, idx, same_metal_overlap)?) }
     pub fn mincutrule_set_fully_enclosed(&mut self, layer: &str, idx: usize, fully_enclosed: bool) -> crate::Result<()> { Ok(sys::mincutrule_set_fully_enclosed(self.r(), layer, idx, fully_enclosed)?) }
     pub fn mincutrule_set_cuts_per_cut_class(&mut self, layer: &str, idx: usize, cut_class: &str, num_cuts: i32) -> crate::Result<()> { Ok(sys::mincutrule_set_cuts_per_cut_class(self.r(), layer, idx, cut_class, num_cuts)?) }
+    pub fn maxspacingrule_set_cut_class(&mut self, layer: &str, idx: usize, cut_class: &str) -> crate::Result<()> { Ok(sys::maxspacingrule_set_cut_class(self.r(), layer, idx, cut_class)?) }
+    pub fn maxspacingrule_set_max_spacing(&mut self, layer: &str, idx: usize, max_spacing: i32) -> crate::Result<()> { Ok(sys::maxspacingrule_set_max_spacing(self.r(), layer, idx, max_spacing)?) }
+    pub fn twowiresforbiddenrule_set_min_spacing(&mut self, layer: &str, idx: usize, min_spacing: i32) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_min_spacing(self.r(), layer, idx, min_spacing)?) }
+    pub fn twowiresforbiddenrule_set_max_spacing(&mut self, layer: &str, idx: usize, max_spacing: i32) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_max_spacing(self.r(), layer, idx, max_spacing)?) }
+    pub fn twowiresforbiddenrule_set_min_span_length(&mut self, layer: &str, idx: usize, min_span_length: i32) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_min_span_length(self.r(), layer, idx, min_span_length)?) }
+    pub fn twowiresforbiddenrule_set_max_span_length(&mut self, layer: &str, idx: usize, max_span_length: i32) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_max_span_length(self.r(), layer, idx, max_span_length)?) }
+    pub fn twowiresforbiddenrule_set_prl(&mut self, layer: &str, idx: usize, prl: i32) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_prl(self.r(), layer, idx, prl)?) }
+    pub fn twowiresforbiddenrule_set_min_exact_span_length(&mut self, layer: &str, idx: usize, min_exact_span_length: bool) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_min_exact_span_length(self.r(), layer, idx, min_exact_span_length)?) }
+    pub fn twowiresforbiddenrule_set_max_exact_span_length(&mut self, layer: &str, idx: usize, max_exact_span_length: bool) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_max_exact_span_length(self.r(), layer, idx, max_exact_span_length)?) }
+    pub fn widthtablerule_set_wrong_direction(&mut self, layer: &str, idx: usize, wrong_direction: bool) -> crate::Result<()> { Ok(sys::widthtablerule_set_wrong_direction(self.r(), layer, idx, wrong_direction)?) }
+    pub fn widthtablerule_set_orthogonal(&mut self, layer: &str, idx: usize, orthogonal: bool) -> crate::Result<()> { Ok(sys::widthtablerule_set_orthogonal(self.r(), layer, idx, orthogonal)?) }
+    pub fn wrongdirspacingrule_set_wrongdir_space(&mut self, layer: &str, idx: usize, wrongdir_space: i32) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_wrongdir_space(self.r(), layer, idx, wrongdir_space)?) }
+    pub fn wrongdirspacingrule_set_noneol_width(&mut self, layer: &str, idx: usize, noneol_width: i32) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_noneol_width(self.r(), layer, idx, noneol_width)?) }
+    pub fn wrongdirspacingrule_set_length(&mut self, layer: &str, idx: usize, length: i32) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_length(self.r(), layer, idx, length)?) }
+    pub fn wrongdirspacingrule_set_prl_length(&mut self, layer: &str, idx: usize, prl_length: i32) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_prl_length(self.r(), layer, idx, prl_length)?) }
+    pub fn wrongdirspacingrule_set_noneol_valid(&mut self, layer: &str, idx: usize, noneol_valid: bool) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_noneol_valid(self.r(), layer, idx, noneol_valid)?) }
+    pub fn wrongdirspacingrule_set_length_valid(&mut self, layer: &str, idx: usize, length_valid: bool) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_length_valid(self.r(), layer, idx, length_valid)?) }
     pub fn layerantenna_set_gate_plus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_gate_plus_diff_factor(self.r(), layer, factor)?) }
     pub fn layerantenna_set_area_minus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_area_minus_diff_factor(self.r(), layer, factor)?) }
     pub fn layerantenna_set_area_factor(&mut self, layer: &str, factor: f64, diffuse: bool) -> crate::Result<()> { Ok(sys::layerantenna_set_area_factor(self.r(), layer, factor, diffuse)?) }

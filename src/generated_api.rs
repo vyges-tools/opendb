@@ -277,9 +277,14 @@ impl Db {
     pub fn num_layer_get_tech_layer_cut_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_spacing_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_min_step_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_min_step_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_corner_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_corner_spacing_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_cut_spacing_table_def_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_spacing_table_def_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_cut_enclosure_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_cut_enclosure_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_eol_keep_out_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_eol_keep_out_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_max_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_max_spacing_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_width_table_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_width_table_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_min_cut_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_min_cut_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_wrong_dir_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_wrong_dir_spacing_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_two_wires_forbidden_spc_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_two_wires_forbidden_spc_rules(self.r(), layer) }
     pub fn layer_is_rect_only(&self, layer: &str) -> bool { sys::layer_is_rect_only(self.r(), layer) }
     pub fn layer_is_right_way_on_grid_only(&self, layer: &str) -> bool { sys::layer_is_right_way_on_grid_only(self.r(), layer) }
     pub fn layer_is_right_way_on_grid_only_check_mask(&self, layer: &str) -> bool { sys::layer_is_right_way_on_grid_only_check_mask(self.r(), layer) }
@@ -331,6 +336,7 @@ impl Db {
     pub fn layer_get_upper_layer(&self, layer: &str) -> String { sys::layer_get_upper_layer(self.r(), layer) }
     pub fn layer_get_tech(&self, layer: &str) -> String { sys::layer_get_tech(self.r(), layer) }
     pub fn layer_has_orth_spacing_table(&self, layer: &str) -> bool { sys::layer_has_orth_spacing_table(self.r(), layer) }
+    pub fn layer_get_orth_spacing_table(&self, layer: &str) -> Vec<i32> { sys::layer_get_orth_spacing_table(self.r(), layer) }
     pub fn layer_get_max_wide_d_r_c_range_owidth(&self, layer: &str) -> i32 { sys::layer_get_max_wide_d_r_c_range_owidth(self.r(), layer) }
     pub fn layer_get_max_wide_d_r_c_range_olength(&self, layer: &str) -> i32 { sys::layer_get_max_wide_d_r_c_range_olength(self.r(), layer) }
     pub fn layer_get_min_wide_d_r_c_range_owidth(&self, layer: &str) -> i32 { sys::layer_get_min_wide_d_r_c_range_owidth(self.r(), layer) }
@@ -422,6 +428,8 @@ impl Db {
     pub fn gcell_get_block(&self) -> String { sys::gcell_get_block(self.r()) }
     pub fn gcell_get_num_grid_patterns_x(&self) -> i32 { sys::gcell_get_num_grid_patterns_x(self.r()) }
     pub fn gcell_get_num_grid_patterns_y(&self) -> i32 { sys::gcell_get_num_grid_patterns_y(self.r()) }
+    pub fn gcell_get_grid_x(&self) -> Vec<i32> { sys::gcell_get_grid_x(self.r()) }
+    pub fn gcell_get_grid_y(&self) -> Vec<i32> { sys::gcell_get_grid_y(self.r()) }
     pub fn wire_get_block(&self, net: &str) -> String { sys::wire_get_block(self.r(), net) }
     pub fn wire_get_net(&self, net: &str) -> String { sys::wire_get_net(self.r(), net) }
     pub fn wire_is_global_wire(&self, net: &str) -> bool { sys::wire_is_global_wire(self.r(), net) }
@@ -491,6 +499,8 @@ impl Db {
     pub fn trackgrid_get_block(&self, idx: usize) -> String { sys::trackgrid_get_block(self.r(), idx) }
     pub fn trackgrid_get_num_grid_patterns_x(&self, idx: usize) -> i32 { sys::trackgrid_get_num_grid_patterns_x(self.r(), idx) }
     pub fn trackgrid_get_num_grid_patterns_y(&self, idx: usize) -> i32 { sys::trackgrid_get_num_grid_patterns_y(self.r(), idx) }
+    pub fn trackgrid_get_grid_x(&self, idx: usize) -> Vec<i32> { sys::trackgrid_get_grid_x(self.r(), idx) }
+    pub fn trackgrid_get_grid_y(&self, idx: usize) -> Vec<i32> { sys::trackgrid_get_grid_y(self.r(), idx) }
     pub fn trackgrid_get_average_track_spacing_track_step(&self, idx: usize) -> i32 { sys::trackgrid_get_average_track_spacing_track_step(self.r(), idx) }
     pub fn trackgrid_get_average_track_spacing_track_init(&self, idx: usize) -> i32 { sys::trackgrid_get_average_track_spacing_track_init(self.r(), idx) }
     pub fn trackgrid_get_average_track_spacing_num_tracks(&self, idx: usize) -> i32 { sys::trackgrid_get_average_track_spacing_num_tracks(self.r(), idx) }
@@ -938,6 +948,9 @@ impl Db {
     pub fn cornerspacingrule_is_except_same_net(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_same_net(self.r(), layer, idx) }
     pub fn cornerspacingrule_is_except_same_metal(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_except_same_metal(self.r(), layer, idx) }
     pub fn cornerspacingrule_is_corner_to_corner(&self, layer: &str, idx: usize) -> bool { sys::cornerspacingrule_is_corner_to_corner(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_type(&self, layer: &str, idx: usize) -> String { sys::cornerspacingrule_get_type(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_spacing_table(&self, layer: &str, idx: usize) -> Vec<i32> { sys::cornerspacingrule_get_spacing_table(self.r(), layer, idx) }
+    pub fn cornerspacingrule_get_width_table(&self, layer: &str, idx: usize) -> Vec<i32> { sys::cornerspacingrule_get_width_table(self.r(), layer, idx) }
     pub fn minsteprule_get_min_step_length(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_min_step_length(self.r(), layer, idx) }
     pub fn minsteprule_get_max_edges(&self, layer: &str, idx: usize) -> u32 { sys::minsteprule_get_max_edges(self.r(), layer, idx) }
     pub fn minsteprule_get_min_adj_length1(&self, layer: &str, idx: usize) -> i32 { sys::minsteprule_get_min_adj_length1(self.r(), layer, idx) }
@@ -969,6 +982,24 @@ impl Db {
     pub fn mincutrule_is_area_within_dist_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_area_within_dist_valid(self.r(), layer, idx) }
     pub fn mincutrule_is_same_metal_overlap(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_same_metal_overlap(self.r(), layer, idx) }
     pub fn mincutrule_is_fully_enclosed(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_fully_enclosed(self.r(), layer, idx) }
+    pub fn maxspacingrule_get_cut_class(&self, layer: &str, idx: usize) -> String { sys::maxspacingrule_get_cut_class(self.r(), layer, idx) }
+    pub fn maxspacingrule_get_max_spacing(&self, layer: &str, idx: usize) -> i32 { sys::maxspacingrule_get_max_spacing(self.r(), layer, idx) }
+    pub fn maxspacingrule_has_cut_class(&self, layer: &str, idx: usize) -> bool { sys::maxspacingrule_has_cut_class(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_get_min_spacing(&self, layer: &str, idx: usize) -> i32 { sys::twowiresforbiddenrule_get_min_spacing(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_get_max_spacing(&self, layer: &str, idx: usize) -> i32 { sys::twowiresforbiddenrule_get_max_spacing(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_get_min_span_length(&self, layer: &str, idx: usize) -> i32 { sys::twowiresforbiddenrule_get_min_span_length(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_get_max_span_length(&self, layer: &str, idx: usize) -> i32 { sys::twowiresforbiddenrule_get_max_span_length(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_get_prl(&self, layer: &str, idx: usize) -> i32 { sys::twowiresforbiddenrule_get_prl(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_is_min_exact_span_length(&self, layer: &str, idx: usize) -> bool { sys::twowiresforbiddenrule_is_min_exact_span_length(self.r(), layer, idx) }
+    pub fn twowiresforbiddenrule_is_max_exact_span_length(&self, layer: &str, idx: usize) -> bool { sys::twowiresforbiddenrule_is_max_exact_span_length(self.r(), layer, idx) }
+    pub fn widthtablerule_is_wrong_direction(&self, layer: &str, idx: usize) -> bool { sys::widthtablerule_is_wrong_direction(self.r(), layer, idx) }
+    pub fn widthtablerule_is_orthogonal(&self, layer: &str, idx: usize) -> bool { sys::widthtablerule_is_orthogonal(self.r(), layer, idx) }
+    pub fn wrongdirspacingrule_get_wrongdir_space(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_wrongdir_space(self.r(), layer, idx) }
+    pub fn wrongdirspacingrule_get_noneol_width(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_noneol_width(self.r(), layer, idx) }
+    pub fn wrongdirspacingrule_get_length(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_length(self.r(), layer, idx) }
+    pub fn wrongdirspacingrule_get_prl_length(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_prl_length(self.r(), layer, idx) }
+    pub fn wrongdirspacingrule_is_noneol_valid(&self, layer: &str, idx: usize) -> bool { sys::wrongdirspacingrule_is_noneol_valid(self.r(), layer, idx) }
+    pub fn wrongdirspacingrule_is_length_valid(&self, layer: &str, idx: usize) -> bool { sys::wrongdirspacingrule_is_length_valid(self.r(), layer, idx) }
     pub fn layerantenna_is_valid(&self, layer: &str) -> bool { sys::layerantenna_is_valid(self.r(), layer) }
     pub fn layerantenna_has_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_area_factor(self.r(), layer) }
     pub fn layerantenna_has_side_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_side_area_factor(self.r(), layer) }
