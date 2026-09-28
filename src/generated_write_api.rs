@@ -126,6 +126,7 @@ impl Db {
     pub fn layer_set_max_width(&mut self, layer: &str, max_width: u32) -> crate::Result<()> { Ok(sys::layer_set_max_width(self.r(), layer, max_width)?) }
     pub fn layer_set_min_width(&mut self, layer: &str, max_width: u32) -> crate::Result<()> { Ok(sys::layer_set_min_width(self.r(), layer, max_width)?) }
     pub fn layer_set_min_step(&mut self, layer: &str, min_step: u32) -> crate::Result<()> { Ok(sys::layer_set_min_step(self.r(), layer, min_step)?) }
+    pub fn layer_set_min_step_type(&mut self, layer: &str, a0: &str) -> crate::Result<()> { Ok(sys::layer_set_min_step_type(self.r(), layer, a0)?) }
     pub fn layer_set_min_step_max_length(&mut self, layer: &str, length: u32) -> crate::Result<()> { Ok(sys::layer_set_min_step_max_length(self.r(), layer, length)?) }
     pub fn layer_set_min_step_max_edges(&mut self, layer: &str, edges: u32) -> crate::Result<()> { Ok(sys::layer_set_min_step_max_edges(self.r(), layer, edges)?) }
     pub fn layer_set_protrusion(&mut self, layer: &str, pt_width: u32, pt_length: u32, pt_from_width: u32) -> crate::Result<()> { Ok(sys::layer_set_protrusion(self.r(), layer, pt_width, pt_length, pt_from_width)?) }
@@ -510,6 +511,9 @@ impl Db {
     pub fn mincutrule_set_same_metal_overlap(&mut self, layer: &str, idx: usize, same_metal_overlap: bool) -> crate::Result<()> { Ok(sys::mincutrule_set_same_metal_overlap(self.r(), layer, idx, same_metal_overlap)?) }
     pub fn mincutrule_set_fully_enclosed(&mut self, layer: &str, idx: usize, fully_enclosed: bool) -> crate::Result<()> { Ok(sys::mincutrule_set_fully_enclosed(self.r(), layer, idx, fully_enclosed)?) }
     pub fn mincutrule_set_cuts_per_cut_class(&mut self, layer: &str, idx: usize, cut_class: &str, num_cuts: i32) -> crate::Result<()> { Ok(sys::mincutrule_set_cuts_per_cut_class(self.r(), layer, idx, cut_class, num_cuts)?) }
+    pub fn v54mincutrule_set_minimum_cuts(&mut self, layer: &str, idx: usize, numcuts: u32, width: u32, above_only: bool, below_only: bool) -> crate::Result<()> { Ok(sys::v54mincutrule_set_minimum_cuts(self.r(), layer, idx, numcuts, width, above_only, below_only)?) }
+    pub fn v54mincutrule_set_cut_distance(&mut self, layer: &str, idx: usize, cut_distance: u32) -> crate::Result<()> { Ok(sys::v54mincutrule_set_cut_distance(self.r(), layer, idx, cut_distance)?) }
+    pub fn v54mincutrule_set_length_for_cuts(&mut self, layer: &str, idx: usize, length: u32, distance: u32) -> crate::Result<()> { Ok(sys::v54mincutrule_set_length_for_cuts(self.r(), layer, idx, length, distance)?) }
     pub fn maxspacingrule_set_cut_class(&mut self, layer: &str, idx: usize, cut_class: &str) -> crate::Result<()> { Ok(sys::maxspacingrule_set_cut_class(self.r(), layer, idx, cut_class)?) }
     pub fn maxspacingrule_set_max_spacing(&mut self, layer: &str, idx: usize, max_spacing: i32) -> crate::Result<()> { Ok(sys::maxspacingrule_set_max_spacing(self.r(), layer, idx, max_spacing)?) }
     pub fn twowiresforbiddenrule_set_min_spacing(&mut self, layer: &str, idx: usize, min_spacing: i32) -> crate::Result<()> { Ok(sys::twowiresforbiddenrule_set_min_spacing(self.r(), layer, idx, min_spacing)?) }

@@ -206,6 +206,9 @@ impl Db {
     pub fn bterm_get_mirrored_b_term(&self, bterm: &str) -> String { sys::bterm_get_mirrored_b_term(self.r(), bterm) }
     pub fn bterm_has_mirrored_b_term(&self, bterm: &str) -> bool { sys::bterm_has_mirrored_b_term(self.r(), bterm) }
     pub fn bterm_is_mirrored(&self, bterm: &str) -> bool { sys::bterm_is_mirrored(self.r(), bterm) }
+    pub fn bterm_get_first_pin_location_valid(&self, bterm: &str) -> bool { sys::bterm_get_first_pin_location_valid(self.r(), bterm) }
+    pub fn bterm_get_first_pin_location_x(&self, bterm: &str) -> i32 { sys::bterm_get_first_pin_location_x(self.r(), bterm) }
+    pub fn bterm_get_first_pin_location_y(&self, bterm: &str) -> i32 { sys::bterm_get_first_pin_location_y(self.r(), bterm) }
     pub fn master_get_name(&self, master: &str) -> String { sys::master_get_name(self.r(), master) }
     pub fn master_get_const_name(&self, master: &str) -> String { sys::master_get_const_name(self.r(), master) }
     pub fn master_get_origin_x(&self, master: &str) -> i32 { sys::master_get_origin_x(self.r(), master) }
@@ -306,6 +309,7 @@ impl Db {
     pub fn layer_get_two_widths_spacing_table_num_widths(&self, layer: &str) -> u32 { sys::layer_get_two_widths_spacing_table_num_widths(self.r(), layer) }
     pub fn layer_has_default_antenna_rule(&self, layer: &str) -> bool { sys::layer_has_default_antenna_rule(self.r(), layer) }
     pub fn layer_has_oxide2_antenna_rule(&self, layer: &str) -> bool { sys::layer_has_oxide2_antenna_rule(self.r(), layer) }
+    pub fn num_layer_get_min_cut_rules(&self, layer: &str) -> usize { sys::num_layer_get_min_cut_rules(self.r(), layer) }
     pub fn layer_get_pitch(&self, layer: &str) -> i32 { sys::layer_get_pitch(self.r(), layer) }
     pub fn layer_get_pitch_x(&self, layer: &str) -> i32 { sys::layer_get_pitch_x(self.r(), layer) }
     pub fn layer_get_pitch_y(&self, layer: &str) -> i32 { sys::layer_get_pitch_y(self.r(), layer) }
@@ -321,6 +325,7 @@ impl Db {
     pub fn layer_get_min_width(&self, layer: &str) -> u32 { sys::layer_get_min_width(self.r(), layer) }
     pub fn layer_has_min_step(&self, layer: &str) -> bool { sys::layer_has_min_step(self.r(), layer) }
     pub fn layer_get_min_step(&self, layer: &str) -> u32 { sys::layer_get_min_step(self.r(), layer) }
+    pub fn layer_get_min_step_type(&self, layer: &str) -> String { sys::layer_get_min_step_type(self.r(), layer) }
     pub fn layer_has_min_step_max_length(&self, layer: &str) -> bool { sys::layer_has_min_step_max_length(self.r(), layer) }
     pub fn layer_get_min_step_max_length(&self, layer: &str) -> u32 { sys::layer_get_min_step_max_length(self.r(), layer) }
     pub fn layer_has_min_step_max_edges(&self, layer: &str) -> bool { sys::layer_has_min_step_max_edges(self.r(), layer) }
@@ -344,6 +349,8 @@ impl Db {
     pub fn layer_get_max_wide_d_r_c_range_olength(&self, layer: &str) -> i32 { sys::layer_get_max_wide_d_r_c_range_olength(self.r(), layer) }
     pub fn layer_get_min_wide_d_r_c_range_owidth(&self, layer: &str) -> i32 { sys::layer_get_min_wide_d_r_c_range_owidth(self.r(), layer) }
     pub fn layer_get_min_wide_d_r_c_range_olength(&self, layer: &str) -> i32 { sys::layer_get_min_wide_d_r_c_range_olength(self.r(), layer) }
+    pub fn layer_get_thickness_valid(&self, layer: &str) -> bool { sys::layer_get_thickness_valid(self.r(), layer) }
+    pub fn layer_get_thickness_inthk(&self, layer: &str) -> u32 { sys::layer_get_thickness_inthk(self.r(), layer) }
     pub fn layer_get_spacing_width_length(&self, layer: &str, width: i32, length: i32) -> i32 { sys::layer_get_spacing_width_length(self.r(), layer, width, length) }
     pub fn row_get_name(&self, row: &str) -> String { sys::row_get_name(self.r(), row) }
     pub fn row_get_const_name(&self, row: &str) -> String { sys::row_get_const_name(self.r(), row) }
@@ -1003,6 +1010,16 @@ impl Db {
     pub fn mincutrule_is_area_within_dist_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_area_within_dist_valid(self.r(), layer, idx) }
     pub fn mincutrule_is_same_metal_overlap(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_same_metal_overlap(self.r(), layer, idx) }
     pub fn mincutrule_is_fully_enclosed(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_fully_enclosed(self.r(), layer, idx) }
+    pub fn v54mincutrule_is_above_only(&self, layer: &str, idx: usize) -> bool { sys::v54mincutrule_is_above_only(self.r(), layer, idx) }
+    pub fn v54mincutrule_is_below_only(&self, layer: &str, idx: usize) -> bool { sys::v54mincutrule_is_below_only(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_minimum_cuts_valid(&self, layer: &str, idx: usize) -> bool { sys::v54mincutrule_get_minimum_cuts_valid(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_minimum_cuts_numcuts(&self, layer: &str, idx: usize) -> u32 { sys::v54mincutrule_get_minimum_cuts_numcuts(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_minimum_cuts_width(&self, layer: &str, idx: usize) -> u32 { sys::v54mincutrule_get_minimum_cuts_width(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_cut_distance_valid(&self, layer: &str, idx: usize) -> bool { sys::v54mincutrule_get_cut_distance_valid(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_cut_distance_cut_distance(&self, layer: &str, idx: usize) -> u32 { sys::v54mincutrule_get_cut_distance_cut_distance(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_length_for_cuts_valid(&self, layer: &str, idx: usize) -> bool { sys::v54mincutrule_get_length_for_cuts_valid(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_length_for_cuts_length(&self, layer: &str, idx: usize) -> u32 { sys::v54mincutrule_get_length_for_cuts_length(self.r(), layer, idx) }
+    pub fn v54mincutrule_get_length_for_cuts_distance(&self, layer: &str, idx: usize) -> u32 { sys::v54mincutrule_get_length_for_cuts_distance(self.r(), layer, idx) }
     pub fn maxspacingrule_get_cut_class(&self, layer: &str, idx: usize) -> String { sys::maxspacingrule_get_cut_class(self.r(), layer, idx) }
     pub fn maxspacingrule_get_max_spacing(&self, layer: &str, idx: usize) -> i32 { sys::maxspacingrule_get_max_spacing(self.r(), layer, idx) }
     pub fn maxspacingrule_has_cut_class(&self, layer: &str, idx: usize) -> bool { sys::maxspacingrule_has_cut_class(self.r(), layer, idx) }
