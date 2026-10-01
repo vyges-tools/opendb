@@ -2457,6 +2457,35 @@ impl Db {
     pub fn inst_id(&self, inst: &str) -> Result<u32> {
         Ok(sys::inst_get_id(self.r(), inst)?)
     }
+    /// `dbNet::insertBufferBeforeLoads` — odb's OWN buffer insertion, not a re-implementation: a
+    /// buffer of `master` before `loads` (instance pins as `(inst, pin)`, then ports), named by
+    /// odb's block-wide uniquifier from `buf_base` and `net_base` (`None`: odb's default `net`), at
+    /// `loc` when given. With `net` `None`, the net of the FIRST load in odb's object-id order, as
+    /// the resizer asks. `uniquify`: `ALWAYS` (the default), `ALWAYS_WITH_UNDERSCORE`, `IF_NEEDED`,
+    /// `IF_NEEDED_WITH_UNDERSCORE`. Returns the new instance's name.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_buffer_before_loads(
+        &mut self,
+        net: Option<&str>,
+        iterms: &[(String, String)],
+        bterms: &[String],
+        master: &str,
+        loc: Option<(i32, i32)>,
+        buf_base: &str,
+        net_base: Option<&str>,
+        uniquify: &str,
+        loads_on_diff_nets: bool,
+    ) -> Result<String> {
+        let insts: Vec<String> = iterms.iter().map(|(i, _)| i.clone()).collect();
+        let pins: Vec<String> = iterms.iter().map(|(_, p)| p.clone()).collect();
+        let (has_loc, (x, y)) = match loc {
+            Some(p) => (true, p),
+            None => (false, (0, 0)),
+        };
+        Ok(sys::insert_buffer_before_loads(self.r(), net.unwrap_or(""), &insts, &pins, bterms, master, has_loc, x, y, buf_base, net_base.unwrap_or(""), uniquify, loads_on_diff_nets)?)
+    }
+
     /// Create a block terminal on a net.
     /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn create_bterm(&mut self, net: &str, name: &str) -> Result<()> {
