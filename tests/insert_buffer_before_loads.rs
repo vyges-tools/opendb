@@ -216,3 +216,25 @@ fn no_net_infers_the_first_loads_net_and_a_location_places_it() {
     assert_eq!(db.inst_location("wire1"), (4000, 2400));
     assert_eq!(nets(&db), expect(&[("n1", &["drvr/Z", "wire1/A"]), ("net1", &["load/A", "wire1/Z"])]));
 }
+
+// `visitConnectedPins(pin)` on a flat net: its instance pins in the database's order, then its
+// ports, each tagged.
+#[test]
+fn visit_connected_pins_on_a_flat_net() {
+    let mut db = design();
+    for n in ["drvr", "a1", "a2"] {
+        db.create_inst("BUF_X1", n).unwrap();
+    }
+    db.create_net("n1").unwrap();
+    port(&mut db, "n1", "out", "OUTPUT");
+    db.connect("drvr", "Z", "n1").unwrap();
+    db.connect("a2", "A", "n1").unwrap();
+    db.connect("a1", "A", "n1").unwrap();
+    let pins = db.visit_connected_pins("drvr", "Z").unwrap();
+    let mut iterms: Vec<&String> = pins.iter().filter(|p| p.starts_with("I:")).collect();
+    assert_eq!(pins.last().map(String::as_str), Some("B:out"), "ports after instance pins");
+    assert_eq!(iterms.len(), 3);
+    iterms.sort();
+    assert_eq!(iterms, vec!["I:a1/A", "I:a2/A", "I:drvr/Z"]);
+    assert_eq!(db.net_iterms("n1").iter().map(|p| format!("I:{p}")).collect::<Vec<_>>(), pins[..3].to_vec(), "the database's own order");
+}

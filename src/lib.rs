@@ -2330,6 +2330,15 @@ impl Db {
         Ok(out)
     }
 
+    /// `Network::visitConnectedPins(pin)` from an instance pin, as the database network answers
+    /// it: the pin's MODULE net, when it has one, walked through the hierarchy (its instance pins,
+    /// ports and hierarchical pins, then down each hierarchical pin into the child module's net,
+    /// then up each module port), else its flat net's instance pins then ports. Each pin is
+    /// tagged `I:inst/pin`, `B:port` or `M:modinst/pin`, in visit order.
+    pub fn visit_connected_pins(&self, inst: &str, pin: &str) -> Result<Vec<String>> {
+        Ok(sys::visit_connected_pins(self.r(), inst, pin)?)
+    }
+
     pub fn layer_v54_adjacent_cut_rules(&self, layer: &str) -> Result<Vec<(u32, i32, bool)>> {
         let n = sys::num_v54_spacing_rules(self.r(), layer)?;
         let mut out = Vec::new();
