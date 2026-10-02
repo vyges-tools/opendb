@@ -2507,6 +2507,44 @@ impl Db {
         Ok(sys::insert_buffer_before_loads(self.r(), net.unwrap_or(""), &insts, &pins, bterms, master, has_loc, x, y, buf_base, net_base.unwrap_or(""), uniquify, loads_on_diff_nets)?)
     }
 
+    /// `dbNet::insertBufferAfterDriver` — odb's OWN insertion: a buffer of `master` after the
+    /// driver `term` (an instance pin `Some(inst), pin`, or the port `None, pin`). Which side keeps
+    /// the original net is odb's rule, not the caller's: an instance-pin driver moves to the NEW
+    /// net and the loads keep the old one; a port keeps its net and the loads move. Placed at
+    /// `loc`, or (None) where odb puts it — at the driver. Named as [`insert_buffer_before_loads`](Self::insert_buffer_before_loads)
+    /// names it (`net_base` `None`: odb's default `net`). Returns the new instance's name.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn insert_buffer_after_driver(
+        &mut self,
+        term: (Option<&str>, &str),
+        master: &str,
+        loc: Option<(i32, i32)>,
+        buf_base: &str,
+        net_base: Option<&str>,
+        uniquify: &str,
+    ) -> Result<String> {
+        let (has_loc, (x, y)) = loc.map_or((false, (0, 0)), |p| (true, p));
+        Ok(sys::insert_buffer_after_driver(self.r(), term.0.unwrap_or(""), term.1, master, has_loc, x, y, buf_base, net_base.unwrap_or(""), uniquify)?)
+    }
+    /// `dbNet::insertBufferBeforeLoad` — odb's OWN insertion: a buffer of `master` before the one
+    /// load `term` (as for [`insert_buffer_after_driver`](Self::insert_buffer_after_driver)): the
+    /// buffer's input stays on the net, its output takes the load onto a new one — or, for a port
+    /// load, the port keeps its net and the driver side moves. Placed at `loc` or (None) at the
+    /// load. Returns the new instance's name.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn insert_buffer_before_load(
+        &mut self,
+        term: (Option<&str>, &str),
+        master: &str,
+        loc: Option<(i32, i32)>,
+        buf_base: &str,
+        net_base: Option<&str>,
+        uniquify: &str,
+    ) -> Result<String> {
+        let (has_loc, (x, y)) = loc.map_or((false, (0, 0)), |p| (true, p));
+        Ok(sys::insert_buffer_before_load(self.r(), term.0.unwrap_or(""), term.1, master, has_loc, x, y, buf_base, net_base.unwrap_or(""), uniquify)?)
+    }
+
     /// Create a block terminal on a net.
     /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
     pub fn create_bterm(&mut self, net: &str, name: &str) -> Result<()> {
