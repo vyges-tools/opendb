@@ -1873,6 +1873,15 @@ impl Db {
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
             .collect())
     }
+    /// The obstructions a pin placement keeps clear of: every one with a layer except a
+    /// system-reserved, fill or slot obstruction. `(layer number, x0, y0, x1, y1)`.
+    pub fn pin_obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::pin_obstruction_boxes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
     /// Obstruction rectangles marked `+ FILLS`, as `(layer, x0, y0, x1, y1)`.
     ///
     /// ⛔ **Only these exclude metal fill.** Upstream `DensityFill.cpp::orNonFills()`:
