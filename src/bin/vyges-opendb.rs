@@ -1139,13 +1139,13 @@ fn read_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 ///
 /// Shared with `check-3dblox` rather than reimplemented: the seven category names are a list the
 /// linter owns, and two copies of it would drift the moment upstream adds an eighth.
-#[cfg(unix)]
+#[cfg(all(unix, feature = "gen-write"))] // its one caller, view-3dblox, needs the write surface
 fn blox_findings(db: &Db) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for check in BLOX_CHECKS {
         let path = format!("3DBlox/{check}");
         let count = vyges_opendb::registry::get(db, "dbMarkerCategory", "get_marker_count",
-                                                &[path.clone()])
+                                                std::slice::from_ref(&path))
             .ok()
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
@@ -1719,17 +1719,9 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         vyges_opendb::registry::get(&db, class, field, keys).ok()
     };
     let mut categories = Vec::new();
-    for check in [
-        "Logical Connectivity",
-        "Floating chips",
-        "Overlapping chips",
-        "Unused internal_ext",
-        "Connection regions",
-        "Bump Alignment",
-        "Alignment Markers",
-    ] {
+    for check in BLOX_CHECKS {
         let path = format!("3DBlox/{check}");
-        let count = get("dbMarkerCategory", "get_marker_count", &[path.clone()])
+        let count = get("dbMarkerCategory", "get_marker_count", std::slice::from_ref(&path))
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
         if count == 0 {
@@ -1755,7 +1747,7 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         serde_json::json!({ "violations": violations, "categories": categories })
     );
     // Non-zero on violations, so this gates CI like the rest of the suite.
-    fail_on(violations as usize)
+    fail_on(violations)
 }
 
 const REPORT_WIRE_LENGTH_DESCRIBE: &str = r#"{
@@ -2308,7 +2300,7 @@ fn fields(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     }
     let items: Vec<_> = vyges_opendb::registry::FIELDS
         .iter()
-        .filter(|f| class.as_deref().map_or(true, |c| c == f.class))
+        .filter(|f| class.as_deref().is_none_or(|c| c == f.class))
         .map(|f| serde_json::json!({ "class": f.class, "field": f.field, "value": f.value, "keys": f.keys }))
         .collect();
     println!("{}", serde_json::to_string_pretty(&items)?);
@@ -2319,7 +2311,7 @@ fn fields(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 fn list_write_fields(class: Option<&str>) -> Result<(), Fail> {
     let items: Vec<_> = vyges_opendb::registry::WRITE_FIELDS
         .iter()
-        .filter(|f| class.map_or(true, |c| c == f.class))
+        .filter(|f| class.is_none_or(|c| c == f.class))
         .map(|f| serde_json::json!({ "class": f.class, "field": f.field, "values": f.values, "keys": f.keys }))
         .collect();
     println!("{}", serde_json::to_string_pretty(&items)?);

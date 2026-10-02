@@ -222,7 +222,7 @@ fn place_stdcell(
         *rng ^= *rng << 13;
         *rng ^= *rng >> 7;
         *rng ^= *rng << 17;
-        if *rng % 2 == 0 { 'l' } else { 'r' }
+        if rng.is_multiple_of(2) { 'l' } else { 'r' }
     });
 
     let n = *inserted.get(&(inst.to_string(), pos)).unwrap_or(&0);

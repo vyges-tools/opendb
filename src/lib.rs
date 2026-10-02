@@ -9,6 +9,14 @@
 //! (`InsertECOBuffers`). Legalization (incremental routing / detailed placement) is delegated
 //! to the OpenROAD engines separately — this layer only mutates the database.
 
+// * `type_complexity` — a reader returns the C++ call's rows as plain tuples, field for field in
+//   the order the call yields them; an alias per row would name each shape once and hide it at
+//   every call site that destructures it.
+// * `too_many_arguments` — a setter takes the C++ call's arguments one for one (the generated
+//   accessors included), so the call sites can be read against it.
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
+
 // The libodb-backed surface (`Db`, `eco`) is unix-only — libodb is not built on non-unix
 // targets. `Error`/`Result` stay cross-platform. See vyges-opendb-lib for the rationale.
 #[cfg(unix)]
@@ -373,6 +381,10 @@ pub struct V55Table {
     pub table: Option<Vec<Vec<u32>>>,
 }
 
+impl Default for Db {
+    fn default() -> Self { Db::new() }
+}
+
 impl Db {
     /// Read a `.odb` file.
     pub fn open(path: impl AsRef<Path>) -> Result<Db> {
@@ -550,7 +562,7 @@ impl Db {
     /// query, which is quadratic exactly on the big nets that matter.
     pub fn net_wire_shapes(&self, net: &str) -> Vec<WireShape> {
         sys::net_wire_shapes(self.r(), net)
-            .chunks_exact(8)
+            .as_chunks::<8>().0.iter()
             .map(|c| WireShape {
                 layer: c[0],
                 x0: c[1] as i32,
@@ -573,7 +585,7 @@ impl Db {
     /// the pins live on.
     pub fn net_wire_boxes(&self, net: &str) -> Vec<LayerBox> {
         sys::net_wire_boxes(self.r(), net)
-            .chunks_exact(7)
+            .as_chunks::<7>().0.iter()
             .map(|c| LayerBox {
                 layer: c[0],
                 x0: c[1] as i32,
@@ -609,7 +621,7 @@ impl Db {
     /// conductors that are electrically separate.
     pub fn iterm_pin_boxes(&self, inst: &str, pin: &str) -> Vec<WireShape> {
         sys::iterm_pin_boxes(self.r(), inst, pin)
-            .chunks_exact(5)
+            .as_chunks::<5>().0.iter()
             .map(|c| WireShape {
                 layer: c[0],
                 x0: c[1] as i32,
@@ -1146,7 +1158,7 @@ impl Db {
     }
     /// 4 doubles per gcell -> typed rows. The indices are integral in f64, so they round-trip.
     fn rows(flat: Vec<f64>) -> Vec<GCellCongestion> {
-        flat.chunks_exact(4)
+        flat.as_chunks::<4>().0.iter()
             .map(|c| GCellCongestion {
                 x_idx: c[0] as u32,
                 y_idx: c[1] as u32,
@@ -1546,7 +1558,7 @@ impl Db {
     /// obstruction carrying either is a blockage with its own rule, not part of the layer's merged
     /// shapes, so a reader that does not model that rule should refuse such a master.
     pub fn master_obstruction_rules(&self, master: &str) -> Result<Vec<(i32, i32)>> {
-        Ok(sys::master_obstruction_rules(self.r(), master)?.chunks_exact(2).map(|c| (c[0], c[1])).collect())
+        Ok(sys::master_obstruction_rules(self.r(), master)?.as_chunks::<2>().0.iter().map(|c| (c[0], c[1])).collect())
     }
 
     /// A master's pin shapes, in master coordinates: `(layer number, x0, y0, x1, y1)`.
@@ -1691,7 +1703,7 @@ impl Db {
     pub fn polygon_bloat(&self, points: &[(i32, i32)], margin: i32) -> Result<Vec<(i32, i32)>> {
         let flat: Vec<i32> = points.iter().flat_map(|&(x, y)| [x, y]).collect();
         let out = sys::polygon_bloat(&flat, margin)?;
-        Ok(out.chunks_exact(2).map(|c| (c[0], c[1])).collect())
+        Ok(out.as_chunks::<2>().0.iter().map(|c| (c[0], c[1])).collect())
     }
 
     /// A layer's **type** — `ROUTING`, `CUT`, `OVERLAP`, and so on.
@@ -2770,7 +2782,7 @@ pub fn rdl_preprocess(
     let Some((&verdict, rest)) = out.split_first() else {
         return Ok((0, Vec::new()));
     };
-    Ok((verdict, rest.chunks_exact(4).map(|c| (c[0], c[1], c[2], c[3])).collect()))
+    Ok((verdict, rest.as_chunks::<4>().0.iter().map(|c| (c[0], c[1], c[2], c[3])).collect()))
 }
 
 #[cfg(test)]

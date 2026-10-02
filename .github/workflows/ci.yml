@@ -78,6 +78,8 @@ jobs:
           sudo apt-get install -y cmake g++ git bison libboost-dev libboost-iostreams-dev libbz2-dev zlib1g-dev
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Test (default surface)
         run: cargo test --release --verbose
@@ -91,3 +93,10 @@ jobs:
       # The examples ARE the 3D/chiplet write path in use, so a compile is a real check on it.
       - name: Examples build (they require gen-write)
         run: cargo build --release --features gen-write --examples --verbose
+
+      # ⚠️ Clippy joined this job on 2026-10-02. Until then nothing ran it here, and ~540 warnings
+      # had built up (489 from one generator template). Both surfaces, for the reason given above.
+      - name: Clippy (default surface)
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: Clippy (with gen-write)
+        run: cargo clippy --release --features gen-write --all-targets -- -D warnings

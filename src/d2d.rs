@@ -555,7 +555,7 @@ pub fn mate(top: &[Bump], bottom: &[Bump], tolerance: f64) -> Vec<(usize, usize,
                 }
                 let (dx, dy) = (t.x - bottom[j].x, t.y - bottom[j].y);
                 let d = (dx * dx + dy * dy).sqrt();
-                if d <= tolerance && best.map_or(true, |(_, bd)| d < bd) {
+                if d <= tolerance && best.is_none_or(|(_, bd)| d < bd) {
                     best = Some((j, d));
                 }
             }

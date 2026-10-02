@@ -20,14 +20,14 @@ fn lef() -> String {
 fn captures_still_return_the_text_once_events_only() {
     vyges_opendb::init_events_logging();
     let mut db = Db::new();
-    let (r, first) = db.with_captured_logs(|db| db.read_lef(&lef()));
+    let (r, first) = db.with_captured_logs(|db| db.read_lef(lef()));
     r.expect("the technology LEF reads");
     assert!(first.contains("ODB-0227"), "the capture lost libodb's LEF message: {first:?}");
-    let (_, second) = db.with_captured_logs(|db| db.read_lef(&lef()));
+    let (_, second) = db.with_captured_logs(|db| db.read_lef(lef()));
     assert!(!second.is_empty(), "a second capture on the same database returned nothing");
     // And a database opened AFTER the sink goes the same way.
     let mut fresh = Db::new();
-    let (r, third) = fresh.with_captured_logs(|db| db.read_lef(&lef()));
+    let (r, third) = fresh.with_captured_logs(|db| db.read_lef(lef()));
     r.expect("the technology LEF reads");
     assert!(third.contains("ODB-0227"), "{third:?}");
 }

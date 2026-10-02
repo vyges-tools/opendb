@@ -21,9 +21,16 @@ mod preprocess;
 pub use model::{Assembly, BloxError, ChipletDef, Connection, Dbv, Dbx, Header, Region, RegionRef};
 pub use parse::{parse_dbv, parse_dbx};
 
-use crate::{Db, Error, Result};
+use crate::{Error, Result};
+use std::collections::BTreeMap;
+// Only the loader (behind `gen-write`, see `load_3dblox` below) builds a database.
+#[cfg(feature = "gen-write")]
+use crate::Db;
+#[cfg(feature = "gen-write")]
 use preprocess::expand_glob;
-use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "gen-write")]
+use std::collections::BTreeSet;
+#[cfg(feature = "gen-write")]
 use std::path::Path;
 
 /// One bonded pair of surfaces, resolved from an assembly: which two regions mate, where their
@@ -145,6 +152,7 @@ pub fn read_assembly(dbx_path: &str) -> Result<Assembly> {
 }
 
 /// Convert microns to DBU the way the database does — round, never truncate.
+#[cfg(feature = "gen-write")]
 fn dbu(microns: f64, dbu_per_micron: i32) -> i32 {
     (microns * dbu_per_micron as f64).round() as i32
 }

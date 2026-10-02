@@ -177,7 +177,7 @@ fn a_violation_reaches_the_drawing() {
         .filter_map(|c| {
             let p = format!("3DBlox/{c}");
             let n = vyges_opendb::registry::get(&db, "dbMarkerCategory", "get_marker_count",
-                                                &[p.clone()]).ok()?.as_i64()?;
+                                                std::slice::from_ref(&p)).ok()?.as_i64()?;
             (n > 0).then(|| (c.to_string(), format!("{n} marker(s)")))
         })
         .collect();

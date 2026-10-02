@@ -159,7 +159,7 @@ fn registry_get_dispatches_all_value_kinds() {
 
     // enum-string with a str key
     let net = db.net_names().into_iter().next().unwrap();
-    let v = registry::get(&db, "dbNet", "get_sig_type", &[net.clone()]).unwrap();
+    let v = registry::get(&db, "dbNet", "get_sig_type", std::slice::from_ref(&net)).unwrap();
     assert_eq!(v, serde_json::json!(db.net_get_sig_type(&net)));
 
     // list — length matches the instance count
@@ -193,12 +193,12 @@ fn registry_set_dispatches() {
 
     let net = db.net_names().into_iter().next().unwrap();
     // scalar set via registry (value string-encoded), read back via registry
-    registry::set(&mut db, "dbNet", "set_weight", &[net.clone()], &["7".into()]).unwrap();
-    assert_eq!(registry::get(&db, "dbNet", "get_weight", &[net.clone()]).unwrap(), serde_json::json!(7));
+    registry::set(&mut db, "dbNet", "set_weight", std::slice::from_ref(&net), &["7".into()]).unwrap();
+    assert_eq!(registry::get(&db, "dbNet", "get_weight", std::slice::from_ref(&net)).unwrap(), serde_json::json!(7));
 
     // enum set via registry (constructed from the string)
     let inst = db.nth_inst_name(0);
-    registry::set(&mut db, "dbInst", "set_orient", &[inst.clone()], &["MY".into()]).unwrap();
+    registry::set(&mut db, "dbInst", "set_orient", std::slice::from_ref(&inst), &["MY".into()]).unwrap();
     assert_eq!(registry::get(&db, "dbInst", "get_orient", &[inst]).unwrap(), serde_json::json!("MY"));
 
     // bad value + missing object are typed errors

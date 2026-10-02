@@ -88,6 +88,7 @@ mod tests {
 /// `.3dbv` files name collateral like `NG45_PATH/*_tech.lef` — a real pattern, not decoration.
 /// Only the file name is matched; a glob in a directory component is not something the format's
 /// own examples use, and quietly half-supporting it would be worse than not.
+#[cfg_attr(not(feature = "gen-write"), allow(dead_code))] // its one caller is the loader
 pub(crate) fn expand_glob(pattern: &Path) -> Vec<PathBuf> {
     let Some(name) = pattern.file_name().and_then(|n| n.to_str()) else {
         return vec![pattern.to_path_buf()];
@@ -109,6 +110,7 @@ pub(crate) fn expand_glob(pattern: &Path) -> Vec<PathBuf> {
 }
 
 /// `*` (any run) and `?` (one char), which is all these files use.
+#[cfg_attr(not(feature = "gen-write"), allow(dead_code))]
 fn glob_match(pattern: &str, text: &str) -> bool {
     let (p, t): (Vec<char>, Vec<char>) = (pattern.chars().collect(), text.chars().collect());
     let (mut pi, mut ti, mut star, mut mark) = (0usize, 0usize, usize::MAX, 0usize);

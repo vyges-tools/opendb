@@ -6,6 +6,9 @@
 //! the signature. `dbGuide::create(net, layer, via_layer, box, is_congested)` is declared in
 //! `odb/include/odb/db.h`; `grt` calls it from `GlobalRouter::saveGuides`.
 
+// Test names carry the RULE, and the capitalised word is the part that must not be missed.
+#![allow(non_snake_case)]
+
 use vyges_opendb::Db;
 
 const FIXTURE: &str = "tests/fixtures/counter.odb";
