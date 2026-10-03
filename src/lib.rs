@@ -2575,6 +2575,37 @@ impl Db {
     pub fn destroy_inst(&mut self, inst: &str) -> Result<()> {
         Ok(sys::destroy_inst(self.r(), inst)?)
     }
+    /// The database half of removing buffer `inst` (input pin `in_pin`, output pin `out_pin`):
+    /// both pins disconnected, one net merged into the other by odb's own `dbNet::mergeNet` (the
+    /// terminals keep odb's reconnection order), the instance destroyed, the survivor renamed to
+    /// the shallower name when it is the deeper one. The input net survives unless only the output
+    /// net has a port. Returns the survivor's name, empty when the output had no net.
+    ///
+    /// ⚠️ The legality checks (`canRemoveBuffer`) are the caller's: this one edits.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn remove_buffer(&mut self, inst: &str, in_pin: &str, out_pin: &str) -> Result<String> {
+        Ok(sys::remove_buffer(self.r(), inst, in_pin, out_pin)?)
+    }
+    /// The database half of `Resizer::swapPins`: `inst`'s pins `pin1` and `pin2` trade nets (pin1
+    /// moved first, each to the other's flat net then module net). `false` (nothing done) when
+    /// either has no net.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn swap_pins(&mut self, inst: &str, pin1: &str, pin2: &str) -> Result<bool> {
+        Ok(sys::swap_pins(self.r(), inst, pin1, pin2)?)
+    }
+    /// `dbBlock::makeNewInstName(nullptr, base, uniquify)`: the next instance name odb would give
+    /// (advancing its counter). `uniquify`: ALWAYS, IF_NEEDED, … as for buffer insertion.
+    pub fn make_new_inst_name(&mut self, base: &str, uniquify: &str) -> Result<String> {
+        Ok(sys::make_new_inst_name(self.r(), base, uniquify)?)
+    }
+    /// `dbBlock::makeNewNetName(nullptr, base, uniquify)`.
+    pub fn make_new_net_name(&mut self, base: &str, uniquify: &str) -> Result<String> {
+        Ok(sys::make_new_net_name(self.r(), base, uniquify)?)
+    }
+    /// `dbNet::canMergeNet`: neither net is dont_touch, nor any instance on `removed`.
+    pub fn net_can_merge(&self, survivor: &str, removed: &str) -> Result<bool> {
+        Ok(sys::net_can_merge(self.r(), survivor, removed)?)
+    }
     /// The `i`th row's `(bbox, site, orientation)`, addressed by INDEX.
     ///
     /// ⚠️ **Use this, not the by-name `row_get_*` accessors, to walk rows.** Row names are **not
