@@ -2596,11 +2596,13 @@ impl Db {
     /// Start recording the block's edit callbacks — what a timer and a parasitics estimator
     /// listening to the block are told, in the order the database raises them (connect AFTER the
     /// connection, disconnect BEFORE it, a master swap before and after, …). One line each:
-    /// `inst_create|I`, `inst_destroy|I`, `swap_before|I|from|to`, `swap_after|I`, `net_create|N`,
-    /// `net_destroy|N`, `net_merge|N|removed`, `iterm_connect|I/P|N|pins`,
+    /// `inst_create|I|master`, `inst_destroy|I`, `swap_before|I|from|to|terms`,
+    /// `swap_after|I|terms`, `net_create|N`, `net_destroy|N|pins`, `net_merge|N|removed`,
+    /// `iterm_connect|I/P|N|pins`,
     /// `iterm_disconnect|I/P|N|pins`, `iterm_destroy|I/P|N`, `bterm_create|B`, `bterm_destroy|B`,
     /// `bterm_connect|B|N|pins`, `bterm_disconnect|B|N|pins` — `pins`: the net's terminals at
-    /// that moment (`I/P`, then ports), comma-separated. Restarting clears the log.
+    /// that moment (`I/P`, then ports), comma-separated; `terms`: the instance's terminals
+    /// `T=net=pins`, `;`-separated. Restarting clears the log.
     pub fn edit_log_start(&self) -> Result<()> {
         Ok(sys::edit_log_start(self.r())?)
     }

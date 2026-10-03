@@ -27,7 +27,7 @@ fn connects_and_disconnects_are_logged_in_order() {
     db.connect("g", &pin, "b").unwrap();
     let log = db.edit_log_take();
     let want = [
-        "inst_create|g".to_string(),
+        format!("inst_create|g|{master}"),
         "net_create|a".into(),
         "net_create|b".into(),
         format!("iterm_connect|g/{pin}|a|g/{pin}"),
