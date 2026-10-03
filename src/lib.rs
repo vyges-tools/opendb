@@ -2593,6 +2593,21 @@ impl Db {
     pub fn swap_pins(&mut self, inst: &str, pin1: &str, pin2: &str) -> Result<bool> {
         Ok(sys::swap_pins(self.r(), inst, pin1, pin2)?)
     }
+    /// Start recording the block's edit callbacks — what a timer and a parasitics estimator
+    /// listening to the block are told, in the order the database raises them (connect AFTER the
+    /// connection, disconnect BEFORE it, a master swap before and after, …). One line each:
+    /// `inst_create|I`, `inst_destroy|I`, `swap_before|I|from|to`, `swap_after|I`, `net_create|N`,
+    /// `net_destroy|N`, `net_merge|N|removed`, `iterm_connect|I/P|N|pins`,
+    /// `iterm_disconnect|I/P|N|pins`, `iterm_destroy|I/P|N`, `bterm_create|B`, `bterm_destroy|B`,
+    /// `bterm_connect|B|N|pins`, `bterm_disconnect|B|N|pins` — `pins`: the net's terminals at
+    /// that moment (`I/P`, then ports), comma-separated. Restarting clears the log.
+    pub fn edit_log_start(&self) -> Result<()> {
+        Ok(sys::edit_log_start(self.r())?)
+    }
+    /// The edit callbacks recorded since the last take; recording continues.
+    pub fn edit_log_take(&self) -> Vec<String> {
+        sys::edit_log_take(self.r())
+    }
     /// `dbBlock::makeNewInstName(nullptr, base, uniquify)`: the next instance name odb would give
     /// (advancing its counter). `uniquify`: ALWAYS, IF_NEEDED, … as for buffer insertion.
     pub fn make_new_inst_name(&mut self, base: &str, uniquify: &str) -> Result<String> {
