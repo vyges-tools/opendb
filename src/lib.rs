@@ -2657,6 +2657,18 @@ impl Db {
     pub fn same_owning_module(&self, a: &str, b: &str) -> Result<bool> {
         Ok(sys::same_owning_module(self.r(), a, b)?)
     }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try). The driver
+    /// `src_inst/src_pin` connected to the load `dst_inst/dst_pin` through the module hierarchy:
+    /// the flat connection, then module ports and nets up to the lowest module both share (an
+    /// existing way into the load's module reused), the pins re-associated, the flat net renamed
+    /// after its highest modnet, unused module ports removed. `connection` names what is made.
+    pub fn hierarchical_connect(&mut self, src_inst: &str, src_pin: &str, dst_inst: &str, dst_pin: &str, connection: &str) -> Result<()> {
+        Ok(sys::hierarchical_connect(self.r(), src_inst, src_pin, dst_inst, dst_pin, connection)?)
+    }
+    /// The flat and the module views as lines in odb's orders — for comparing two databases.
+    pub fn dump_hierarchy(&self) -> Result<Vec<String>> {
+        Ok(sys::dump_hierarchy(self.r())?)
+    }
     /// `dbNet::canMergeNet`: neither net is dont_touch, nor any instance on `removed`.
     pub fn net_can_merge(&self, survivor: &str, removed: &str) -> Result<bool> {
         Ok(sys::net_can_merge(self.r(), survivor, removed)?)
