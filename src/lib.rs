@@ -1089,6 +1089,11 @@ impl Db {
             _ => None,
         })
     }
+    /// `dbDatabase::hasHierarchy`: the design was linked hierarchically (the flag is stored in the
+    /// `.odb`). The timer's network then names instances and nets without their parent prefix.
+    pub fn has_hierarchy(&self) -> bool {
+        sys::db_has_hierarchy(self.r())
+    }
     /// A block-level double property, or `None` when it is not set (`set_opt_config`'s sizing
     /// limits live here: `limit_sizing_area`, `limit_sizing_leakage`).
     pub fn block_double_property(&self, name: &str) -> Result<Option<f64>> {

@@ -203,3 +203,10 @@ fn a_block_double_property_is_absent_until_set() {
     db.block_set_double_property("vyges_test_limit", 0.25).expect("update");
     assert_eq!(db.block_double_property("vyges_test_limit").expect("read"), Some(0.25));
 }
+
+#[test]
+fn a_flat_database_has_no_hierarchy() {
+    // `dbDatabase::hasHierarchy` is stored in the .odb; the fixture was linked flat.
+    let db = Db::open(FIXTURE).expect("opens");
+    assert!(!db.has_hierarchy());
+}
