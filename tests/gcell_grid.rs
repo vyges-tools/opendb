@@ -210,3 +210,19 @@ fn a_flat_database_has_no_hierarchy() {
     let db = Db::open(FIXTURE).expect("opens");
     assert!(!db.has_hierarchy());
 }
+
+#[test]
+fn in_a_flat_database_beside_is_the_top() {
+    // `getOwningInstanceParent` is the top without hierarchy: the scoped name makers are the
+    // top-level ones, and every instance shares the one module.
+    // Each call advances odb's unique counter: the two are compared on two fresh opens.
+    let (mut db, mut top) = (Db::open(FIXTURE).expect("opens"), Db::open(FIXTURE).expect("opens"));
+    let owner = db.inst_names().into_iter().next().expect("an instance");
+    let inst = db.make_new_inst_name_beside(&owner, "clone", "ALWAYS").expect("name");
+    assert_eq!(inst, top.make_new_inst_name("clone", "ALWAYS").expect("name"));
+    let net = db.make_new_net_name_beside(&owner, "net", "ALWAYS").expect("name");
+    assert_eq!(net, top.make_new_net_name("net", "ALWAYS").expect("name"));
+    assert!(!inst.contains('/') && !net.contains('/'), "{inst} {net}");
+    let other = db.inst_names().into_iter().last().expect("an instance");
+    assert!(db.same_owning_module(&owner, &other).expect("modules"));
+}

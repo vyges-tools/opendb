@@ -2633,6 +2633,30 @@ impl Db {
     pub fn make_new_net_name(&mut self, base: &str, uniquify: &str) -> Result<String> {
         Ok(sys::make_new_net_name(self.r(), base, uniquify)?)
     }
+    /// `dbBlock::makeNewInstName` scoped to `owner`'s module: in a hierarchical database, the
+    /// module `owner` belongs to (its `dbModInst`), else the top.
+    pub fn make_new_inst_name_beside(&mut self, owner: &str, base: &str, uniquify: &str) -> Result<String> {
+        Ok(sys::make_new_inst_name_beside(self.r(), owner, base, uniquify)?)
+    }
+    /// `dbBlock::makeNewNetName` scoped to `owner`'s module (see
+    /// [`make_new_inst_name_beside`](Self::make_new_inst_name_beside)).
+    pub fn make_new_net_name_beside(&mut self, owner: &str, base: &str, uniquify: &str) -> Result<String> {
+        Ok(sys::make_new_net_name_beside(self.r(), owner, base, uniquify)?)
+    }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try). An instance created in
+    /// `owner`'s module (`dbInst::create(.., parent module)`), at the top when that is the top.
+    pub fn create_inst_beside(&mut self, master: &str, name: &str, owner: &str) -> Result<()> {
+        Ok(sys::create_inst_beside(self.r(), master, name, owner)?)
+    }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try). `inst/pin` joined to the
+    /// hierarchical net (`dbModNet`) of `from_inst/from_pin`; `false` when that has none.
+    pub fn connect_mod_net_of(&mut self, inst: &str, pin: &str, from_inst: &str, from_pin: &str) -> Result<bool> {
+        Ok(sys::connect_mod_net_of(self.r(), inst, pin, from_inst, from_pin)?)
+    }
+    /// Whether two instances belong to the same module (always, in a flat database).
+    pub fn same_owning_module(&self, a: &str, b: &str) -> Result<bool> {
+        Ok(sys::same_owning_module(self.r(), a, b)?)
+    }
     /// `dbNet::canMergeNet`: neither net is dont_touch, nor any instance on `removed`.
     pub fn net_can_merge(&self, survivor: &str, removed: &str) -> Result<bool> {
         Ok(sys::net_can_merge(self.r(), survivor, removed)?)
