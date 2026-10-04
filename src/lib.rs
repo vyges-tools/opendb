@@ -1089,6 +1089,15 @@ impl Db {
             _ => None,
         })
     }
+    /// A block-level double property, or `None` when it is not set (`set_opt_config`'s sizing
+    /// limits live here: `limit_sizing_area`, `limit_sizing_leakage`).
+    pub fn block_double_property(&self, name: &str) -> Result<Option<f64>> {
+        Ok(sys::block_double_property(self.r(), name)?.first().copied())
+    }
+    /// Set a block-level double property, creating it if absent and updating it in place if not.
+    pub fn block_set_double_property(&mut self, name: &str, value: f64) -> Result<()> {
+        Ok(sys::block_set_double_property(self.r(), name, value)?)
+    }
     /// Set a block-level bool property, creating it if absent and updating it in place if not.
     pub fn block_set_bool_property(&mut self, name: &str, value: bool) -> Result<()> {
         Ok(sys::block_set_bool_property(self.r(), name, value)?)

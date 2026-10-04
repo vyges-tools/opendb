@@ -191,3 +191,15 @@ fn a_block_bool_property_distinguishes_absent_from_false() {
     db.block_set_bool_property("vyges_test_flag", true).expect("update");
     assert_eq!(db.block_bool_property("vyges_test_flag").expect("read"), Some(true));
 }
+
+#[test]
+fn a_block_double_property_is_absent_until_set() {
+    // `Resizer::initBlock` reads `limit_sizing_area` / `limit_sizing_leakage` as written by
+    // `set_opt_config`; absent means the default limit, not 0.
+    let mut db = Db::open(FIXTURE).expect("opens");
+    assert_eq!(db.block_double_property("vyges_test_limit").expect("read"), None);
+    db.block_set_double_property("vyges_test_limit", 2.0).expect("create");
+    assert_eq!(db.block_double_property("vyges_test_limit").expect("read"), Some(2.0));
+    db.block_set_double_property("vyges_test_limit", 0.25).expect("update");
+    assert_eq!(db.block_double_property("vyges_test_limit").expect("read"), Some(0.25));
+}
