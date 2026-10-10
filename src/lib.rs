@@ -1099,6 +1099,14 @@ impl Db {
     pub fn block_double_property(&self, name: &str) -> Result<Option<f64>> {
         Ok(sys::block_double_property(self.r(), name)?.first().copied())
     }
+    /// A block-level string property, or `None` when it is not set (`gs_presize_mode`).
+    pub fn block_string_property(&self, name: &str) -> Result<Option<String>> {
+        Ok(sys::block_string_property(self.r(), name)?.into_iter().next())
+    }
+    /// A block-level int property, or `None` when it is not set (`gs_max_iterations`).
+    pub fn block_int_property(&self, name: &str) -> Result<Option<i32>> {
+        Ok(sys::block_int_property(self.r(), name)?.first().copied())
+    }
     /// Set a block-level double property, creating it if absent and updating it in place if not.
     pub fn block_set_double_property(&mut self, name: &str, value: f64) -> Result<()> {
         Ok(sys::block_set_double_property(self.r(), name, value)?)
