@@ -104,6 +104,7 @@ impl Db {
     pub fn iterm_clear_pref_access_points(&mut self, inst: &str, pin: &str) -> crate::Result<()> { Ok(sys::iterm_clear_pref_access_points(self.r(), inst, pin)?) }
     pub fn mterm_set_sig_type(&mut self, master: &str, term: &str, a0: &str) -> crate::Result<()> { Ok(sys::mterm_set_sig_type(self.r(), master, term, a0)?) }
     pub fn mterm_set_mark(&mut self, master: &str, term: &str, v: u32) -> crate::Result<()> { Ok(sys::mterm_set_mark(self.r(), master, term, v)?) }
+    pub fn mterm_set_must_join_all_ports(&mut self, master: &str, term: &str, v: bool) -> crate::Result<()> { Ok(sys::mterm_set_must_join_all_ports(self.r(), master, term, v)?) }
     pub fn layer_set_wrong_way_width(&mut self, layer: &str, wrong_way_width: u32) -> crate::Result<()> { Ok(sys::layer_set_wrong_way_width(self.r(), layer, wrong_way_width)?) }
     pub fn layer_set_wrong_way_min_width(&mut self, layer: &str, wrong_way_min_width: u32) -> crate::Result<()> { Ok(sys::layer_set_wrong_way_min_width(self.r(), layer, wrong_way_min_width)?) }
     pub fn layer_set_layer_adjustment(&mut self, layer: &str, layer_adjustment: f32) -> crate::Result<()> { Ok(sys::layer_set_layer_adjustment(self.r(), layer, layer_adjustment)?) }

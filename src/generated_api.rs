@@ -264,6 +264,7 @@ impl Db {
     pub fn mterm_get_sig_type(&self, master: &str, term: &str) -> String { sys::mterm_get_sig_type(self.r(), master, term) }
     pub fn mterm_get_io_type(&self, master: &str, term: &str) -> String { sys::mterm_get_io_type(self.r(), master, term) }
     pub fn mterm_is_set_mark(&self, master: &str, term: &str) -> bool { sys::mterm_is_set_mark(self.r(), master, term) }
+    pub fn mterm_is_must_join_all_ports(&self, master: &str, term: &str) -> bool { sys::mterm_is_must_join_all_ports(self.r(), master, term) }
     pub fn mterm_get_master(&self, master: &str, term: &str) -> String { sys::mterm_get_master(self.r(), master, term) }
     pub fn num_mterm_get_m_pins(&self, master: &str, term: &str) -> usize { sys::num_mterm_get_m_pins(self.r(), master, term) }
     pub fn mterm_get_b_box_x_min(&self, master: &str, term: &str) -> i32 { sys::mterm_get_b_box_x_min(self.r(), master, term) }
