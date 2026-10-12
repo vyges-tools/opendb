@@ -1860,6 +1860,17 @@ impl Db {
         })
     }
 
+    /// The metal of every SPECIAL-net via, decomposed onto its layers (`dbSBox::getViaBoxes`: block
+    /// and tech vias, cut layers included): `(layer number, x0, y0, x1, y1)`. With
+    /// [`Self::special_wire_boxes`] it is what detailed placement's `Grid::markBlocked` reads.
+    pub fn special_via_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
+        Ok(sys::special_via_boxes(self.r())?
+            .chunks(5)
+            .filter(|c| c.len() == 5)
+            .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
+
     /// Every routing layer name, in stack order, with its routing direction
     /// (`HORIZONTAL`/`VERTICAL`/`NONE`).
     ///
