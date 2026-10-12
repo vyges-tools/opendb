@@ -364,6 +364,40 @@ pub struct TopLayerGrid {
     pub region_is_rect: bool,
 }
 
+#[cfg(unix)]
+/// A shape that keeps pins away, with the DEF spacing rules it carries (`SPACING`,
+/// `DESIGNRULEWIDTH`). A rule it does not carry is `-1`, never `0`: a zero would read as a rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuledShape {
+    pub layer: i64,
+    pub rect: (i32, i32, i32, i32),
+    pub min_spacing: i32,
+    pub effective_width: i32,
+}
+
+#[cfg(unix)]
+/// An obstruction as [`Db::obstruction_shapes_with_rules`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuledObstruction {
+    pub shape: RuledShape,
+    /// The outside of a polygon die.
+    pub system_reserved: bool,
+    /// A `+ FILLS` or `+ SLOTS` obstruction; routing metal may still run over it.
+    pub fill: bool,
+    pub slot: bool,
+}
+
+#[cfg(unix)]
+/// A box of a bpin whose own placement status is fixed, as [`Db::bpin_shapes_with_rules`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuledBPinShape {
+    pub shape: RuledShape,
+    /// The term's FIRST pin is fixed, which is what makes the term itself count as fixed.
+    pub term_fixed: bool,
+    /// The term is POWER or GROUND.
+    pub supply: bool,
+}
+
 /// Regroup a flat `(layer, x0, y0, x1, y1)` stream into tuples.
 fn chunk5(v: Vec<i32>) -> Vec<(i64, i32, i32, i32, i32)> {
     v.chunks(5)
@@ -1902,6 +1936,35 @@ impl Db {
             .chunks(5)
             .filter(|c| c.len() == 5)
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
+            .collect())
+    }
+    /// Every obstruction with a layer, in block order, with its DEF spacing rules and its kind.
+    /// Unfiltered: a pin placer's boundary pass skips system-reserved obstructions and its top-layer
+    /// pass keeps them, so the filter belongs to the caller.
+    pub fn obstruction_shapes_with_rules(&self) -> Result<Vec<RuledObstruction>> {
+        Ok(sys::obstruction_shapes_with_rules(self.r())?
+            .chunks(8)
+            .filter(|c| c.len() == 8)
+            .map(|c| RuledObstruction {
+                shape: RuledShape { layer: c[0], rect: (c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32), min_spacing: c[5] as i32, effective_width: c[6] as i32 },
+                system_reserved: c[7] & 1 != 0,
+                fill: c[7] & 2 != 0,
+                slot: c[7] & 4 != 0,
+            })
+            .collect())
+    }
+    /// Every box of every bpin whose OWN status is fixed (a multi-bpin term can mix statuses), in
+    /// term / bpin / box order, with the bpin's DEF spacing rules. Whether the term counts as fixed
+    /// and whether it is a supply are reported, not filtered.
+    pub fn bpin_shapes_with_rules(&self) -> Result<Vec<RuledBPinShape>> {
+        Ok(sys::bpin_shapes_with_rules(self.r())?
+            .chunks(9)
+            .filter(|c| c.len() == 9)
+            .map(|c| RuledBPinShape {
+                shape: RuledShape { layer: c[0], rect: (c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32), min_spacing: c[5] as i32, effective_width: c[6] as i32 },
+                term_fixed: c[7] != 0,
+                supply: c[8] != 0,
+            })
             .collect())
     }
     /// Obstruction rectangles marked `+ FILLS`, as `(layer, x0, y0, x1, y1)`.
