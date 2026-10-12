@@ -2661,6 +2661,24 @@ impl Db {
     pub fn connect_mod_net_of(&mut self, inst: &str, pin: &str, from_inst: &str, from_pin: &str) -> Result<bool> {
         Ok(sys::connect_mod_net_of(self.r(), inst, pin, from_inst, from_pin)?)
     }
+    /// The netlist half of the resizer's BufferToInvertersMove: buffer `inst` (pins `in_pin`,
+    /// `out_pin`) disconnected and DESTROYED, then two `inv_master` instances `<name>_inv1`,
+    /// `<name>_inv2` and a mid net `<name>_mid_net` made in its module (IF_NEEDED names; the mid net
+    /// takes the input net's signal type), chained input → inv1 → mid → inv2 → output, the module
+    /// nets re-attached to inv1's input and inv2's output. `<name>` is the buffer's name inside its
+    /// module.
+    ///
+    /// 🔑 Destroy-then-create is the reference's order and is observable: inv1 reuses the buffer's
+    /// odb slot (its id). `Ok(None)` — nothing changed — when either pin has no flat net.
+    /// Placement is the caller's.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn buffer_to_inverters(&mut self, inst: &str, in_pin: &str, out_pin: &str, inv_master: &str, inv_in: &str, inv_out: &str) -> Result<Option<(String, String, String)>> {
+        let v = sys::buffer_to_inverters(self.r(), inst, in_pin, out_pin, inv_master, inv_in, inv_out)?;
+        Ok(match <[String; 3]>::try_from(v) {
+            Ok([a, b, c]) => Some((a, b, c)),
+            Err(_) => None,
+        })
+    }
     /// Whether two instances belong to the same module (always, in a flat database).
     pub fn same_owning_module(&self, a: &str, b: &str) -> Result<bool> {
         Ok(sys::same_owning_module(self.r(), a, b)?)
