@@ -32,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Sibling layout, the same one `check-generated.sh` resolves against ("$here/../vyges-tools-opendb").
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: vyges-tools-opendb
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vyges-tools/opendb-lib
           path: vyges-tools-opendb-lib

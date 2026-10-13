@@ -27,23 +27,23 @@ jobs:
     steps:
       # ⚠️ Sibling layout so the `[patch]` path entry resolves. A patch whose path does not exist
       # is a hard `failed to load source`, not a fall-back to the git source being patched.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: vyges-tools-opendb
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vyges-tools/opendb-lib
           path: vyges-tools-opendb-lib
       # ⚠️ EVERY [patch] entry needs a checkout, not just the obvious one. This workflow's first
       # run failed here: it checked out opendb-lib and not layout, and cargo stopped with
       # "failed to load source for dependency vyges-layout" before compiling anything.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vyges-tools/layout
           path: vyges-tools-layout
       # loom joined the patch table when `import --verilog` landed: it supplies the structural
       # netlist reader. The check below caught its absence on the first run after that.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vyges-tools/loom
           path: vyges-tools-loom
