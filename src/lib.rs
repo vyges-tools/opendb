@@ -669,6 +669,26 @@ impl Db {
             .collect()
     }
 
+    /// The non-via shapes of an instance terminal, placed, as `(x0, y0, x1, y1)` in the order
+    /// odb's terminal shape iterator yields them. [`Db::iterm_pin_boxes`] keeps routing layers
+    /// only; this is the iterator's own set (any layer, polygon pieces included, vias skipped).
+    pub fn iterm_shape_boxes(&self, inst: &str, pin: &str) -> Vec<(i32, i32, i32, i32)> {
+        sys::iterm_shape_boxes(self.r(), inst, pin).as_chunks::<4>().0.iter().map(|c| (c[0], c[1], c[2], c[3])).collect()
+    }
+
+    /// The clock-tree builder's blockage merge: every placed block instance (grown by its hard
+    /// halo) and hard placement blockage, bloated then shrunk by the margins so gaps narrower than
+    /// twice them close. Returns the blocks' largest width and height and each merged region's
+    /// extents `(x0, y0, x1, y1)`, in the polygon set's order.
+    pub fn cts_merge_blockages(&self, bloat_w: i32, bloat_h: i32) -> (u32, u32, Vec<(i32, i32, i32, i32)>) {
+        let v = sys::cts_merge_blockages(self.r(), bloat_w, bloat_h);
+        if v.len() < 2 {
+            return (0, 0, Vec::new());
+        }
+        let rects = v[2..].as_chunks::<4>().0.iter().map(|c| (c[0], c[1], c[2], c[3])).collect();
+        (v[0] as u32, v[1] as u32, rects)
+    }
+
     /// A diffusion-dependent antenna limit curve.
     ///
     /// LEF states antenna limits either as plain ratios or as these PWL curves, where the limit
