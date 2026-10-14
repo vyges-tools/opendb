@@ -1188,9 +1188,9 @@ pub struct Unimpl {
 /// ⚠️ Not the same as unimplemented — check `hand_written`.
 pub const UNIMPLEMENTED: &[Unimpl] = &[
     Unimpl { class: "dbBPin", field: "get_access_points", method: "getAccessPoints", kind: "getter", ret: "std::vector<dbAccessPoint*>", hand_written: false },
-    Unimpl { class: "dbBTerm", field: "connect", method: "connect", kind: "setter", ret: "void", hand_written: false },
-    Unimpl { class: "dbBTerm", field: "connect", method: "connect", kind: "setter", ret: "void", hand_written: false },
-    Unimpl { class: "dbBTerm", field: "connect", method: "connect", kind: "setter", ret: "void", hand_written: false },
+    Unimpl { class: "dbBTerm", field: "connect", method: "connect", kind: "setter", ret: "void", hand_written: true },
+    Unimpl { class: "dbBTerm", field: "connect", method: "connect", kind: "setter", ret: "void", hand_written: true },
+    Unimpl { class: "dbBTerm", field: "connect", method: "connect", kind: "setter", ret: "void", hand_written: true },
     Unimpl { class: "dbBTerm", field: "disconnect", method: "disconnect", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbBTerm", field: "disconnect_db_mod_net", method: "disconnectDbModNet", kind: "setter", ret: "void", hand_written: false },
     Unimpl { class: "dbBTerm", field: "disconnect_db_net", method: "disconnectDbNet", kind: "setter", ret: "void", hand_written: false },
