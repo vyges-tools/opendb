@@ -2867,6 +2867,11 @@ impl Db {
     pub fn disconnect(&mut self, inst: &str, pin: &str) -> Result<()> {
         Ok(sys::disconnect(self.r(), inst, pin)?)
     }
+    /// `dbBTerm::connect(net)`: the port moves onto `net`, off any net it was on.
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn bterm_connect(&mut self, bterm: &str, net: &str) -> Result<()> {
+        Ok(sys::bterm_connect(self.r(), bterm, net)?)
+    }
 
     // ---- composed ECO op -----------------------------------------------------
     /// Insert `buffer_master` (named `buf_name`, placed at `x,y`) on `target_inst/target_pin`.
