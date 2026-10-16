@@ -14,6 +14,35 @@
 use serde::Deserialize;
 use vyges_opendb::{eco, report, Db};
 
+/// A diagnostic as a structured event (`vyges-events/1.0`) rather than a bare stderr line: `usage:`
+/// and indented help stay plain; `vyges-opendb: error: …` is ODB-ERROR, `[WARNING] …` ODB-WARNING;
+/// a step's `<step>: …` status line is information under `ODB-<STEP>`.
+fn diag_line(msg: String) {
+    use vyges_events::{emit, Event, Severity};
+    if msg.starts_with("usage:") || msg.starts_with(' ') || msg.is_empty() {
+        eprintln!("{msg}");
+        return;
+    }
+    let (severity, code, text) = if let Some(t) = msg.strip_prefix("vyges-opendb: error: ") {
+        (Severity::Error, "ODB-ERROR".to_string(), t.to_string())
+    } else if let Some(t) = msg.strip_prefix("[WARNING] ") {
+        (Severity::Warn, "ODB-WARNING".to_string(), t.to_string())
+    } else {
+        match msg.split_once(": ") {
+            Some((step, _)) if !step.is_empty() && step.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') => {
+                (Severity::Info, format!("ODB-{}", step.to_ascii_uppercase()), msg.clone())
+            }
+            _ => (Severity::Info, "ODB-INFO".to_string(), msg.clone()),
+        }
+    };
+    emit(&Event::new("vyges-opendb", severity, text).with_code(code));
+}
+
+macro_rules! diag {
+    ($($t:tt)*) => { diag_line(format!($($t)*)) };
+}
+
+
 type Fail = Box<dyn std::error::Error>;
 
 const USAGE: &str = "\
@@ -132,7 +161,7 @@ fn main() {
     // Rust-surface events — so everything odb emits lands in the MCP causal trail.
     vyges_opendb::init_events_logging();
     if let Err(e) = run() {
-        eprintln!("vyges-opendb: error: {e}");
+        diag!("vyges-opendb: error: {e}");
         std::process::exit(1);
     }
 }
@@ -248,7 +277,7 @@ fn info(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb info --input <f.odb>");
+                diag!("usage: vyges-opendb info --input <f.odb>");
                 return Ok(());
             }
             other => return Err(format!("info: unknown argument: {other}").into()),
@@ -310,8 +339,8 @@ fn insert_eco_buffers(mut args: impl Iterator<Item = String>) -> Result<(), Fail
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb insert-eco-buffers --input <in.odb> --output <out.odb> --config <eco.json>");
-                eprintln!("       vyges-opendb insert-eco-buffers --describe   # JSON step contract");
+                diag!("usage: vyges-opendb insert-eco-buffers --input <in.odb> --output <out.odb> --config <eco.json>");
+                diag!("       vyges-opendb insert-eco-buffers --describe   # JSON step contract");
                 return Ok(());
             }
             other => return Err(format!("insert-eco-buffers: unknown argument: {other}").into()),
@@ -327,7 +356,7 @@ fn insert_eco_buffers(mut args: impl Iterator<Item = String>) -> Result<(), Fail
     let mut db = Db::open(&input)?;
     let n = eco::insert_eco_buffers(&mut db, &cfg.insert_eco_buffers)?;
     db.write(&output)?;
-    eprintln!("insert-eco-buffers: inserted {n} buffer(s), {input} -> {output}");
+    diag!("insert-eco-buffers: inserted {n} buffer(s), {input} -> {output}");
     Ok(())
 }
 
@@ -372,8 +401,8 @@ fn insert_eco_diodes(mut args: impl Iterator<Item = String>) -> Result<(), Fail>
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb insert-eco-diodes --input <in.odb> --output <out.odb> --config <eco.json>");
-                eprintln!("       vyges-opendb insert-eco-diodes --describe   # JSON step contract");
+                diag!("usage: vyges-opendb insert-eco-diodes --input <in.odb> --output <out.odb> --config <eco.json>");
+                diag!("       vyges-opendb insert-eco-diodes --describe   # JSON step contract");
                 return Ok(());
             }
             other => return Err(format!("insert-eco-diodes: unknown argument: {other}").into()),
@@ -389,7 +418,7 @@ fn insert_eco_diodes(mut args: impl Iterator<Item = String>) -> Result<(), Fail>
     let mut db = Db::open(&input)?;
     let n = eco::insert_eco_diodes(&mut db, &cfg.insert_eco_diodes)?;
     db.write(&output)?;
-    eprintln!("insert-eco-diodes: inserted {n} diode(s), {input} -> {output}");
+    diag!("insert-eco-diodes: inserted {n} diode(s), {input} -> {output}");
     Ok(())
 }
 
@@ -435,7 +464,7 @@ fn manual_global_placement(mut args: impl Iterator<Item = String>) -> Result<(),
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb manual-global-placement --input <in.odb> --output <out.odb> --config <cfg.json>");
+                diag!("usage: vyges-opendb manual-global-placement --input <in.odb> --output <out.odb> --config <cfg.json>");
                 return Ok(());
             }
             other => return Err(format!("manual-global-placement: unknown argument: {other}").into()),
@@ -451,7 +480,7 @@ fn manual_global_placement(mut args: impl Iterator<Item = String>) -> Result<(),
     let mut db = Db::open(&input)?;
     let n = eco::manual_global_placement(&mut db, &cfg.manual_global_placement)?;
     db.write(&output)?;
-    eprintln!("manual-global-placement: placed {n} instance(s), {input} -> {output}");
+    diag!("manual-global-placement: placed {n} instance(s), {input} -> {output}");
     Ok(())
 }
 
@@ -502,7 +531,7 @@ fn manual_macro_placement(mut args: impl Iterator<Item = String>) -> Result<(), 
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb manual-macro-placement --input <in.odb> --output <out.odb> [--config <cfg.json>] [--placement <f.cfg>] [--fixed]");
+                diag!("usage: vyges-opendb manual-macro-placement --input <in.odb> --output <out.odb> [--config <cfg.json>] [--placement <f.cfg>] [--fixed]");
                 return Ok(());
             }
             other => return Err(format!("manual-macro-placement: unknown argument: {other}").into()),
@@ -522,7 +551,7 @@ fn manual_macro_placement(mut args: impl Iterator<Item = String>) -> Result<(), 
     }
     let n = eco::manual_macro_placement(&mut db, &specs, fixed)?;
     db.write(&output)?;
-    eprintln!("manual-macro-placement: placed {n} macro(s), {input} -> {output}");
+    diag!("manual-macro-placement: placed {n} macro(s), {input} -> {output}");
     Ok(())
 }
 
@@ -567,7 +596,7 @@ fn diodes_on_ports(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb diodes-on-ports --input <in.odb> --output <out.odb> --config <cfg.json>");
+                diag!("usage: vyges-opendb diodes-on-ports --input <in.odb> --output <out.odb> --config <cfg.json>");
                 return Ok(());
             }
             other => return Err(format!("diodes-on-ports: unknown argument: {other}").into()),
@@ -586,7 +615,7 @@ fn diodes_on_ports(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         None => 0,
     };
     db.write(&output)?;
-    eprintln!("diodes-on-ports: inserted {n} diode(s), {input} -> {output}");
+    diag!("diodes-on-ports: inserted {n} diode(s), {input} -> {output}");
     Ok(())
 }
 
@@ -612,7 +641,7 @@ fn cell_frequency_tables(mut args: impl Iterator<Item = String>) -> Result<(), F
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb cell-frequency-tables --input <f.odb>");
+                diag!("usage: vyges-opendb cell-frequency-tables --input <f.odb>");
                 return Ok(());
             }
             other => return Err(format!("cell-frequency-tables: unknown argument: {other}").into()),
@@ -646,7 +675,7 @@ fn report_disconnected_pins(mut args: impl Iterator<Item = String>) -> Result<()
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb report-disconnected-pins --input <f.odb>");
+                diag!("usage: vyges-opendb report-disconnected-pins --input <f.odb>");
                 return Ok(());
             }
             other => return Err(format!("report-disconnected-pins: unknown argument: {other}").into()),
@@ -655,7 +684,7 @@ fn report_disconnected_pins(mut args: impl Iterator<Item = String>) -> Result<()
     let input = input.ok_or("report-disconnected-pins: --input <f.odb> required")?;
     let db = Db::open(&input)?;
     let pins = report::disconnected_pins(&db);
-    eprintln!("report-disconnected-pins: {} disconnected", pins.len());
+    diag!("report-disconnected-pins: {} disconnected", pins.len());
     println!("{}", serde_json::to_string_pretty(&pins)?);
     Ok(())
 }
@@ -699,7 +728,7 @@ fn place_diodes(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "--seed" => seed = args.next().unwrap_or_default().parse().unwrap_or(1),
             "--dry-run" => dry = true,
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb place-diodes --input <f.odb> [--output <f.odb>] \
+                diag!("usage: vyges-opendb place-diodes --input <f.odb> [--output <f.odb>] \
                            [--diode-cell M] [--diode-pin P] [--side-strategy S] \
                            [--port-protect none|in|out|both] [--threshold UM] [--dry-run]");
                 return Ok(());
@@ -724,7 +753,7 @@ fn place_diodes(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         port_protect: protect, seed,
     };
     let plan = diodes::plan(&db, &opts);
-    eprintln!("place-diodes: threshold {} dbu, {} diode(s) planned", threshold_dbu, plan.len());
+    diag!("place-diodes: threshold {} dbu, {} diode(s) planned", threshold_dbu, plan.len());
     if !dry {
         // 🔒 Reuses the existing transactional leaf-tie primitive rather than raw setters, so
         // these edits are journaled and `eco_try` can roll them back.
@@ -748,7 +777,7 @@ fn check_antenna_properties(mut args: impl Iterator<Item = String>) -> Result<()
             // ⚠️ Repeatable, as the reference's `-c/--cell-name` is (`multiple=True`).
             "--cell" | "-c" => cells.extend(args.next()),
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb check-antenna-properties --input <f.odb> \
+                diag!("usage: vyges-opendb check-antenna-properties --input <f.odb> \
                            [--cell NAME]...");
                 return Ok(());
             }
@@ -773,19 +802,19 @@ fn check_antenna_properties(mut args: impl Iterator<Item = String>) -> Result<()
     let flagged: usize = report.iter().map(|e| e.inout.len() + e.input.len() + e.output.len()).sum();
     for e in &report {
         if !e.inout.is_empty() {
-            eprintln!("[WARNING] Cell '{}' has ({}) inout pin(s) with neither antenna gate nor \
+            diag!("[WARNING] Cell '{}' has ({}) inout pin(s) with neither antenna gate nor \
                        diffusion information. They might be disconnected.", e.cell, e.inout.len());
         }
         if !e.input.is_empty() {
-            eprintln!("[WARNING] Cell '{}' has ({}) input pin(s) without antenna gate \
+            diag!("[WARNING] Cell '{}' has ({}) input pin(s) without antenna gate \
                        information. They might not be connected to a gate.", e.cell, e.input.len());
         }
         if !e.output.is_empty() {
-            eprintln!("[WARNING] Cell '{}' has ({}) output pin(s) without antenna diffusion \
+            diag!("[WARNING] Cell '{}' has ({}) output pin(s) without antenna diffusion \
                        information. They might not be driven.", e.cell, e.output.len());
         }
     }
-    eprintln!("check-antenna-properties: {} cell(s) checked, {flagged} pin(s) flagged",
+    diag!("check-antenna-properties: {} cell(s) checked, {flagged} pin(s) flagged",
               report.len());
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
@@ -832,7 +861,7 @@ fn set_power_connections(mut args: impl Iterator<Item = String>) -> Result<(), F
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb set-power-connections --input <in.odb> --output <out.odb> --config <cfg.json>");
+                diag!("usage: vyges-opendb set-power-connections --input <in.odb> --output <out.odb> --config <cfg.json>");
                 return Ok(());
             }
             other => return Err(format!("set-power-connections: unknown argument: {other}").into()),
@@ -847,7 +876,7 @@ fn set_power_connections(mut args: impl Iterator<Item = String>) -> Result<(), F
     let mut db = Db::open(&input)?;
     let n = eco::set_power_connections(&mut db, &cfg.set_power_connections)?;
     db.write(&output)?;
-    eprintln!("set-power-connections: connected {n} pin(s), {input} -> {output}");
+    diag!("set-power-connections: connected {n} pin(s), {input} -> {output}");
     Ok(())
 }
 
@@ -894,7 +923,7 @@ fn add_obstructions(mut args: impl Iterator<Item = String>) -> Result<(), Fail> 
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb add-obstructions --input <in.odb> --output <out.odb> --config <cfg.json>");
+                diag!("usage: vyges-opendb add-obstructions --input <in.odb> --output <out.odb> --config <cfg.json>");
                 return Ok(());
             }
             other => return Err(format!("add-obstructions: unknown argument: {other}").into()),
@@ -909,7 +938,7 @@ fn add_obstructions(mut args: impl Iterator<Item = String>) -> Result<(), Fail> 
     let mut db = Db::open(&input)?;
     let n = eco::add_obstructions(&mut db, &cfg.obstructions)?;
     db.write(&output)?;
-    eprintln!("add-obstructions: added {n} obstruction(s), {input} -> {output}");
+    diag!("add-obstructions: added {n} obstruction(s), {input} -> {output}");
     Ok(())
 }
 
@@ -921,7 +950,7 @@ fn remove_obstructions(mut args: impl Iterator<Item = String>) -> Result<(), Fai
             "--input" | "-i" => input = args.next(),
             "--output" | "-o" => output = args.next(),
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb remove-obstructions --input <in.odb> --output <out.odb>");
+                diag!("usage: vyges-opendb remove-obstructions --input <in.odb> --output <out.odb>");
                 return Ok(());
             }
             other => return Err(format!("remove-obstructions: unknown argument: {other}").into()),
@@ -932,7 +961,7 @@ fn remove_obstructions(mut args: impl Iterator<Item = String>) -> Result<(), Fai
     let mut db = Db::open(&input)?;
     let n = eco::remove_obstructions(&mut db);
     db.write(&output)?;
-    eprintln!("remove-obstructions: removed {n} obstruction(s), {input} -> {output}");
+    diag!("remove-obstructions: removed {n} obstruction(s), {input} -> {output}");
     Ok(())
 }
 
@@ -960,7 +989,7 @@ fn write_verilog_header(mut args: impl Iterator<Item = String>) -> Result<(), Fa
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb write-verilog-header --input <f.odb> [--output <f.v>]");
+                diag!("usage: vyges-opendb write-verilog-header --input <f.odb> [--output <f.v>]");
                 return Ok(());
             }
             other => return Err(format!("write-verilog-header: unknown argument: {other}").into()),
@@ -1004,7 +1033,7 @@ fn apply_eco_plan(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb apply-eco-plan --input <in.odb> --plan <plan.json> --output <out.odb> [--any-design]");
+                diag!("usage: vyges-opendb apply-eco-plan --input <in.odb> --plan <plan.json> --output <out.odb> [--any-design]");
                 return Ok(());
             }
             other => return Err(format!("apply-eco-plan: unknown argument: {other}").into()),
@@ -1096,7 +1125,7 @@ fn read_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!(
+                diag!(
                     "usage: vyges-opendb read-3dblox --input <f.3dbx> --output <out.odb> \
                      [--into <in.odb>]"
                 );
@@ -1116,15 +1145,15 @@ fn read_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     // What the format said and the database could not hold. Silence here would be the lie: a
     // polygonal bond region squared off to its bounding box is a different assembly.
     if !lossy.is_empty() {
-        eprintln!(
+        diag!(
             "read-3dblox: {} element(s) the database cannot represent:",
             lossy.len()
         );
         for l in &lossy {
-            eprintln!("  {l}");
+            diag!("  {l}");
         }
     }
-    eprintln!("read-3dblox: {input} -> {output}");
+    diag!("read-3dblox: {input} -> {output}");
     Ok(())
 }
 
@@ -1200,7 +1229,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!(
+                diag!(
                     "usage: vyges-opendb view-3dblox --input <f.3dbx|f.odb> \
                      --output <out.svg|out.png> [--top <chip>] [--scale <n>] [--heatmap]"
                 );
@@ -1259,7 +1288,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let findings = match violations {
         Ok(_) => blox_findings(&db),
         Err(e) => {
-            eprintln!("view-3dblox: lint skipped ({e}); drawing geometry only");
+            diag!("view-3dblox: lint skipped ({e}); drawing geometry only");
             Vec::new()
         }
     };
@@ -1302,7 +1331,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
     let mut asm = Assembly3d::read(&db, &top)?.with_findings(findings);
     if asm.dies.is_empty() {
-        eprintln!(
+        diag!(
             "view-3dblox: warning: no chip instances under top chip '{top}' — the drawing will \
              be empty. Is --top the assembly rather than a die?"
         );
@@ -1314,7 +1343,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     };
     if heatmap {
         if overlay_um.is_empty() {
-            eprintln!(
+            diag!(
                 "view-3dblox: --heatmap: no mated bumps to map. A heat map needs bump maps on \
                  both mating faces (.3dbv `bmap:`) and a .3dbx input; drawing without it."
             );
@@ -1337,7 +1366,7 @@ fn view_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     } else {
         std::fs::write(&output, to_svg(&asm, dbu))?;
     }
-    eprintln!(
+    diag!(
         "view-3dblox: {input} -> {output} ({} die(s), {} bond(s), {} finding(s))",
         asm.dies.len(),
         asm.bonds.len(),
@@ -1440,7 +1469,7 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!(
+                diag!(
                     "usage: vyges-opendb check-d2d --input <stack.3dbx>\n   \
                      or: vyges-opendb check-d2d --top <a.bmap> --bottom <b.bmap> \
                      [--offset-x <um>] [--offset-y <um>] [--flip-x] [--tolerance <um>]"
@@ -1514,7 +1543,7 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }))?
         );
         for s in &skipped {
-            eprintln!("check-d2d: not checked — {s}");
+            diag!("check-d2d: not checked — {s}");
         }
         return fail_on(violations);
     }
@@ -1532,7 +1561,7 @@ fn check_d2d(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     // A malformed line is not a violation, but it does mean the check saw less than the file
     // holds — silence there would overstate the coverage of a clean result.
     if !report.parse_errors.is_empty() {
-        eprintln!(
+        diag!(
             "check-d2d: {} unparseable line(s); those bumps were not checked",
             report.parse_errors.len()
         );
@@ -1655,7 +1684,7 @@ fn check_3d_nets(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!(
+                diag!(
                     "usage: vyges-opendb check-3d-nets --input <stack.3dbx> \
                      [--tolerance <um>] [--no-tsv-inference]"
                 );
@@ -1679,13 +1708,13 @@ fn check_3d_nets(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     // Skipped work goes to stderr as well as into the report: a clean stdout that nobody reads
     // past is exactly how "not looked at" gets mistaken for "looked and found nothing".
     for s in &report.interfaces_skipped {
-        eprintln!("check-3d-nets: not checked — {s}");
+        diag!("check-3d-nets: not checked — {s}");
     }
     for s in &report.regions_skipped {
-        eprintln!("check-3d-nets: not placed — {s}");
+        diag!("check-3d-nets: not placed — {s}");
     }
     if !report.parse_errors.is_empty() {
-        eprintln!(
+        diag!(
             "check-3d-nets: {} unparseable bump-map line(s); those bumps were not checked",
             report.parse_errors.len()
         );
@@ -1703,7 +1732,7 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb check-3dblox --input <f.odb>");
+                diag!("usage: vyges-opendb check-3dblox --input <f.odb>");
                 return Ok(());
             }
             other => return Err(format!("check-3dblox: unknown argument: {other}").into()),
@@ -1780,7 +1809,7 @@ fn report_wire_length(mut args: impl Iterator<Item = String>) -> Result<(), Fail
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb report-wire-length --input <f.odb>");
+                diag!("usage: vyges-opendb report-wire-length --input <f.odb>");
                 return Ok(());
             }
             other => return Err(format!("report-wire-length: unknown argument: {other}").into()),
@@ -1814,7 +1843,7 @@ fn report_connectivity(mut args: impl Iterator<Item = String>) -> Result<(), Fai
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb report-connectivity --input <f.odb>");
+                diag!("usage: vyges-opendb report-connectivity --input <f.odb>");
                 return Ok(());
             }
             other => return Err(format!("report-connectivity: unknown argument: {other}").into()),
@@ -1870,7 +1899,7 @@ fn custom_io_placement(mut args: impl Iterator<Item = String>) -> Result<(), Fai
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb custom-io-placement --input <in.odb> --output <out.odb> --config <cfg.json>");
+                diag!("usage: vyges-opendb custom-io-placement --input <in.odb> --output <out.odb> --config <cfg.json>");
                 return Ok(());
             }
             other => return Err(format!("custom-io-placement: unknown argument: {other}").into()),
@@ -1885,7 +1914,7 @@ fn custom_io_placement(mut args: impl Iterator<Item = String>) -> Result<(), Fai
     let mut db = Db::open(&input)?;
     let n = eco::custom_io_placement(&mut db, &cfg.custom_io_placement)?;
     db.write(&output)?;
-    eprintln!("custom-io-placement: placed {n} port(s), {input} -> {output}");
+    diag!("custom-io-placement: placed {n} port(s), {input} -> {output}");
     Ok(())
 }
 
@@ -1912,7 +1941,7 @@ fn write_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb write-def --input <f.odb> --output <f.def>");
+                diag!("usage: vyges-opendb write-def --input <f.odb> --output <f.def>");
                 return Ok(());
             }
             other => return Err(format!("write-def: unknown argument: {other}").into()),
@@ -1921,7 +1950,7 @@ fn write_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let input = input.ok_or("write-def: --input <f.odb> required")?;
     let output = output.ok_or("write-def: --output <f.def> required")?;
     Db::open(&input)?.write_def(&output)?;
-    eprintln!("write-def: {input} -> {output}");
+    diag!("write-def: {input} -> {output}");
     Ok(())
 }
 
@@ -1950,7 +1979,7 @@ fn read_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb read-def --input <in.odb> --def <f.def> --output <out.odb>");
+                diag!("usage: vyges-opendb read-def --input <in.odb> --def <f.def> --output <out.odb>");
                 return Ok(());
             }
             other => return Err(format!("read-def: unknown argument: {other}").into()),
@@ -1962,7 +1991,7 @@ fn read_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut db = Db::open(&input)?;
     db.read_def(&def, "default")?;
     db.write(&output)?;
-    eprintln!("read-def: {input} + {def} -> {output}");
+    diag!("read-def: {input} + {def} -> {output}");
     Ok(())
 }
 
@@ -1995,7 +2024,7 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb import --lef <tech.lef> [--lef <more.lef> ...] \
+                diag!("usage: vyges-opendb import --lef <tech.lef> [--lef <more.lef> ...] \
                            [--def <f.def>] [--verilog <f.v>] --output <out.odb>\n\
                            \n  The FIRST --lef creates the tech; give the technology LEF first.\n\
                            \n  --def and --verilog are alternative ways to bring in the design.");
@@ -2018,10 +2047,10 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     }
     if let Some(v) = &verilog {
         let n = build_from_netlist(&mut db, v)?;
-        eprintln!("import: {n} instances built from {v}");
+        diag!("import: {n} instances built from {v}");
     }
     db.write(&output)?;
-    eprintln!(
+    diag!(
         "import: {} LEF(s){}{} -> {output}",
         lefs.len(),
         def.as_ref().map(|d| format!(" + {d}")).unwrap_or_default(),
@@ -2225,7 +2254,7 @@ fn apply_def_template(mut args: impl Iterator<Item = String>) -> Result<(), Fail
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb apply-def-template --input <in.odb> --template <f.def> --output <out.odb>");
+                diag!("usage: vyges-opendb apply-def-template --input <in.odb> --template <f.def> --output <out.odb>");
                 return Ok(());
             }
             other => return Err(format!("apply-def-template: unknown argument: {other}").into()),
@@ -2237,7 +2266,7 @@ fn apply_def_template(mut args: impl Iterator<Item = String>) -> Result<(), Fail
     let mut db = Db::open(&input)?;
     db.read_def(&template, "floorplan")?;
     db.write(&output)?;
-    eprintln!("apply-def-template: {input} + {template} -> {output}");
+    diag!("apply-def-template: {input} + {template} -> {output}");
     Ok(())
 }
 
@@ -2297,7 +2326,7 @@ fn fields(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb fields [--class <dbClass>] [--writable]");
+                diag!("usage: vyges-opendb fields [--class <dbClass>] [--writable]");
                 return Ok(());
             }
             other => return Err(format!("fields: unknown argument: {other}").into()),
@@ -2349,7 +2378,7 @@ fn get(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb get --input <f.odb> --class <c> --field <f> [--key <k>]...");
+                diag!("usage: vyges-opendb get --input <f.odb> --class <c> --field <f> [--key <k>]...");
                 return Ok(());
             }
             other => return Err(format!("get: unknown argument: {other}").into()),
@@ -2391,7 +2420,7 @@ fn set(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb set --input <in> --output <out> --class <c> --field <f> [--key <k>]... [--value <v>]...");
+                diag!("usage: vyges-opendb set --input <in> --output <out> --class <c> --field <f> [--key <k>]... [--value <v>]...");
                 return Ok(());
             }
             other => return Err(format!("set: unknown argument: {other}").into()),
@@ -2404,7 +2433,7 @@ fn set(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut db = Db::open(&input)?;
     vyges_opendb::registry::set(&mut db, &class, &field, &keys, &values)?;
     db.write(&output)?;
-    eprintln!("set: {class}.{field} <- {values:?} -> {output}");
+    diag!("set: {class}.{field} <- {values:?} -> {output}");
     Ok(())
 }
 
