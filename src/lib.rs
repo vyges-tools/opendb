@@ -1086,6 +1086,11 @@ impl Db {
     pub fn set_inst_orient(&mut self, inst: &str, orient: &str) -> Result<()> {
         Ok(sys::set_inst_orient(self.r(), inst, orient)?)
     }
+    /// The technology's `USEMINSPACING OBS` (`dbTech::getUseMinSpacingObs() == ON`; the database's
+    /// default when the LEF does not say): obstructions spaced as if of the layer's minimum width.
+    pub fn tech_use_min_spacing_obs(&self) -> bool {
+        sys::tech_use_min_spacing_obs(self.r())
+    }
     /// Set an instance's placement status (`PLACED`, `FIRM`, `LOCKED`, `COVER`, …).
     /// ⛔ **Hand-written, so the shipped binary does not require `gen-write`** (manual macro
     /// placement fixes macros FIRM).
