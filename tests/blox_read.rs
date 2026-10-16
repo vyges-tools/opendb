@@ -254,6 +254,42 @@ fn a_tech_file_that_matches_nothing_is_reported_not_ignored() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+// ── P6.1: one technology per chiplet — dies from different processes in one database ─────────
+
+const TWOPROC: &str = "tests/fixtures/3dblox/twoproc.3dbx";
+
+// Rule (ThreeDBlox::createChiplet): a chiplet's technology is named after its tech LEF's file stem
+// and created (with a library of the same name) only if the database has none of that name; the
+// chip is created ON it. Two chiplets naming two LEFs are two technologies.
+#[test]
+fn chiplets_from_two_processes_each_get_their_own_technology() {
+    let mut db = Db::new();
+    db.read_3dblox(TWOPROC).expect("must load");
+    assert_eq!(db.chip_get_tech("DieA"), "minimal_tech");
+    assert_eq!(db.chip_get_tech("DieB"), "procb");
+    assert!(db.has_tech("minimal_tech") && db.has_tech("procb"));
+    assert_eq!(db.check_3dblox().unwrap(), 0, "and the stack is well-formed");
+}
+
+// Rule (createChiplet, ODB-0529): a chiplet naming more than one tech LEF is refused.
+#[test]
+fn a_chiplet_naming_two_tech_lefs_is_refused() {
+    let raw = std::fs::read_to_string("tests/fixtures/3dblox/twoproc.3dbv")
+        .unwrap()
+        .replace("[TECH_DIR/minimal_tech.lef]", "[TECH_DIR/minimal_tech.lef, TECH_DIR/procb.lef]");
+    let dir = std::env::temp_dir().join("blox-twotech");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("twoproc.3dbv"), raw).unwrap();
+    std::fs::copy(TWOPROC, dir.join("twoproc.3dbx")).unwrap();
+    for f in ["minimal_tech.lef", "procb.lef"] {
+        std::fs::copy(format!("tests/fixtures/3dblox/{f}"), dir.join(f)).unwrap();
+    }
+    let mut db = Db::new();
+    let e = db.read_3dblox(dir.join("twoproc.3dbx").to_str().unwrap()).unwrap_err();
+    assert!(e.to_string().contains("Multiple tech LEF files are not supported"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 // ── bmap: the leg of the format the reader used to skip ─────────────────────────────────────
 
 #[test]

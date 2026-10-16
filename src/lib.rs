@@ -845,6 +845,18 @@ impl Db {
         Ok(sys::tech_from_lef(self.r(), name, lef_path)?)
     }
 
+    /// A technology and a library from one LEF (`lefin::createTechAndLib`), as a 3Dblox chiplet's
+    /// tech LEF is read: the database holds one `dbTech` per process, each found by name.
+    /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
+    pub fn tech_and_lib_from_lef(&mut self, tech_name: &str, lib_name: &str, lef_path: &str) -> Result<()> {
+        Ok(sys::tech_and_lib_from_lef(self.r(), tech_name, lib_name, lef_path)?)
+    }
+
+    /// Whether the database holds a technology of this name (`dbDatabase::findTech`).
+    pub fn has_tech(&self, name: &str) -> bool {
+        sys::has_tech(self.r(), name)
+    }
+
     /// Create the database's technology, carrying only the precision already set.
     ///
     /// odb refuses to create a `DIE` chip without a technology; a geometry-only 3Dblox read has

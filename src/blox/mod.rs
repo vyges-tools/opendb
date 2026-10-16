@@ -191,49 +191,41 @@ impl Db {
         // The design top gets no block and no tech, matching upstream's own
         // `createDesignTopChiplet`: a geometry-only read has no LEF to give it a tech, and
         // manufacturing an empty block here would be inventing structure the file never stated.
-        // A chiplet's own technology comes from its `APR_tech_file`. This is the format's
-        // load-bearing claim — it is what lets dies from different processes coexist — so it is
-        // read when present. odb keeps ONE technology per database, so the first chiplet that
-        // names a LEF supplies it and any later one is reported rather than silently ignored;
-        // a genuinely multi-process stack needs more than this layer can currently express.
-        let mut tech_from: Option<String> = None;
+        // A chiplet's own technology comes from its `APR_tech_file` (`createChiplet`): ONE tech LEF
+        // per chiplet, the technology named after the file's stem, created — with a library of the
+        // same name — only if the database holds no technology of that name yet. Chiplets from
+        // different processes thus each get their own `dbTech`; a chiplet naming none takes the
+        // database's default.
+        let mut chip_tech: BTreeMap<String, String> = BTreeMap::new();
         for def in asm.defs.values() {
+            let mut hits: Vec<String> = Vec::new();
             for pattern in &def.apr_tech_files {
-                let hits = expand_glob(Path::new(pattern));
-                if hits.is_empty() {
+                let found = expand_glob(Path::new(pattern));
+                if found.is_empty() {
                     event(
                         vyges_events::Severity::Warn,
                         "BLOX-TECH-MISSING",
                         format!("{}: APR_tech_file `{pattern}` matched no file", def.name),
                     );
-                    continue;
                 }
-                for lef in hits {
-                    let lef = lef.to_string_lossy().into_owned();
-                    match &tech_from {
-                        None => {
-                            self.tech_from_lef(&format!("{}_tech", def.name), &lef)?;
-                            tech_from = Some(def.name.clone());
-                            event(
-                                vyges_events::Severity::Info,
-                                "BLOX-TECH",
-                                format!("technology for `{}` read from {lef}", def.name),
-                            );
-                        }
-                        Some(owner) => {
-                            let note = format!(
-                                "{}: technology from {lef} not applied — odb holds one \
-                                 technology per database and `{owner}` already supplied it",
-                                def.name
-                            );
-                            event(vyges_events::Severity::Warn, "BLOX-TECH-SHARED", note.clone());
-                            asm.lossy_regions.push(note);
-                        }
+                hits.extend(found.into_iter().map(|p| p.to_string_lossy().into_owned()));
+            }
+            match hits.as_slice() {
+                [] => {}
+                [lef] => {
+                    let stem = Path::new(lef).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    if !self.has_tech(&stem) {
+                        self.tech_and_lib_from_lef(&stem, &stem, lef)?;
+                        event(vyges_events::Severity::Info, "BLOX-TECH", format!("technology `{stem}` for `{}` read from {lef}", def.name));
                     }
+                    chip_tech.insert(def.name.clone(), stem);
+                }
+                _ => {
+                    return Err(Error::Odb(format!("{}: 3DBV Parser Error: Multiple tech LEF files are not supported", def.name)));
                 }
             }
         }
-        if tech_from.is_none() && db_dbu <= 0 {
+        if chip_tech.is_empty() && db_dbu <= 0 {
             // Nothing named a LEF we could find. A placeholder carrying only the precision is
             // what lets the model exist at all, since odb refuses a DIE chip without a tech.
             self.create_tech("blox_placeholder")?;
@@ -250,7 +242,7 @@ impl Db {
         // Definitions before instances: `dbChipInst::create` derives its region instances from
         // the master as it stands, so a region added afterwards is silently not instantiated.
         for def in asm.defs.values() {
-            self.create_chip(&def.name, "", &def.chip_type.to_uppercase())?;
+            self.create_chip(&def.name, chip_tech.get(&def.name).map_or("", String::as_str), &def.chip_type.to_uppercase())?;
             if let Some((w, h)) = def.design_area {
                 self.chip_set_width(&def.name, dbu(w, dbu_per_micron))?;
                 self.chip_set_height(&def.name, dbu(h, dbu_per_micron))?;

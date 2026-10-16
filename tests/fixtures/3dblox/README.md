@@ -35,3 +35,9 @@ unrepresentable is the virtual bond (`bot: ~`), which genuinely has no counterpa
 
 The missing-bump-map path is still covered — `cli_3dblox.rs` deletes a map from the `d2d/` fixture
 and asserts the loss is reported by name.
+
+## `twoproc.3dbx`, `twoproc.3dbv`, `procb.lef` are ours
+
+Written for this crate (Apache-2.0, like the rest of it), as `minimal_tech.lef` and `withtech.*`
+are: a two-chiplet stack whose dies come from two different processes — each chiplet names its own
+tech LEF — so the reader's one-technology-per-chiplet rule has a case to run on.
