@@ -1086,6 +1086,13 @@ impl Db {
     pub fn set_inst_orient(&mut self, inst: &str, orient: &str) -> Result<()> {
         Ok(sys::set_inst_orient(self.r(), inst, orient)?)
     }
+    /// Set an instance's placement status (`PLACED`, `FIRM`, `LOCKED`, `COVER`, …).
+    /// ⛔ **Hand-written, so the shipped binary does not require `gen-write`** (manual macro
+    /// placement fixes macros FIRM).
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try).
+    pub fn set_inst_placement_status(&mut self, inst: &str, status: &str) -> Result<()> {
+        Ok(sys::set_inst_placement_status(self.r(), inst, status)?)
+    }
     /// `dbInst::setLocationOrient` — change the orient keeping the bounding box's lower-left fixed
     /// ([`Self::set_inst_orient`] keeps the ORIGIN, which moves the box). For mirroring in place.
     pub fn set_inst_location_orient(&mut self, inst: &str, orient: &str) -> Result<()> {

@@ -35,7 +35,7 @@ commands:
   manual-global-placement  --input <in.odb> --output <out.odb> [--config <cfg.json>]
                       Set instance origins (MANUAL_GLOBAL_PLACEMENT in the config).
 
-  manual-macro-placement   --input <in.odb> --output <out.odb> [--config <cfg.json>]
+  manual-macro-placement   --input <in.odb> --output <out.odb> [--config <cfg.json>] [--placement <f.cfg>] [--fixed]
                       Place + orient macros (MANUAL_MACRO_PLACEMENT in the config).
 
   diodes-on-ports     --input <in.odb> --output <out.odb> [--config <cfg.json>]
@@ -469,7 +469,9 @@ const MANUAL_MACRO_PLACEMENT_DESCRIBE: &str = r#"{
   "args": [
     { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "input .odb design" },
     { "name": "--output", "kind": "output", "type": "path", "required": true,  "description": "output .odb after placement" },
-    { "name": "--config", "kind": "config", "type": "path", "required": false, "description": "JSON with MANUAL_MACRO_PLACEMENT (default: no-op)" }
+    { "name": "--config", "kind": "config", "type": "path", "required": false, "description": "JSON with MANUAL_MACRO_PLACEMENT (default: no-op)" },
+    { "name": "--placement", "kind": "config", "type": "path", "required": false, "description": "placement file, one `instance x y orientation` per line: microns (exact decimals, truncated to DBU, then snapped to 5 DBU), LEF (N S W E FN FS FW FE) or database orientation, # comments" },
+    { "name": "--fixed", "kind": "flag", "type": "bool", "required": false, "description": "placement status FIRM (default PLACED)" }
   ],
   "config_schema": {
     "MANUAL_MACRO_PLACEMENT": {
@@ -487,18 +489,20 @@ const MANUAL_MACRO_PLACEMENT_DESCRIBE: &str = r#"{
 
 /// `manual-macro-placement --input <in.odb> --output <out.odb> [--config <cfg.json>] | --describe`.
 fn manual_macro_placement(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
-    let (mut input, mut output, mut config) = (None, None, None);
+    let (mut input, mut output, mut config, mut placement, mut fixed) = (None, None, None, None, false);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
             "--output" | "-o" => output = args.next(),
             "--config" | "-c" => config = args.next(),
+            "--placement" => placement = args.next(),
+            "--fixed" | "-f" => fixed = true,
             "--describe" => {
                 println!("{MANUAL_MACRO_PLACEMENT_DESCRIBE}");
                 return Ok(());
             }
             "-h" | "--help" => {
-                eprintln!("usage: vyges-opendb manual-macro-placement --input <in.odb> --output <out.odb> --config <cfg.json>");
+                eprintln!("usage: vyges-opendb manual-macro-placement --input <in.odb> --output <out.odb> [--config <cfg.json>] [--placement <f.cfg>] [--fixed]");
                 return Ok(());
             }
             other => return Err(format!("manual-macro-placement: unknown argument: {other}").into()),
@@ -512,7 +516,11 @@ fn manual_macro_placement(mut args: impl Iterator<Item = String>) -> Result<(), 
     };
 
     let mut db = Db::open(&input)?;
-    let n = eco::manual_macro_placement(&mut db, &cfg.manual_macro_placement)?;
+    let mut specs = cfg.manual_macro_placement;
+    if let Some(p) = placement {
+        specs.extend(eco::parse_macro_placement(&std::fs::read_to_string(&p)?, i64::from(db.block_get_db_units_per_micron()))?);
+    }
+    let n = eco::manual_macro_placement(&mut db, &specs, fixed)?;
     db.write(&output)?;
     eprintln!("manual-macro-placement: placed {n} macro(s), {input} -> {output}");
     Ok(())

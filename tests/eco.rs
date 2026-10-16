@@ -116,13 +116,21 @@ fn manual_placement_steps() {
     assert_eq!(n, 1);
     assert_eq!(db.inst_location(&inst), (12_345, 67_890));
 
-    // macro placement + orient; location moves and survives serialization
+    // macro placement + orient; location moves and survives serialization. The orientation is
+    // set BEFORE the location, so the placed box's lower left lands exactly on the given point
+    // whatever the orientation (set after, it would move the box about its origin).
     manual_macro_placement(
         &mut db,
-        &[MacroPlacement { instance: inst.clone(), x: 1_000, y: 2_000, orient: Some("R0".into()) }],
+        &[MacroPlacement { instance: inst.clone(), x: 1_000, y: 2_000, orient: Some("R90".into()) }],
+        true,
     )
     .unwrap();
     assert_eq!(db.inst_location(&inst), (1_000, 2_000));
+    assert_eq!(db.inst_get_orient(&inst), "R90");
+    assert_eq!(db.inst_get_placement_status(&inst), "FIRM");
+    // Already fixed: refused. Not in the design: refused.
+    assert!(manual_macro_placement(&mut db, &[MacroPlacement { instance: inst.clone(), x: 0, y: 0, orient: None }], true).is_err());
+    assert!(manual_macro_placement(&mut db, &[MacroPlacement { instance: "no_such_macro".into(), x: 0, y: 0, orient: None }], true).is_err());
 
     let out = std::env::temp_dir().join("vyges_opendb_place.odb");
     db.write(&out).unwrap();

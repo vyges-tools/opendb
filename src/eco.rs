@@ -94,17 +94,35 @@ pub struct MacroPlacement {
     pub orient: Option<String>,
 }
 
-/// Apply `ManualMacroPlacement`: place each macro at its origin + orientation. Returns the count.
-/// Mirrors LibreLane's `Odb.ManualMacroPlacement` (macros are placed + oriented before the flow).
+/// Apply `ManualMacroPlacement`: over the block's instances in database order, each listed one
+/// not already fixed gets its orientation (when given), then its location, then status FIRM
+/// (`fixed`) or PLACED. A listed instance that is already fixed, or that the design does not
+/// have, is an error. Returns the count placed. Mirrors LibreLane's `Odb.ManualMacroPlacement`
+/// (the orientation is set BEFORE the location: the location is the placed box's lower left).
 /// 🔒 **Transactional** — netlist and placement edits, rolled back by [`Db::eco_try`].
-pub fn manual_macro_placement(db: &mut Db, specs: &[MacroPlacement]) -> Result<usize> {
-    for spec in specs {
-        db.set_inst_location(&spec.instance, spec.x, spec.y)?;
-        if let Some(orient) = &spec.orient {
-            db.set_inst_orient(&spec.instance, orient)?;
+pub fn manual_macro_placement(db: &mut Db, specs: &[MacroPlacement], fixed: bool) -> Result<usize> {
+    let mut left: Vec<&MacroPlacement> = specs.iter().collect();
+    let mut placed = 0;
+    for inst in db.inst_names() {
+        if db.inst_is_fixed(&inst) {
+            if left.iter().any(|m| m.instance == inst) {
+                return Err(Error::Odb(format!("{inst}: already fixed")));
+            }
+            continue;
         }
+        let Some(k) = left.iter().position(|m| m.instance == inst) else { continue };
+        let m = left.remove(k);
+        if let Some(o) = &m.orient {
+            db.set_inst_orient(&inst, o)?;
+        }
+        db.set_inst_location(&inst, m.x, m.y)?;
+        db.set_inst_placement_status(&inst, if fixed { "FIRM" } else { "PLACED" })?;
+        placed += 1;
     }
-    Ok(specs.len())
+    if !left.is_empty() {
+        return Err(Error::Odb(format!("declared macros not instantiated in the design: {}", left.iter().map(|m| m.instance.as_str()).collect::<Vec<_>>().join(", "))));
+    }
+    Ok(placed)
 }
 
 /// One entry of the `SET_POWER_CONNECTIONS` config: wire an instance pin to a (power) net.
@@ -175,6 +193,92 @@ pub fn custom_io_placement(db: &mut Db, specs: &[IoPlacement]) -> Result<usize> 
         db.place_bterm(&s.port, &s.layer, s.llx, s.lly, s.urx, s.ury)?;
     }
     Ok(specs.len())
+}
+
+/// A LEF orientation as the database names it (`N` → `R0`, `FN` → `MY`, …); a database name
+/// passes through; anything else is refused.
+pub fn lef_orient_to_odb(o: &str) -> Result<String> {
+    let map = [("N", "R0"), ("S", "R180"), ("W", "R90"), ("E", "R270"), ("FN", "MY"), ("FS", "MX"), ("FW", "MXR90"), ("FE", "MYR90")];
+    if let Some((_, v)) = map.iter().find(|(k, _)| *k == o) {
+        return Ok((*v).to_string());
+    }
+    if map.iter().any(|(_, v)| *v == o) {
+        return Ok(o.to_string());
+    }
+    Err(Error::Odb(format!("bad orientation '{o}'")))
+}
+
+/// A decimal number of microns in DBU, exactly, truncated toward zero (no float rounding: `1.005`
+/// microns at 1000 DBU is 1005, not 1004).
+pub fn microns_to_dbu_truncated(v: &str, dbu: i64) -> Result<i64> {
+    let bad = || Error::Odb(format!("bad coordinate '{v}'"));
+    let (neg, t) = match v.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, v.strip_prefix('+').unwrap_or(v)),
+    };
+    let (int, frac) = t.split_once('.').unwrap_or((t, ""));
+    if int.is_empty() && frac.is_empty() || !int.chars().chain(frac.chars()).all(|c| c.is_ascii_digit()) {
+        return Err(bad());
+    }
+    let digits = format!("{int}{frac}");
+    let mantissa: i128 = if digits.is_empty() { 0 } else { digits.parse().map_err(|_| bad())? };
+    let scale = 10i128.checked_pow(frac.len() as u32).ok_or_else(bad)?;
+    let q = mantissa * i128::from(dbu) / scale;
+    let q = if neg { -q } else { q };
+    i64::try_from(q).map_err(|_| bad())
+}
+
+/// A location snapped to the nearest multiple of 5 DBU.
+pub fn snap5(n: i64) -> i64 {
+    ((n as f64 / 5.0).round_ties_even() as i64) * 5
+}
+
+/// Parse a macro placement file: `instance x y orientation` per line (microns, LEF or database
+/// orientation), `#` to the end of a line a comment. Instance names have their bus brackets
+/// escaped as the database stores them (`a[0]` → `a\[0\]`).
+pub fn parse_macro_placement(text: &str, dbu: i64) -> Result<Vec<MacroPlacement>> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let f: Vec<&str> = line.split_whitespace().collect();
+        let [name, x, y, o] = f[..] else {
+            return Err(Error::Odb(format!("bad macro placement line '{line}' (expected: instance x y orientation)")));
+        };
+        let inst = name.replace('[', "\\[").replace(']', "\\]");
+        let coord = |v: &str| -> Result<i32> { i32::try_from(snap5(microns_to_dbu_truncated(v, dbu)?)).map_err(|_| Error::Odb(format!("{name}: coordinate out of range"))) };
+        out.push(MacroPlacement { instance: inst, x: coord(x)?, y: coord(y)?, orient: Some(lef_orient_to_odb(o)?) });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod macro_placement_tests {
+    use super::*;
+
+    // Rule: microns are taken exactly (a decimal, not a float) and truncated to DBU; then snapped
+    // to 5 DBU, to the nearest.
+    #[test]
+    fn coordinates_are_exact_decimals_truncated_then_snapped_to_5_dbu() {
+        assert_eq!(microns_to_dbu_truncated("1.005", 1000).unwrap(), 1005);
+        assert_eq!(microns_to_dbu_truncated("10.0009", 1000).unwrap(), 10000);
+        assert_eq!(microns_to_dbu_truncated("-1.0009", 1000).unwrap(), -1000);
+        assert_eq!(microns_to_dbu_truncated("150", 1000).unwrap(), 150000);
+        assert_eq!(snap5(1002), 1000);
+        assert_eq!(snap5(1003), 1005);
+        assert_eq!(snap5(-1003), -1005);
+    }
+
+    #[test]
+    fn lines_parse_with_comments_orientations_and_escaped_brackets() {
+        let p = parse_macro_placement("# macros\nmem[0] 100.5 200 FN  # first\n\nram 10 20 R90\n", 1000).unwrap();
+        assert_eq!((p[0].instance.as_str(), p[0].x, p[0].y, p[0].orient.as_deref()), ("mem\\[0\\]", 100500, 200000, Some("MY")));
+        assert_eq!(p[1].orient.as_deref(), Some("R90"));
+        assert!(parse_macro_placement("ram 10 20 Q", 1000).is_err());
+        assert!(parse_macro_placement("ram 10 20", 1000).is_err());
+    }
 }
 
 /// The `DIODES_ON_PORTS` config: the diode cell, and optionally specific ports (default: all).
