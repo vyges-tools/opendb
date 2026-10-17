@@ -1969,30 +1969,30 @@ fn record_miss(code: &str, class: &str, field: &str, method: &str, raw: &str) {
 
 /// Fallback for an unmatched (class, field): emit a structured miss event, and answer
 /// assertively — distinguishing a real-but-unbound odb API from an unknown field / non-odb
-/// class. Codes: ODB-0900 unimplemented API · ODB-0901 unknown field · ODB-0902 unknown class ·
-/// ODB-0903 implemented by hand, not reachable through this generic path.
+/// class. Codes: ODB-UNIMPLEMENTED unimplemented API · ODB-UNKNOWN-FIELD unknown field · ODB-UNKNOWN-CLASS unknown class ·
+/// ODB-HAND-IMPLEMENTED implemented by hand, not reachable through this generic path.
 fn miss<T>(op: &str, class: &str, field: &str) -> crate::Result<T> {
     if let Some(u) = UNIMPLEMENTED.iter().find(|u| u.class == class && u.field == field) {
         if u.hand_written {
             let raw = format!(
                 "{class}::{} is implemented as a hand-written binding, not through get/set \
                  - call the Db method directly", u.method);
-            record_miss("ODB-0903", class, field, u.method, &raw);
+            record_miss("ODB-HAND-IMPLEMENTED", class, field, u.method, &raw);
             return Err(crate::Error::Odb(raw));
         }
         let raw = format!(
             "{class}::{} not implemented - real odb API ({} returning {}), no binding yet",
             u.method, u.kind, u.ret);
-        record_miss("ODB-0900", class, field, u.method, &raw);
+        record_miss("ODB-UNIMPLEMENTED", class, field, u.method, &raw);
         return Err(crate::Error::Odb(raw));
     }
     if KNOWN_CLASSES.contains(&class) {
         let raw = format!("{op}: unknown field '{field}' on odb class '{class}'");
-        record_miss("ODB-0901", class, field, "", &raw);
+        record_miss("ODB-UNKNOWN-FIELD", class, field, "", &raw);
         return Err(crate::Error::Odb(raw));
     }
     let raw = format!("{op}: '{class}' is not an odb class");
-    record_miss("ODB-0902", class, field, "", &raw);
+    record_miss("ODB-UNKNOWN-CLASS", class, field, "", &raw);
     Err(crate::Error::Odb(raw))
 }
 

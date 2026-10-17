@@ -136,12 +136,12 @@ fn registry_miss_is_assertive_and_catalogued() {
     assert!(registry::UNIMPLEMENTED.len() > 100, "expected a populated unimplemented catalog");
 
     // calling a real-but-unbound odb method -> assertive "not implemented" (also emitted as an
-    // ODB-0900 vyges-events warning naming the exact class::method)
+    // ODB-UNIMPLEMENTED vyges-events warning naming the exact class::method)
     let u = &registry::UNIMPLEMENTED[0];
     let e = registry::get(&db, u.class, u.field, &[]).unwrap_err();
     assert!(e.to_string().contains("not implemented"), "got: {e}");
 
-    // a non-odb class is distinguished from a real class (ODB-0902 vs ODB-0901)
+    // a non-odb class is distinguished from a real class (ODB-UNKNOWN-CLASS vs ODB-UNKNOWN-FIELD)
     let e2 = registry::get(&db, "dbBogusClass", "x", &[]).unwrap_err();
     assert!(e2.to_string().contains("not an odb class"), "got: {e2}");
     // a real class + bogus field
