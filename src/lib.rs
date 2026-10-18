@@ -2623,6 +2623,11 @@ impl Db {
     pub fn bterm_id(&self, bterm: &str) -> Result<u32> {
         Ok(sys::bterm_get_id(self.r(), bterm)?)
     }
+    /// Every net's database id, in the block's net order (aligned with `block_get_nets`): the
+    /// identity a rename keeps (the observer log's net events carry it).
+    pub fn net_ids(&self) -> Vec<u32> {
+        sys::block_net_ids(self.r())
+    }
     /// The database's own identifier for an instance. Maps keyed by instance iterate in this order.
     pub fn inst_id(&self, inst: &str) -> Result<u32> {
         Ok(sys::inst_get_id(self.r(), inst)?)
@@ -2749,6 +2754,18 @@ impl Db {
     /// The edit callbacks recorded since the last take; recording continues.
     pub fn edit_log_take(&self) -> Vec<String> {
         sys::edit_log_take(self.r())
+    }
+    /// A second recorder of the same callbacks, independent of the edit log: what a placer
+    /// listening to the block sees while another tool edits it, starting and restarting its own
+    /// edit log. The same format, each net event with the net's id after it (`net_create|N|id`,
+    /// `net_destroy|N|pins|id`; see [`Db::net_id`]) — a rename raises no callback, the id survives
+    /// it. Restarting it clears it.
+    pub fn observer_log_start(&self) -> Result<()> {
+        Ok(sys::observer_log_start(self.r())?)
+    }
+    /// The observer's callbacks since the last take; recording continues.
+    pub fn observer_log_take(&self) -> Vec<String> {
+        sys::observer_log_take(self.r())
     }
     /// `dbBlock::makeNewInstName(nullptr, base, uniquify)`: the next instance name odb would give
     /// (advancing its counter). `uniquify`: ALWAYS, IF_NEEDED, … as for buffer insertion.
