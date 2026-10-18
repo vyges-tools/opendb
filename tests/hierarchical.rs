@@ -66,3 +66,14 @@ fn hierarchical_registry_dispatch() {
     let waived = registry::get(&db, "dbMarker", "is_waived", &["drc_test".into(), "0".into()]).unwrap();
     assert_eq!(waived, serde_json::json!(true));
 }
+
+#[test]
+fn destroy_pin_mod_net_on_a_pin_with_none() {
+    // dbITerm::getModNet is null on a pin no module net reaches: nothing is destroyed (false),
+    // and a port that does not exist is an error, not a silent false.
+    let mut db = Db::open(HIER).unwrap();
+    let inst = db.inst_names().into_iter().next().expect("an instance");
+    let pin = db.iterm_names(&inst).into_iter().next().expect("a pin");
+    assert!(!db.destroy_pin_mod_net(&inst, &pin).unwrap());
+    assert!(db.destroy_pin_mod_net("", "no_such_port").is_err());
+}

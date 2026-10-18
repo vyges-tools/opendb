@@ -2814,6 +2814,12 @@ impl Db {
             Err(_) => None,
         })
     }
+    /// 🔒 **Transactional** — rolled back by [`eco_try`](Self::eco_try). `dbModNet::destroy` of
+    /// the hierarchical net on `inst/pin` (on port `pin` when `inst` is empty); `false` when it has
+    /// none.
+    pub fn destroy_pin_mod_net(&mut self, inst: &str, pin: &str) -> Result<bool> {
+        Ok(sys::destroy_pin_mod_net(self.r(), inst, pin)?)
+    }
     /// Whether two instances belong to the same module (always, in a flat database).
     pub fn same_owning_module(&self, a: &str, b: &str) -> Result<bool> {
         Ok(sys::same_owning_module(self.r(), a, b)?)
