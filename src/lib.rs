@@ -47,6 +47,7 @@ pub mod eco;
 pub mod nets3d;
 #[cfg(unix)]
 pub mod report;
+pub mod verilog;
 #[cfg(unix)]
 pub mod view3d;
 

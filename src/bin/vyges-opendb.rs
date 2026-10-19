@@ -94,6 +94,10 @@ commands:
   write-verilog-header      --input <f.odb> [--output <f.v>]
                       Emit a Verilog module header (ports + directions).
 
+  write-verilog             --input <f.odb> [--output <f.v>] [--include-pwr-gnd] [--remove-cell MASTER]...
+                      Write the block's netlist as structural Verilog: ports, wires, every
+                      instance with its connected pins (flat blocks).
+
   report-wire-length        --input <f.odb>
                       Print the total routed wire length as JSON (report).
 
@@ -187,6 +191,7 @@ fn run() -> Result<(), Fail> {
         "add-obstructions" => add_obstructions(args),
         "remove-obstructions" => remove_obstructions(args),
         "write-verilog-header" => write_verilog_header(args),
+        "write-verilog" => write_verilog(args),
         "report-wire-length" => report_wire_length(args),
         "read-3dblox" => read_3dblox(args),
         "view-3dblox" => view_3dblox(args),
@@ -251,6 +256,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "add-obstructions",
     "remove-obstructions",
     "write-verilog-header",
+    "write-verilog",
     "report-wire-length",
     "read-3dblox",
     "view-3dblox",
@@ -976,6 +982,48 @@ const WRITE_VERILOG_HEADER_DESCRIBE: &str = r#"{
   ],
   "output": "Verilog module header text"
 }"#;
+
+const WRITE_VERILOG_DESCRIBE: &str = r#"{
+  "step": "write-verilog",
+  "summary": "Write the block's netlist as structural Verilog (ports, wires, instances, assigns) from a .odb (read-only).",
+  "unix_only": true,
+  "args": [
+    { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "input .odb design" },
+    { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "write here instead of stdout" },
+    { "name": "--include-pwr-gnd", "kind": "flag", "type": "bool", "required": false, "description": "keep supply ports, pins and nets" },
+    { "name": "--remove-cell", "kind": "option", "type": "string", "required": false, "description": "leave out instances of this master (repeatable)" }
+  ],
+  "output": "Verilog netlist text"
+}"#;
+
+/// `write-verilog --input <f.odb> [--output <f.v>] [--include-pwr-gnd] [--remove-cell M]... | --describe`.
+fn write_verilog(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut output, mut pg, mut remove) = (None, None, false, Vec::new());
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--include-pwr-gnd" => pg = true,
+            "--remove-cell" => remove.extend(args.next()),
+            "--describe" => {
+                println!("{WRITE_VERILOG_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb write-verilog --input <f.odb> [--output <f.v>] [--include-pwr-gnd] [--remove-cell MASTER]...");
+                return Ok(());
+            }
+            other => return Err(format!("write-verilog: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("write-verilog: --input <f.odb> required")?;
+    let text = vyges_opendb::verilog::write_verilog(&Db::open(&input)?, pg, &remove)?;
+    match output {
+        Some(p) => std::fs::write(&p, text)?,
+        None => print!("{text}"),
+    }
+    Ok(())
+}
 
 /// `write-verilog-header --input <f.odb> [--output <f.v>] | --describe`.
 fn write_verilog_header(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
