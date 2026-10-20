@@ -30,8 +30,8 @@ pub fn cell_frequency_table(db: &Db) -> Vec<CellFreq> {
     rows
 }
 
-/// `ReportDisconnectedPins`: every instance pin (`inst/pin`) and port (`port:name`) with no net.
-/// Mirrors LibreLane's `Odb.ReportDisconnectedPins`.
+/// Every instance pin (`inst/pin`) and port (`port:name`) with no net — a raw list. LibreLane's
+/// `Odb.ReportDisconnectedPins` counts by its own rules instead: see [`disconnected_pin_report`].
 pub fn disconnected_pins(db: &Db) -> Vec<String> {
     let mut out = Vec::new();
     for inst in db.inst_names() {
@@ -47,6 +47,172 @@ pub fn disconnected_pins(db: &Db) -> Vec<String> {
         }
     }
     out
+}
+
+/// A terminal as `disconnected_pins.py`'s `Port`: its direction and signal type as odb names them
+/// (`INPUT`/`OUTPUT`/`INOUT`/…, `SIGNAL`/`POWER`/`GROUND`/…) and whether it is connected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Terminal {
+    pub name: String,
+    pub io_type: String,
+    pub sig_type: String,
+    pub connected: bool,
+}
+
+/// One module's row (`write_disconnected_pins`): reported only when it has a disconnected pin.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DisconnectedRow {
+    /// The block's or the instance's name.
+    pub name: String,
+    pub power_pins_connected: Vec<String>,
+    pub power_pins_disconnected: Vec<String>,
+    pub signal_pins_connected: Vec<String>,
+    pub signal_pins_disconnected: Vec<String>,
+    pub disconnected: usize,
+    pub critical: usize,
+}
+
+/// `Odb.ReportDisconnectedPins` for the whole design: the two metrics, the rows of the full table,
+/// and the `[ERROR]` lines the script writes to stderr.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DisconnectedReport {
+    /// `design__disconnected_pin__count`.
+    pub disconnected_pin_count: usize,
+    /// `design__critical_disconnected_pin__count` — what `Checker.DisconnectedPins` gates on.
+    pub critical_disconnected_pin_count: usize,
+    /// Modules looked at: the block (unless ignored) and each instance not skipped.
+    pub modules_checked: usize,
+    pub rows: Vec<DisconnectedRow>,
+    pub errors: Vec<String>,
+}
+
+/// `Module(...)` in `disconnected_pins.py`: one block or instance, its terminals in odb order.
+/// Transcribed as the script reads, quirks kept:
+/// - no `POWER` terminal ⇒ an error and a disconnected `<ANY POWER PIN>` (INOUT, POWER) added;
+///   the GROUND twin never fires — the script starts `ground_found = True`;
+/// - terminals are counted by direction; an `INOUT` by POWER / GROUND / any other type; any other
+///   direction (FEEDTHRU) is counted nowhere;
+/// - critical, for the block: every input, output, power or ground inout when none of that kind is
+///   connected (inputs and outputs only if there are any; power and ground whatever their count);
+///   for an instance, the FIRST of: disconnected inputs; else every output when none is connected;
+///   else disconnected power inouts; else disconnected ground inouts.
+///
+/// Returns (row, errors).
+pub fn disconnected_module(name: &str, terminals: &[Terminal], is_block: bool) -> (DisconnectedRow, Vec<String>) {
+    let mut ports: Vec<Terminal> = terminals.to_vec();
+    let mut errors = Vec::new();
+    let power_found = ports.iter().any(|t| t.sig_type == "POWER");
+    if !power_found {
+        errors.push(format!("[ERROR] Macro/instance {name} has no power pins- add it to IGNORE_DISCONNECTED_MODULES if this is intentional"));
+        ports.push(Terminal { name: "<ANY POWER PIN>".into(), io_type: "INOUT".into(), sig_type: "POWER".into(), connected: false });
+    }
+    #[derive(Default)]
+    struct Kind {
+        n: usize,
+        connected: usize,
+    }
+    let (mut inputs, mut outputs, mut power, mut ground, mut other) = (Kind::default(), Kind::default(), Kind::default(), Kind::default(), Kind::default());
+    for t in &ports {
+        let k = match (t.io_type.as_str(), t.sig_type.as_str()) {
+            ("INPUT", _) => &mut inputs,
+            ("OUTPUT", _) => &mut outputs,
+            ("INOUT", "POWER") => &mut power,
+            ("INOUT", "GROUND") => &mut ground,
+            ("INOUT", _) => &mut other,
+            _ => continue,
+        };
+        k.n += 1;
+        k.connected += usize::from(t.connected);
+    }
+    if outputs.n != 0 && outputs.connected == 0 {
+        errors.push(format!("[ERROR] No outputs of macro/instance '{name}' are connected- add it to IGNORE_DISCONNECTED_MODULES if this is intentional"));
+    }
+    if inputs.connected != inputs.n && !is_block {
+        errors.push(format!("[ERROR] Some inputs of instance '{name}' are not connected- add it to IGNORE_DISCONNECTED_MODULES if this is intentional"));
+    }
+    let disconnected = [&inputs, &outputs, &power, &ground, &other].iter().map(|k| k.n - k.connected).sum();
+    let critical = if is_block {
+        let mut c = 0;
+        if inputs.connected == 0 && inputs.n != 0 {
+            c += inputs.n;
+        }
+        if outputs.connected == 0 && outputs.n != 0 {
+            c += outputs.n;
+        }
+        if power.connected == 0 {
+            c += power.n;
+        }
+        if ground.connected == 0 {
+            c += ground.n;
+        }
+        c
+    } else if inputs.connected != inputs.n {
+        inputs.n - inputs.connected
+    } else if outputs.connected == 0 {
+        outputs.n
+    } else if power.n != power.connected {
+        power.n - power.connected
+    } else if ground.n != ground.connected {
+        ground.n - ground.connected
+    } else {
+        0
+    };
+    let names = |supply: bool, connected: bool| -> Vec<String> {
+        ports.iter().filter(|t| (t.sig_type == "POWER" || t.sig_type == "GROUND") == supply && (supply || t.sig_type == "SIGNAL") && t.connected == connected).map(|t| t.name.clone()).collect()
+    };
+    let row = DisconnectedRow {
+        name: name.to_string(),
+        power_pins_connected: names(true, true),
+        power_pins_disconnected: names(true, false),
+        signal_pins_connected: names(false, true),
+        signal_pins_disconnected: names(false, false),
+        disconnected,
+        critical,
+    };
+    (row, errors)
+}
+
+/// `Odb.ReportDisconnectedPins` (`disconnected_pins.py` `main`): the block unless its name is
+/// ignored, then every instance unless its master is ignored or its name starts `clkload` (CTS's
+/// dummy clock loads). An instance pin is connected when it has a net; a port when its net reaches
+/// at least one instance pin.
+pub fn disconnected_pin_report(db: &Db, ignore_modules: &[String]) -> DisconnectedReport {
+    let mut report = DisconnectedReport { disconnected_pin_count: 0, critical_disconnected_pin_count: 0, modules_checked: 0, rows: Vec::new(), errors: Vec::new() };
+    let add = |report: &mut DisconnectedReport, name: &str, terminals: Vec<Terminal>, is_block: bool| {
+        let (row, errors) = disconnected_module(name, &terminals, is_block);
+        report.modules_checked += 1;
+        report.disconnected_pin_count += row.disconnected;
+        report.critical_disconnected_pin_count += row.critical;
+        report.errors.extend(errors);
+        if row.disconnected != 0 {
+            report.rows.push(row);
+        }
+    };
+    let block = db.block_name();
+    if !ignore_modules.contains(&block) {
+        let terminals = db
+            .bterm_names()
+            .into_iter()
+            .map(|b| {
+                let net = db.bterm_net(&b);
+                let connected = !net.is_empty() && !db.net_iterms(&net).is_empty();
+                Terminal { io_type: db.bterm_get_io_type(&b), sig_type: db.bterm_get_sig_type(&b), connected, name: b }
+            })
+            .collect();
+        add(&mut report, &block, terminals, true);
+    }
+    for inst in db.inst_names() {
+        if ignore_modules.contains(&db.inst_master(&inst)) || inst.starts_with("clkload") {
+            continue;
+        }
+        let terminals = db
+            .iterm_names(&inst)
+            .into_iter()
+            .map(|p| Terminal { io_type: db.iterm_get_io_type(&inst, &p), sig_type: db.iterm_get_sig_type(&inst, &p), connected: !db.net_of(&inst, &p).is_empty(), name: p })
+            .collect();
+        add(&mut report, &inst, terminals, false);
+    }
+    report
 }
 
 /// One net's connectivity: its type, special flag, and the pins it touches.
@@ -181,4 +347,58 @@ pub fn antenna_properties(db: &crate::Db, cells: &[String]) -> Vec<AntennaProper
             e
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn t(name: &str, io: &str, sig: &str, connected: bool) -> Terminal {
+        Terminal { name: name.into(), io_type: io.into(), sig_type: sig.into(), connected }
+    }
+
+    // Rule (disconnected_pins.py, instance_critical_disconnected_pin_count): an `if/elif` chain —
+    // disconnected inputs are critical, and then a disconnected power pin is NOT counted as well.
+    #[test]
+    fn an_instance_counts_only_the_first_critical_kind() {
+        let pins = [t("A", "INPUT", "SIGNAL", false), t("X", "OUTPUT", "SIGNAL", true), t("VPWR", "INOUT", "POWER", false), t("VGND", "INOUT", "GROUND", true)];
+        let (row, errors) = disconnected_module("u1", &pins, false);
+        assert_eq!((row.disconnected, row.critical), (2, 1), "the input only; the power pin is disconnected but not critical");
+        assert_eq!(errors.len(), 1, "some inputs not connected: {errors:?}");
+        let pins = [t("A", "INPUT", "SIGNAL", true), t("X", "OUTPUT", "SIGNAL", true), t("VPWR", "INOUT", "POWER", false), t("VGND", "INOUT", "GROUND", false)];
+        assert_eq!(disconnected_module("u1", &pins, false).0.critical, 1, "power before ground");
+        let pins = [t("A", "INPUT", "SIGNAL", true), t("X", "OUTPUT", "SIGNAL", false), t("Y", "OUTPUT", "SIGNAL", false), t("VPWR", "INOUT", "POWER", true)];
+        assert_eq!(disconnected_module("u1", &pins, false).0.critical, 2, "every output when none is connected");
+    }
+
+    // Rule (Module.__init__): no POWER terminal adds a disconnected `<ANY POWER PIN>` and an error;
+    // the ground check never fires (`ground_found = True` from the start). For the BLOCK, power
+    // inouts with none connected are all critical whatever their count — so that pin is critical.
+    #[test]
+    fn a_missing_power_pin_is_added_and_a_missing_ground_pin_is_not() {
+        let ports = [t("in", "INPUT", "SIGNAL", true), t("out", "OUTPUT", "SIGNAL", true)];
+        let (row, errors) = disconnected_module("top", &ports, true);
+        assert_eq!((row.disconnected, row.critical), (1, 1));
+        assert_eq!(row.power_pins_disconnected, ["<ANY POWER PIN>"]);
+        assert_eq!(errors.len(), 1, "power only, never ground: {errors:?}");
+        assert!(errors[0].contains("has no power pins"));
+    }
+
+    // Rule (top_module_critical_disconnected_pin_count): the block's inputs are critical only when
+    // NONE is connected — one connected input makes the rest non-critical.
+    #[test]
+    fn the_block_needs_one_connection_of_each_kind() {
+        let ports = [t("a", "INPUT", "SIGNAL", true), t("b", "INPUT", "SIGNAL", false), t("y", "OUTPUT", "SIGNAL", false), t("VDD", "INOUT", "POWER", true), t("VSS", "INOUT", "GROUND", true)];
+        let (row, _) = disconnected_module("top", &ports, true);
+        assert_eq!((row.disconnected, row.critical), (2, 1), "b is not critical; y is, as the only output");
+    }
+
+    // Rule (PortStats): only INPUT, OUTPUT and INOUT are counted; an INOUT of another signal type
+    // (CLOCK, ANALOG) is an "other" inout — disconnected, never critical; FEEDTHRU is not counted.
+    #[test]
+    fn other_inouts_count_but_are_never_critical() {
+        let pins = [t("A", "INPUT", "SIGNAL", true), t("X", "OUTPUT", "SIGNAL", true), t("VPWR", "INOUT", "POWER", true), t("AN", "INOUT", "ANALOG", false), t("F", "FEEDTHRU", "SIGNAL", false)];
+        let (row, _) = disconnected_module("u1", &pins, false);
+        assert_eq!((row.disconnected, row.critical), (1, 0));
+    }
 }

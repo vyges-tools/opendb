@@ -661,27 +661,33 @@ fn cell_frequency_tables(mut args: impl Iterator<Item = String>) -> Result<(), F
 
 const REPORT_DISCONNECTED_PINS_DESCRIBE: &str = r#"{
   "step": "report-disconnected-pins",
-  "summary": "Report instance pins + ports that carry no net, as JSON (read-only).",
-  "librelane_equivalent": "Odb.ReportDisconnectedPins",
+  "summary": "Count disconnected pins, and the critical ones that likely leave a dead design, as JSON (read-only). Exit 1 when any is critical.",
+  "librelane_equivalent": "Odb.ReportDisconnectedPins + Checker.DisconnectedPins",
   "unix_only": true,
   "args": [
-    { "name": "--input", "kind": "input", "type": "path", "required": true, "description": "input .odb design" }
+    { "name": "--input", "kind": "input", "type": "path", "required": true, "description": "input .odb design" },
+    { "name": "--ignore-module", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "a block or master name to skip (IGNORE_DISCONNECTED_MODULES)" }
   ],
-  "output": "JSON array of strings on stdout: \"inst/pin\" and \"port:name\""
+  "rules": "An instance pin is connected when it has a net; a port when its net reaches an instance pin. Critical, for the block: every input, output, power or ground inout when none of that kind is connected. For an instance, the first of: disconnected inputs; every output when none is connected; disconnected power inouts; disconnected ground inouts. Instances named clkload* (dummy clock loads) are skipped.",
+  "output": "JSON object on stdout: disconnected_pin_count, critical_disconnected_pin_count, modules_checked, rows (each module with a disconnected pin), errors; metrics as design__disconnected_pin__count and design__critical_disconnected_pin__count",
+  "exit": "0 when no pin is critical, 1 when any is, 2 when no module was checked"
 }"#;
 
-/// `report-disconnected-pins --input <f.odb> | --describe` — read-only report to stdout (JSON).
+/// `report-disconnected-pins --input <f.odb> [--ignore-module M]... | --describe` — read-only report
+/// to stdout (JSON); exit 1 on a critical disconnected pin, as `Checker.DisconnectedPins` errors.
 fn report_disconnected_pins(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut input = None;
+    let mut ignore = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
+            "--ignore-module" => ignore.extend(args.next()),
             "--describe" => {
                 println!("{REPORT_DISCONNECTED_PINS_DESCRIBE}");
                 return Ok(());
             }
             "-h" | "--help" => {
-                diag!("usage: vyges-opendb report-disconnected-pins --input <f.odb>");
+                diag!("usage: vyges-opendb report-disconnected-pins --input <f.odb> [--ignore-module M]...");
                 return Ok(());
             }
             other => return Err(format!("report-disconnected-pins: unknown argument: {other}").into()),
@@ -689,10 +695,25 @@ fn report_disconnected_pins(mut args: impl Iterator<Item = String>) -> Result<()
     }
     let input = input.ok_or("report-disconnected-pins: --input <f.odb> required")?;
     let db = Db::open(&input)?;
-    let pins = report::disconnected_pins(&db);
-    diag!("report-disconnected-pins: {} disconnected", pins.len());
-    println!("{}", serde_json::to_string_pretty(&pins)?);
-    Ok(())
+    let report = report::disconnected_pin_report(&db, &ignore);
+    for e in &report.errors {
+        diag!("{e}");
+    }
+    diag!(
+        "Found {} disconnected pin(s), of which {} are critical.",
+        report.disconnected_pin_count, report.critical_disconnected_pin_count
+    );
+    let mut out = serde_json::to_value(&report)?;
+    out["metrics"] = serde_json::json!({
+        "design__disconnected_pin__count": report.disconnected_pin_count,
+        "design__critical_disconnected_pin__count": report.critical_disconnected_pin_count,
+    });
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    // A pass word never comes from a run that looked at nothing.
+    if report.modules_checked == 0 {
+        std::process::exit(2);
+    }
+    fail_on(report.critical_disconnected_pin_count)
 }
 
 /// The narrowest site any row uses, in DBU — `0` when the design has no rows.
