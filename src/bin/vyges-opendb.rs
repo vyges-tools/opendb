@@ -99,7 +99,8 @@ commands:
                       instance with its connected pins (flat blocks).
 
   report-wire-length        --input <f.odb> [--threshold <um>] [--report-out <csv>]
-                      Print the total routed wire length as JSON (report).
+                      Every routed net's length, longest first, as JSON; with --threshold, exit 1
+                      when the longest is above it (report).
 
   report-connectivity       --input <f.odb>
                       Dump the netlist connectivity graph as JSON (report).
