@@ -98,7 +98,7 @@ commands:
                       Write the block's netlist as structural Verilog: ports, wires, every
                       instance with its connected pins (flat blocks).
 
-  report-wire-length        --input <f.odb>
+  report-wire-length        --input <f.odb> [--threshold <um>] [--report-out <csv>]
                       Print the total routed wire length as JSON (report).
 
   report-connectivity       --input <f.odb>
@@ -1858,36 +1858,76 @@ fn check_3dblox(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
 const REPORT_WIRE_LENGTH_DESCRIBE: &str = r#"{
   "step": "report-wire-length",
-  "summary": "Report the total routed wire length (DBU) as JSON (read-only).",
-  "librelane_equivalent": "Odb.ReportWireLength",
+  "summary": "Report every routed net's wire length, longest first, and the longest as route__wirelength__max (read-only). With --threshold, exit 1 when the longest is above it.",
+  "librelane_equivalent": "Odb.ReportWireLength + Checker.WireLength",
   "unix_only": true,
   "args": [
-    { "name": "--input", "kind": "input", "type": "path", "required": true, "description": "input .odb design" }
+    { "name": "--input", "kind": "input", "type": "path", "required": true, "description": "input .odb design" },
+    { "name": "--threshold", "kind": "option", "type": "number", "required": false, "description": "microns (WIRE_LENGTH_THRESHOLD); without it the check is skipped, as the checker skips" },
+    { "name": "--report-out", "kind": "output", "type": "path", "required": false, "description": "CSV net,length_um as the flow step writes it (lengths in µm/mm/m)" }
   ],
-  "output": "JSON { total_wire_length_dbu } on stdout"
+  "rules": "A net's length is dbWire::getLength (every non-via shape's |dx - dy|) over the block's DEF units, printed exact. Nets with no wire are not listed. Equal lengths keep the block's net order. The check fails when the longest is strictly above the threshold.",
+  "output": "JSON { max_length_um, total_wire_length_dbu, nets_with_wire, threshold_um, check, rows, metrics } on stdout; check is pass, fail or skipped (no threshold); exit 2 when no net has a wire and a threshold was given"
 }"#;
 
-/// `report-wire-length --input <f.odb> | --describe`.
+/// `report-wire-length --input <f.odb> [--threshold <um>] [--report-out <csv>] | --describe`.
 fn report_wire_length(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
-    let mut input = None;
+    let (mut input, mut threshold, mut report_out) = (None, None::<f64>, None);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
+            "--threshold" => {
+                let v = args.next().ok_or("report-wire-length: --threshold <um>")?;
+                threshold = Some(v.parse().map_err(|_| format!("report-wire-length: --threshold {v}: not a number"))?);
+            }
+            "--report-out" | "-R" => report_out = args.next(),
             "--describe" => {
                 println!("{REPORT_WIRE_LENGTH_DESCRIBE}");
                 return Ok(());
             }
             "-h" | "--help" => {
-                diag!("usage: vyges-opendb report-wire-length --input <f.odb>");
+                diag!("usage: vyges-opendb report-wire-length --input <f.odb> [--threshold <um>] [--report-out <csv>]");
                 return Ok(());
             }
             other => return Err(format!("report-wire-length: unknown argument: {other}").into()),
         }
     }
     let input = input.ok_or("report-wire-length: --input <f.odb> required")?;
-    let total = Db::open(&input)?.total_wire_length();
-    println!("{{ \"total_wire_length_dbu\": {total} }}");
-    Ok(())
+    let db = Db::open(&input)?;
+    let (names, lengths) = (db.net_names(), db.net_wire_lengths());
+    if names.len() != lengths.len() {
+        return Err(format!("report-wire-length: {} net names but {} lengths", names.len(), lengths.len()).into());
+    }
+    let dbu = db.block_get_def_units() as i64;
+    let report = report::wire_length_report(&names, &lengths, dbu);
+    if let Some(path) = &report_out {
+        let mut csv = String::from("net,length_um\n");
+        for r in &report.rows {
+            csv.push_str(&format!("{},{}\n", r.net, report::wire_length_si(r.length_dbu as u64, dbu as u64)));
+        }
+        std::fs::write(path, csv)?;
+    }
+    let check = match threshold {
+        None => "skipped",
+        Some(t) if report.max_length_um > t => "fail",
+        Some(_) => "pass",
+    };
+    if threshold.is_none() {
+        diag!("Threshold for threshold-surpassing long wires is not set. The check is skipped.");
+    } else if check == "fail" {
+        diag!("{} threshold-surpassing long wires found.", report.max_length_um);
+    }
+    let mut out = serde_json::to_value(&report)?;
+    out["nets_with_wire"] = serde_json::json!(report.rows.len());
+    out["threshold_um"] = serde_json::json!(threshold);
+    out["check"] = serde_json::json!(check);
+    out["metrics"] = serde_json::json!({ "route__wirelength__max": report.max_length_um });
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    // A pass word never comes from a run that looked at nothing.
+    if threshold.is_some() && report.rows.is_empty() {
+        std::process::exit(2);
+    }
+    fail_on(usize::from(check == "fail"))
 }
 
 const REPORT_CONNECTIVITY_DESCRIBE: &str = r#"{

@@ -349,6 +349,84 @@ pub fn antenna_properties(db: &crate::Db, cells: &[String]) -> Vec<AntennaProper
         .collect()
 }
 
+/// One routed net and its wire length, as `wire_lengths.py` lists it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct WireLengthRow {
+    pub net: String,
+    /// `dbWire::getLength`, in DBU.
+    pub length_dbu: i64,
+    /// The length in microns, exactly as the script's `Decimal(length) / Decimal(dbunits)` prints.
+    pub length_um: String,
+}
+
+/// LibreLane's `Odb.ReportWireLength` (`wire_lengths.py`) plus `Checker.WireLength`.
+#[derive(Debug, Clone, Serialize)]
+pub struct WireLengthReport {
+    /// `route__wirelength__max`, in microns.
+    pub max_length_um: f64,
+    /// Every net with a wire, longest first.
+    pub rows: Vec<WireLengthRow>,
+    pub total_wire_length_dbu: u64,
+}
+
+/// The rows of `wire_lengths.py`: every net that HAS a wire (a net without one is left out, not
+/// listed as 0), sorted by `getLength()` longest first — Python's sort is stable, so equal
+/// lengths keep the block's net order.
+pub fn wire_length_report(names: &[String], lengths: &[i64], dbu: i64) -> WireLengthReport {
+    let mut rows: Vec<WireLengthRow> = names
+        .iter()
+        .zip(lengths)
+        .filter(|(_, &l)| l >= 0)
+        .map(|(n, &l)| WireLengthRow { net: n.clone(), length_dbu: l, length_um: decimal_ratio(l as u64, dbu as u64, 0) })
+        .collect();
+    rows.sort_by_key(|r| std::cmp::Reverse(r.length_dbu));
+    let max = rows.first().map_or(0.0, |r| r.length_um.parse::<f64>().unwrap_or(f64::NAN));
+    let total = rows.iter().map(|r| r.length_dbu as u64).sum();
+    WireLengthReport { max_length_um: max, rows, total_wire_length_dbu: total }
+}
+
+/// `num / (den * 1000^shift)` as Python's `Decimal` division of two integers prints it: exact, with
+/// no trailing fractional zeros and no point when whole (`12345/1000` is `12.345`, `100000/1000`
+/// is `100`). Exact whenever `den` has no prime factor but 2 and 5 — every DEF unit in use; any
+/// other is printed from a float.
+pub fn decimal_ratio(num: u64, den: u64, shift: u32) -> String {
+    let den = den as u128 * 1000u128.pow(shift);
+    let (mut d, mut twos, mut fives) = (den, 0u32, 0u32);
+    while d > 0 && d % 2 == 0 {
+        d /= 2;
+        twos += 1;
+    }
+    while d > 0 && d % 5 == 0 {
+        d /= 5;
+        fives += 1;
+    }
+    if d != 1 {
+        return format!("{}", num as f64 / den as f64);
+    }
+    let k = twos.max(fives);
+    let scaled = num as u128 * (10u128.pow(k) / den);
+    let digits = format!("{scaled:0>width$}", width = k as usize + 1);
+    let (int, frac) = digits.split_at(digits.len() - k as usize);
+    let frac = frac.trim_end_matches('0');
+    if frac.is_empty() {
+        int.to_string()
+    } else {
+        format!("{int}.{frac}")
+    }
+}
+
+/// `to_si` in `wire_lengths.py` (the flow step passes `--human-readable`): microns, divided by
+/// 1000 while the value is 1000 or more, as µm, mm or m.
+pub fn wire_length_si(num: u64, den: u64) -> String {
+    let units = ["µm", "mm", "m"];
+    let mut unit = 0usize;
+    // value >= 1000 <=> num >= 1000 * den at this unit
+    while unit < units.len() - 1 && num as u128 >= den as u128 * 1000u128.pow(unit as u32 + 1) {
+        unit += 1;
+    }
+    format!("{}{}", decimal_ratio(num, den, unit as u32), units[unit])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,5 +478,29 @@ mod tests {
         let pins = [t("A", "INPUT", "SIGNAL", true), t("X", "OUTPUT", "SIGNAL", true), t("VPWR", "INOUT", "POWER", true), t("AN", "INOUT", "ANALOG", false), t("F", "FEEDTHRU", "SIGNAL", false)];
         let (row, _) = disconnected_module("u1", &pins, false);
         assert_eq!((row.disconnected, row.critical), (1, 0));
+    }
+
+    /// Rule (`wire_lengths.py`): lengths are `Decimal(getLength) / Decimal(dbunits)`, printed exact;
+    /// the flow step's `--human-readable` steps to mm / m at 1000.
+    #[test]
+    fn wire_lengths_print_as_python_decimal() {
+        assert_eq!(decimal_ratio(12345, 1000, 0), "12.345");
+        assert_eq!(decimal_ratio(100000, 1000, 0), "100");
+        assert_eq!(decimal_ratio(1, 4000, 0), "0.00025");
+        assert_eq!(decimal_ratio(0, 1000, 0), "0");
+        assert_eq!(wire_length_si(999_999, 1000), "999.999µm");
+        assert_eq!(wire_length_si(1_500_000, 1000), "1.5mm");
+        assert_eq!(wire_length_si(1_234_567, 1000), "1.234567mm");
+        assert_eq!(wire_length_si(2_000_000_000, 1000), "2m");
+    }
+
+    /// Rule: nets without a wire are not rows; longest first, equal lengths in net order.
+    #[test]
+    fn wire_length_rows_longest_first_stable() {
+        let names: Vec<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        let r = wire_length_report(&names, &[500, -1, 2000, 500], 1000);
+        let order: Vec<&str> = r.rows.iter().map(|x| x.net.as_str()).collect();
+        assert_eq!(order, ["c", "a", "d"]);
+        assert_eq!((r.max_length_um, r.total_wire_length_dbu), (2.0, 3000));
     }
 }

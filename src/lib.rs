@@ -552,6 +552,8 @@ impl Db {
     pub fn bterm_direction(&self, bterm: &str) -> String { sys::bterm_direction(self.r(), bterm) }
     /// Total routed wire length over all nets, in DBU.
     pub fn total_wire_length(&self) -> u64 { sys::total_wire_length(self.r()) }
+    /// Each net's routed wire length (DBU), in net order (`nth_net_name`); `-1` = no wire.
+    pub fn net_wire_lengths(&self) -> Vec<i64> { sys::net_wire_lengths(self.r()) }
 
     // ---- antenna ratio inputs (routed substrate) ----------------------------
     // Numerator and denominator for the antenna check in `vyges-ant`. Read off the ROUTED
