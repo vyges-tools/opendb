@@ -234,6 +234,18 @@ pub fn init_events_logging() {
 #[cfg(not(unix))]
 pub fn init_events_logging() {}
 
+/// An instance pin as the estimator reads it ([`Db::net_iterm_places`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ITermPlace {
+    /// The terminal's database id.
+    pub id: u32,
+    /// Its average XY, else its instance's origin.
+    pub x: i32,
+    pub y: i32,
+    /// Its instance is placed.
+    pub placed: bool,
+}
+
 /// One routed shape: a metal rectangle on a layer, or a via joining two layers.
 ///
 /// Layers are odb layer *numbers*; resolve with [`Db::layer_name_by_number`]. Vias carry the
@@ -2639,6 +2651,17 @@ impl Db {
     /// net of that name. The block iterates its nets in this order.
     pub fn net_id(&self, net: &str) -> Result<u32> {
         Ok(sys::net_get_id(self.r(), net)?)
+    }
+    /// Per instance pin of `net`, aligned with [`Db::net_iterms`]: its id, where it sits
+    /// ([`Db::iterm_avg_xy`], else its instance's origin) and whether its instance is placed.
+    /// ⭐ One lookup by name for the net; those three by pin cost two each.
+    pub fn net_iterm_places(&self, net: &str) -> Vec<ITermPlace> {
+        sys::net_iterm_places(self.r(), net)
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| ITermPlace { id: c[0] as u32, x: c[1] as i32, y: c[2] as i32, placed: c[3] != 0 })
+            .collect()
     }
     /// `dbNet::insertBufferBeforeLoads` — odb's OWN buffer insertion, not a re-implementation: a
     /// buffer of `master` before `loads` (instance pins as `(inst, pin)`, then ports), named by
