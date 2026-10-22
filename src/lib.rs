@@ -2635,6 +2635,11 @@ impl Db {
     pub fn inst_id(&self, inst: &str) -> Result<u32> {
         Ok(sys::inst_get_id(self.r(), inst)?)
     }
+    /// The database's own identifier for a net (kept across a rename); an error when there is no
+    /// net of that name. The block iterates its nets in this order.
+    pub fn net_id(&self, net: &str) -> Result<u32> {
+        Ok(sys::net_get_id(self.r(), net)?)
+    }
     /// `dbNet::insertBufferBeforeLoads` — odb's OWN buffer insertion, not a re-implementation: a
     /// buffer of `master` before `loads` (instance pins as `(inst, pin)`, then ports), named by
     /// odb's block-wide uniquifier from `buf_base` and `net_base` (`None`: odb's default `net`), at

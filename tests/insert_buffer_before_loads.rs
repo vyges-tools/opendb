@@ -238,3 +238,35 @@ fn visit_connected_pins_on_a_flat_net() {
     assert_eq!(iterms, vec!["I:a1/A", "I:a2/A", "I:drvr/Z"]);
     assert_eq!(db.net_iterms("n1").iter().map(|p| format!("I:{p}")).collect::<Vec<_>>(), pins[..3].to_vec(), "the database's own order");
 }
+
+/// The order a caller can keep without reading every name back (`net_id`, `inst_id`): the block
+/// iterates its nets and instances by id; an inserted buffer takes an instance id and a net id
+/// after every existing one; and the net that hands an output port's name to the new net keeps
+/// its id under its new name (a rename moves the name, not the net).
+#[test]
+fn an_inserted_buffer_appends_by_id_and_a_rename_keeps_the_id() {
+    let mut db = design();
+    db.create_inst("BUF_X1", "buf0").unwrap();
+    db.create_net("in").unwrap();
+    db.create_net("out").unwrap();
+    port(&mut db, "in", "in", "INPUT");
+    port(&mut db, "out", "out", "OUTPUT");
+    db.connect("buf0", "A", "in").unwrap();
+    db.connect("buf0", "Z", "out").unwrap();
+    let ids = |db: &Db| -> Vec<u32> { db.net_names().iter().map(|n| db.net_id(n).unwrap()).collect() };
+    let ascending = |v: &[u32]| v.windows(2).all(|w| w[0] < w[1]);
+    assert!(ascending(&ids(&db)), "nets iterate by id");
+    assert_eq!(ids(&db), db.net_ids());
+    let (net_max, inst_max) = (*db.net_ids().iter().max().unwrap(), db.inst_id("buf0").unwrap());
+    let out_id = db.net_id("out").unwrap();
+    let b = db.insert_buffer_before_loads(Some("out"), &[], &["out".into()], "BUF_X4", None, "buf", None, "ALWAYS", false).unwrap();
+    assert!(db.inst_id(&b).unwrap() > inst_max, "a new instance takes an id after every existing one");
+    assert!(ascending(&ids(&db)), "nets still iterate by id");
+    // the port's name moved to the new net, whose id comes after every existing one ...
+    assert!(db.net_id("out").unwrap() > net_max);
+    // ... and the old net kept its id under its new name
+    let renamed = db.net_names().into_iter().find(|n| db.net_id(n).unwrap() == out_id).expect("the old net is still there");
+    assert_ne!(renamed, "out");
+    assert!(db.net_iterms(&renamed).contains(&"buf0/Z".to_string()));
+    assert!(db.net_id("no_such_net").is_err());
+}
