@@ -1473,6 +1473,30 @@ impl Db {
     pub fn ndr_add_use_via(&mut self, ndr: &str, via: &str) -> Result<bool> {
         Ok(sys::ndr_add_use_via(self.r(), ndr, via)?)
     }
+    /// A power domain's elements (`getElements`), in order; empty for an unknown domain.
+    pub fn pwr_domain_elements(&self, domain: &str) -> Result<Vec<String>> {
+        Ok(sys::pwr_domain_elements(self.r(), domain)?)
+    }
+    /// A logic port's direction (`getDirection`); empty for an unknown port.
+    pub fn logic_port_direction(&self, port: &str) -> Result<String> {
+        Ok(sys::logic_port_direction(self.r(), port)?)
+    }
+    /// A power switch's port, state or port-map records, in the database's order, as
+    /// `(a, b, c)` -- see the field table on `pwr_switch_records` in the shim header.
+    /// `field`: `output`, `input`, `control`, `on_state`, `ack`, `port_map`.
+    pub fn pwr_switch_records(&self, sw: &str, field: &str) -> Result<Vec<(String, String, String)>> {
+        let v = sys::pwr_switch_records(self.r(), sw, field)?;
+        Ok(v.chunks_exact(3).map(|r| (r[0].clone(), r[1].clone(), r[2].clone())).collect())
+    }
+    /// A level shifter's `elements` or `exclude_elements`, in order.
+    pub fn level_shifter_list(&self, ls: &str, field: &str) -> Result<Vec<String>> {
+        Ok(sys::level_shifter_records(self.r(), ls, field)?)
+    }
+    /// A level shifter's `(instance, port)` pairs (`getInstances`), in order.
+    pub fn level_shifter_instances(&self, ls: &str) -> Result<Vec<(String, String)>> {
+        let v = sys::level_shifter_records(self.r(), ls, "instances")?;
+        Ok(v.chunks_exact(2).map(|r| (r[0].clone(), r[1].clone())).collect())
+    }
     /// An NDR's use-vias (`getUseVias`), in order.
     pub fn ndr_use_vias(&self, ndr: &str) -> Result<Vec<String>> {
         Ok(sys::ndr_use_vias(self.r(), ndr)?)
