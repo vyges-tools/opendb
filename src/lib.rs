@@ -1486,7 +1486,7 @@ impl Db {
     /// `field`: `output`, `input`, `control`, `on_state`, `ack`, `port_map`.
     pub fn pwr_switch_records(&self, sw: &str, field: &str) -> Result<Vec<(String, String, String)>> {
         let v = sys::pwr_switch_records(self.r(), sw, field)?;
-        Ok(v.chunks_exact(3).map(|r| (r[0].clone(), r[1].clone(), r[2].clone())).collect())
+        Ok(v.as_chunks::<3>().0.iter().map(|[a, b, c]| (a.clone(), b.clone(), c.clone())).collect())
     }
     /// A level shifter's `elements` or `exclude_elements`, in order.
     pub fn level_shifter_list(&self, ls: &str, field: &str) -> Result<Vec<String>> {
@@ -1495,7 +1495,7 @@ impl Db {
     /// A level shifter's `(instance, port)` pairs (`getInstances`), in order.
     pub fn level_shifter_instances(&self, ls: &str) -> Result<Vec<(String, String)>> {
         let v = sys::level_shifter_records(self.r(), ls, "instances")?;
-        Ok(v.chunks_exact(2).map(|r| (r[0].clone(), r[1].clone())).collect())
+        Ok(v.as_chunks::<2>().0.iter().map(|[a, b]| (a.clone(), b.clone())).collect())
     }
     /// An NDR's use-vias (`getUseVias`), in order.
     pub fn ndr_use_vias(&self, ndr: &str) -> Result<Vec<String>> {
