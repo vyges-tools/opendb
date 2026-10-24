@@ -1578,6 +1578,54 @@ impl Db {
     pub fn level_shifter_add_instance(&mut self, ls: &str, inst: &str, port: &str) -> Result<()> {
         Ok(sys::level_shifter_add_instance(self.r(), ls, inst, port)?)
     }
+    /// A power domain's area (`getArea`): `[x1, y1, x2, y2]`, or `None` when it was never set.
+    pub fn pwr_domain_area(&self, domain: &str) -> Result<Option<[i32; 4]>> {
+        let v = sys::pwr_domain_area(self.r(), domain)?;
+        Ok(<[i32; 4]>::try_from(v.as_slice()).ok())
+    }
+    /// `dbRegion::create`; `false` where odb returns nullptr (the name is taken).
+    pub fn region_create(&mut self, name: &str) -> Result<bool> {
+        Ok(sys::region_create(self.r(), name)?)
+    }
+    /// `dbRegion::setRegionType`: INCLUSIVE, EXCLUSIVE or SUGGESTED.
+    pub fn region_set_type(&mut self, region: &str, kind: &str) -> Result<()> {
+        Ok(sys::region_set_type(self.r(), region, kind)?)
+    }
+    /// `dbBox::create(region, …)`: one more boundary; `false` where odb returns nullptr.
+    pub fn region_add_boundary(&mut self, region: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<bool> {
+        Ok(sys::region_add_boundary(self.r(), region, x1, y1, x2, y2)?)
+    }
+    /// `dbGroup::create(region, name)`; `false` where the group name is taken.
+    pub fn group_create_in_region(&mut self, region: &str, name: &str) -> Result<bool> {
+        Ok(sys::group_create_in_region(self.r(), region, name)?)
+    }
+    /// `dbGroup::setType`: PHYSICAL_CLUSTER, VOLTAGE_DOMAIN, POWER_DOMAIN or VISUAL_DEBUG.
+    pub fn group_set_type(&mut self, group: &str, kind: &str) -> Result<()> {
+        Ok(sys::group_set_type(self.r(), group, kind)?)
+    }
+    /// `dbGroup::addInst`: moves the instance out of any group it is in; the group's list is
+    /// prepended to.
+    pub fn group_add_inst(&mut self, group: &str, inst: &str) -> Result<()> {
+        Ok(sys::group_add_inst(self.r(), group, inst)?)
+    }
+    /// `dbNet::create`; `false` where the name is taken.
+    pub fn net_try_create(&mut self, name: &str) -> Result<bool> {
+        Ok(sys::net_try_create(self.r(), name)?)
+    }
+    /// `dbBTerm::create` on the named net; `false` where odb returns nullptr.
+    pub fn bterm_try_create(&mut self, net: &str, name: &str) -> Result<bool> {
+        Ok(sys::bterm_try_create(self.r(), net, name)?)
+    }
+    /// The children of `module` ("" = the top module) in `getChildren` order: (hierarchical name of
+    /// the dbModInst, name of its master module).
+    pub fn module_children_paths(&self, module: &str) -> Result<Vec<(String, String)>> {
+        Ok(sys::module_children_paths(self.r(), module)?.chunks(2).map(|c| (c[0].clone(), c[1].clone())).collect())
+    }
+    /// Every instance in `getInsts` order with its module's path: "" for none, "." for the top
+    /// module, else the hierarchical name of the module's dbModInst.
+    pub fn inst_module_paths(&self) -> Result<Vec<(String, String)>> {
+        Ok(sys::inst_module_paths(self.r())?.chunks(2).map(|c| (c[0].clone(), c[1].clone())).collect())
+    }
     /// An NDR's use-vias (`getUseVias`), in order.
     pub fn ndr_use_vias(&self, ndr: &str) -> Result<Vec<String>> {
         Ok(sys::ndr_use_vias(self.r(), ndr)?)
