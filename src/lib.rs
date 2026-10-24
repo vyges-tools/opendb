@@ -1498,8 +1498,8 @@ impl Db {
         Ok(v.as_chunks::<2>().0.iter().map(|[a, b]| (a.clone(), b.clone())).collect())
     }
     /// Does a power-intent object exist (`find*` on the block)? `kind`: `power_domain`,
-    /// `logic_port`, `power_switch`, `isolation`, `level_shifter`, or `master` (any library, in the
-    /// database's order).
+    /// `logic_port`, `power_switch`, `isolation`, `level_shifter`, `inst`, `net`, or `master` (any
+    /// library, in the database's order).
     pub fn upf_find(&self, kind: &str, name: &str) -> Result<bool> {
         Ok(sys::upf_find(self.r(), kind, name)?)
     }
@@ -1625,6 +1625,42 @@ impl Db {
     /// module, else the hierarchical name of the module's dbModInst.
     pub fn inst_module_paths(&self) -> Result<Vec<(String, String)>> {
         Ok(sys::inst_module_paths(self.r())?.chunks(2).map(|c| (c[0].clone(), c[1].clone())).collect())
+    }
+    /// An instance's iterms in `getITerms` order: (mterm, io type as odb names it, net or "").
+    pub fn inst_iterm_info(&self, inst: &str) -> Result<Vec<(String, String, String)>> {
+        Ok(sys::inst_iterm_info(self.r(), inst)?.chunks(3).map(|c| (c[0].clone(), c[1].clone(), c[2].clone())).collect())
+    }
+    /// A net's iterms in `getITerms` order (as connects and disconnects leave it): (instance, mterm).
+    pub fn net_iterm_pairs(&self, net: &str) -> Result<Vec<(String, String)>> {
+        Ok(sys::net_iterm_pairs(self.r(), net)?.chunks(2).map(|c| (c[0].clone(), c[1].clone())).collect())
+    }
+    /// A power domain's own isolation strategies, in its order.
+    pub fn pwr_domain_isolations(&self, domain: &str) -> Result<Vec<String>> {
+        Ok(sys::pwr_domain_isolations(self.r(), domain)?)
+    }
+    /// A power domain's own level-shifter strategies, in its order.
+    pub fn pwr_domain_level_shifters(&self, domain: &str) -> Result<Vec<String>> {
+        Ok(sys::pwr_domain_level_shifters(self.r(), domain)?)
+    }
+    /// `getIsolationCells`: each cell name looked up as a master, "" where there is none.
+    pub fn isolation_cell_masters(&self, iso: &str) -> Result<Vec<String>> {
+        Ok(sys::isolation_cell_masters(self.r(), iso)?)
+    }
+    /// Every master of every library, in `getLibs` then `getMasters` order.
+    pub fn masters_in_lib_order(&self) -> Result<Vec<String>> {
+        Ok(sys::masters_in_lib_order(self.r())?)
+    }
+    /// A master's mterms in order: (name, io type as odb names it).
+    pub fn master_mterm_io(&self, master: &str) -> Result<Vec<(String, String)>> {
+        Ok(sys::master_mterm_io(self.r(), master)?.chunks(2).map(|c| (c[0].clone(), c[1].clone())).collect())
+    }
+    /// `dbMaster::getArea`: width * height, in DBU^2.
+    pub fn master_area(&self, master: &str) -> Result<i64> {
+        Ok(sys::master_area(self.r(), master)?)
+    }
+    /// `dbInst::create`; `false` where odb returns nullptr.
+    pub fn inst_try_create(&mut self, master: &str, name: &str) -> Result<bool> {
+        Ok(sys::inst_try_create(self.r(), master, name)?)
     }
     /// An NDR's use-vias (`getUseVias`), in order.
     pub fn ndr_use_vias(&self, ndr: &str) -> Result<Vec<String>> {
