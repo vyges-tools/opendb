@@ -2434,6 +2434,35 @@ impl Db {
         Ok(sys::layer_find_tw_spacing(self.r(), layer, width1, width2, prl)?)
     }
 
+    /// The power-grid engine's tech table, flat: the layout is documented at the shim
+    /// (`psm_tech_layers` in the opendb-lib shim) and decoded by that engine alone.
+    pub fn psm_tech_layers(&self) -> Result<Vec<i64>> {
+        Ok(sys::psm_tech_layers(self.r())?)
+    }
+
+    /// One supply net's special wires, instance terminals and block-terminal pins, read in the
+    /// database's own iteration order in one call (layout at the shim, `psm_net`).
+    pub fn psm_net(&self, net: &str) -> Result<Vec<i64>> {
+        Ok(sys::psm_net(self.r(), net)?)
+    }
+
+    /// Every iterm name, then every bterm name, of a net — in [`Self::psm_net`]'s order.
+    pub fn psm_net_names(&self, net: &str) -> Result<Vec<String>> {
+        Ok(sys::psm_net_names(self.r(), net)?)
+    }
+
+    /// Everything the power-grid short check walks besides the net itself — the other nets, the
+    /// instances and their masters, block obstructions and fill — in the database's own order
+    /// (layout at the shim, `psm_short_inputs`).
+    pub fn psm_short_inputs(&self, net: &str) -> Result<Vec<i64>> {
+        Ok(sys::psm_short_inputs(self.r(), net)?)
+    }
+
+    /// The names [`Self::psm_short_inputs`] indexes, in its order.
+    pub fn psm_short_names(&self, net: &str) -> Result<Vec<String>> {
+        Ok(sys::psm_short_names(self.r(), net)?)
+    }
+
     /// The layer's LEF58 `WIDTHTABLE` rules as `(is_wrong_direction, widths)`, widths in database
     /// units, in the order the technology states them.
     ///
@@ -2595,23 +2624,6 @@ impl Db {
     /// centre-high points and its width**, so the true shape can be rebuilt; a rectangle gives its
     /// box and a width of 0.
     #[allow(clippy::type_complexity)]
-    /// The power-grid engine's tech table, flat: the layout is documented at the shim
-    /// (`psm_tech_layers` in the opendb-lib shim) and decoded by that engine alone.
-    pub fn psm_tech_layers(&self) -> Result<Vec<i64>> {
-        Ok(sys::psm_tech_layers(self.r())?)
-    }
-
-    /// One supply net's special wires, instance terminals and block-terminal pins, read in the
-    /// database's own iteration order in one call (layout at the shim, `psm_net`).
-    pub fn psm_net(&self, net: &str) -> Result<Vec<i64>> {
-        Ok(sys::psm_net(self.r(), net)?)
-    }
-
-    /// Every iterm name, then every bterm name, of a net — in [`Self::psm_net`]'s order.
-    pub fn psm_net_names(&self, net: &str) -> Result<Vec<String>> {
-        Ok(sys::psm_net_names(self.r(), net)?)
-    }
-
     pub fn net_swire_obstacles(
         &self,
         net: &str,
