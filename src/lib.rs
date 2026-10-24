@@ -234,6 +234,44 @@ pub fn init_events_logging() {
 #[cfg(not(unix))]
 pub fn init_events_logging() {}
 
+/// A scan terminal: a block port, or an instance terminal `(instance, mterm)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DftTerm {
+    Port(String),
+    Pin(String, String),
+}
+
+impl DftTerm {
+    fn fields(&self) -> String {
+        match self {
+            DftTerm::Port(p) => format!("B\t{p}\t"),
+            DftTerm::Pin(i, t) => format!("I\t{i}\t{t}"),
+        }
+    }
+}
+
+/// One cell of a recorded scan chain ([`Db::dft_write_scan_chains`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DftScanInst {
+    pub inst: String,
+    pub bits: u32,
+    pub enable: DftTerm,
+    pub scan_in: DftTerm,
+    pub scan_out: DftTerm,
+    pub clock: String,
+    pub falling: bool,
+}
+
+/// A recorded scan chain: its cells in order and its own enable, in and out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DftScanChain {
+    pub name: String,
+    pub cells: Vec<DftScanInst>,
+    pub enable: DftTerm,
+    pub scan_in: DftTerm,
+    pub scan_out: DftTerm,
+}
+
 /// What scan replacement does with a master's instances ([`Db::dft_scan_replace`]). A master
 /// left out of the table has no Liberty cell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2486,6 +2524,22 @@ impl Db {
     /// Scan replacement's instance walk over every block, in the database's order (layout at the
     /// shim, `dft_scan_replace`): `classes` maps master names to what happens to their instances.
     /// Returns the walk's events in order as `(kind, instance, master)`.
+    /// The scan chains as `execute_dft_plan` records them (layout at the shim,
+    /// `dft_write_scan_chains`): per chain a chain, one partition `default`, one scan list; per cell
+    /// the list's `add` then its bits, enable, access pins, clock and edge; then the chain's ends.
+    pub fn dft_write_scan_chains(&mut self, chains: &[DftScanChain]) -> Result<()> {
+        let mut rows = Vec::new();
+        for c in chains {
+            rows.push(format!("chain\t{}", c.name));
+            for i in &c.cells {
+                let edge = if i.falling { "falling" } else { "rising" };
+                rows.push(format!("cell\t{}\t{}\t{}\t{}\t{}\t{}\t{edge}", i.inst, i.bits, i.enable.fields(), i.scan_in.fields(), i.scan_out.fields(), i.clock));
+            }
+            rows.push(format!("ends\t{}\t{}\t{}", c.enable.fields(), c.scan_in.fields(), c.scan_out.fields()));
+        }
+        Ok(sys::dft_write_scan_chains(self.r(), &rows)?)
+    }
+
     pub fn dft_scan_replace(&mut self, classes: &[(String, DftMasterClass)]) -> Result<Vec<(String, String, String)>> {
         let (mut masters, mut codes, mut to, mut maps) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for (m, c) in classes {
