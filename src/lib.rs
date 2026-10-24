@@ -234,6 +234,20 @@ pub fn init_events_logging() {
 #[cfg(not(unix))]
 pub fn init_events_logging() {}
 
+/// What scan replacement does with a master's instances ([`Db::dft_scan_replace`]). A master
+/// left out of the table has no Liberty cell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DftMasterClass {
+    /// Nothing to replace: not sequential, or a clock gate.
+    Leave,
+    /// Already a scan cell (reported).
+    AlreadyScan,
+    /// Replaced by master `to`, each old pin's net going to the mapped pin `(old, new)`.
+    Replace { to: String, ports: Vec<(String, String)> },
+    /// No scan cell can replace it (reported).
+    NoEquivalent,
+}
+
 /// An instance pin as the estimator reads it ([`Db::net_iterm_places`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ITermPlace {
@@ -2467,6 +2481,36 @@ impl Db {
     /// group as a TR report to `path` (layout at the shim, `psm_write_error_file`).
     pub fn psm_write_error_file(&self, net: &str, v: &[i64], names: &[String], path: &str) -> Result<()> {
         Ok(sys::psm_write_error_file(self.r(), net, v, names, path)?)
+    }
+
+    /// Scan replacement's instance walk over every block, in the database's order (layout at the
+    /// shim, `dft_scan_replace`): `classes` maps master names to what happens to their instances.
+    /// Returns the walk's events in order as `(kind, instance, master)`.
+    pub fn dft_scan_replace(&mut self, classes: &[(String, DftMasterClass)]) -> Result<Vec<(String, String, String)>> {
+        let (mut masters, mut codes, mut to, mut maps) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for (m, c) in classes {
+            masters.push(m.clone());
+            let (code, target, ports) = match c {
+                DftMasterClass::Leave => (1, String::new(), String::new()),
+                DftMasterClass::AlreadyScan => (2, String::new(), String::new()),
+                DftMasterClass::Replace { to, ports } => (3, to.clone(), ports.iter().map(|(a, b)| format!("{a}\t{b}")).collect::<Vec<_>>().join("\n")),
+                DftMasterClass::NoEquivalent => (4, String::new(), String::new()),
+            };
+            codes.push(code);
+            to.push(target);
+            maps.push(ports);
+        }
+        let events = sys::dft_scan_replace(self.r(), &masters, &codes, &to, &maps)?;
+        events
+            .into_iter()
+            .map(|e| {
+                let mut f = e.splitn(3, '\t').map(String::from);
+                match (f.next(), f.next(), f.next()) {
+                    (Some(k), Some(i), Some(m)) => Ok((k, i, m)),
+                    _ => Err(Error::Odb(format!("dft_scan_replace: malformed event {e:?}"))),
+                }
+            })
+            .collect()
     }
 
     /// The layer's LEF58 `WIDTHTABLE` rules as `(is_wrong_direction, widths)`, widths in database
