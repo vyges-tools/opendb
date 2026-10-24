@@ -2463,6 +2463,12 @@ impl Db {
         Ok(sys::psm_short_names(self.r(), net)?)
     }
 
+    /// Record the power-grid check's markers for `net` in the database and write the net's marker
+    /// group as a TR report to `path` (layout at the shim, `psm_write_error_file`).
+    pub fn psm_write_error_file(&self, net: &str, v: &[i64], names: &[String], path: &str) -> Result<()> {
+        Ok(sys::psm_write_error_file(self.r(), net, v, names, path)?)
+    }
+
     /// The layer's LEF58 `WIDTHTABLE` rules as `(is_wrong_direction, widths)`, widths in database
     /// units, in the order the technology states them.
     ///
