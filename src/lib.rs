@@ -1497,6 +1497,87 @@ impl Db {
         let v = sys::level_shifter_records(self.r(), ls, "instances")?;
         Ok(v.as_chunks::<2>().0.iter().map(|[a, b]| (a.clone(), b.clone())).collect())
     }
+    /// Does a power-intent object exist (`find*` on the block)? `kind`: `power_domain`,
+    /// `logic_port`, `power_switch`, `isolation`, `level_shifter`, or `master` (any library, in the
+    /// database's order).
+    pub fn upf_find(&self, kind: &str, name: &str) -> Result<bool> {
+        Ok(sys::upf_find(self.r(), kind, name)?)
+    }
+    /// `dbPowerDomain::create`; `false` when the name is taken.
+    /// ⛔ **NOT TRANSACTIONAL** — the power-intent creates and adders below are not journalled.
+    pub fn pwr_domain_create(&mut self, name: &str) -> Result<bool> {
+        Ok(sys::pwr_domain_create(self.r(), name)?)
+    }
+    /// `dbPowerDomain::addElement`, appended.
+    pub fn pwr_domain_add_element(&mut self, domain: &str, element: &str) -> Result<()> {
+        Ok(sys::pwr_domain_add_element(self.r(), domain, element)?)
+    }
+    /// `dbPowerDomain::addPowerSwitch`, appended.
+    pub fn pwr_domain_add_power_switch(&mut self, domain: &str, sw: &str) -> Result<()> {
+        Ok(sys::pwr_domain_add_power_switch(self.r(), domain, sw)?)
+    }
+    /// `dbPowerDomain::addIsolation`, appended.
+    pub fn pwr_domain_add_isolation(&mut self, domain: &str, iso: &str) -> Result<()> {
+        Ok(sys::pwr_domain_add_isolation(self.r(), domain, iso)?)
+    }
+    /// `dbPowerDomain::setArea` (DBU).
+    pub fn pwr_domain_set_area(&mut self, domain: &str, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<()> {
+        Ok(sys::pwr_domain_set_area(self.r(), domain, x1, y1, x2, y2)?)
+    }
+    /// `dbLogicPort::create` (an empty direction is stored as `in`); `false` when the name is taken.
+    pub fn logic_port_create(&mut self, name: &str, direction: &str) -> Result<bool> {
+        Ok(sys::logic_port_create(self.r(), name, direction)?)
+    }
+    /// `dbPowerSwitch::create`; `false` when the name is taken.
+    pub fn pwr_switch_create(&mut self, name: &str) -> Result<bool> {
+        Ok(sys::pwr_switch_create(self.r(), name)?)
+    }
+    /// `dbPowerSwitch::addInSupplyPort`, appended.
+    pub fn pwr_switch_add_in_supply_port(&mut self, sw: &str, port: &str, net: &str) -> Result<()> {
+        Ok(sys::pwr_switch_add_in_supply_port(self.r(), sw, port, net)?)
+    }
+    /// `dbPowerSwitch::addControlPort`, appended.
+    pub fn pwr_switch_add_control_port(&mut self, sw: &str, port: &str, net: &str) -> Result<()> {
+        Ok(sys::pwr_switch_add_control_port(self.r(), sw, port, net)?)
+    }
+    /// `dbPowerSwitch::addAcknowledgePort`, appended.
+    pub fn pwr_switch_add_acknowledge_port(&mut self, sw: &str, port: &str, net: &str, expr: &str) -> Result<()> {
+        Ok(sys::pwr_switch_add_acknowledge_port(self.r(), sw, port, net, expr)?)
+    }
+    /// `dbPowerSwitch::addOnState`, appended.
+    pub fn pwr_switch_add_on_state(&mut self, sw: &str, state: &str, port: &str, expr: &str) -> Result<()> {
+        Ok(sys::pwr_switch_add_on_state(self.r(), sw, state, port, expr)?)
+    }
+    /// `dbPowerSwitch::addPortMap(model port, switch port)`: the switch port names a terminal of
+    /// the mapped cell. Errors as odb does when there is no cell or no such terminal.
+    pub fn pwr_switch_add_port_map(&mut self, sw: &str, model_port: &str, switch_port: &str) -> Result<()> {
+        Ok(sys::pwr_switch_add_port_map(self.r(), sw, model_port, switch_port)?)
+    }
+    /// `dbIsolation::create`; `false` when the name is taken.
+    pub fn isolation_create(&mut self, name: &str) -> Result<bool> {
+        Ok(sys::isolation_create(self.r(), name)?)
+    }
+    /// `dbIsolation::addIsolationCell`, appended (a name; not resolved until read).
+    pub fn isolation_add_isolation_cell(&mut self, iso: &str, cell: &str) -> Result<()> {
+        Ok(sys::isolation_add_isolation_cell(self.r(), iso, cell)?)
+    }
+    /// `dbLevelShifter::create(block, name, domain)`, which also adds it to the domain; `false`
+    /// when the name is taken or the domain does not exist.
+    pub fn level_shifter_create(&mut self, name: &str, domain: &str) -> Result<bool> {
+        Ok(sys::level_shifter_create(self.r(), name, domain)?)
+    }
+    /// `dbLevelShifter::addElement`, appended.
+    pub fn level_shifter_add_element(&mut self, ls: &str, element: &str) -> Result<()> {
+        Ok(sys::level_shifter_add_element(self.r(), ls, element)?)
+    }
+    /// `dbLevelShifter::addExcludeElement`, appended.
+    pub fn level_shifter_add_exclude_element(&mut self, ls: &str, element: &str) -> Result<()> {
+        Ok(sys::level_shifter_add_exclude_element(self.r(), ls, element)?)
+    }
+    /// `dbLevelShifter::addInstance`, appended.
+    pub fn level_shifter_add_instance(&mut self, ls: &str, inst: &str, port: &str) -> Result<()> {
+        Ok(sys::level_shifter_add_instance(self.r(), ls, inst, port)?)
+    }
     /// An NDR's use-vias (`getUseVias`), in order.
     pub fn ndr_use_vias(&self, ndr: &str) -> Result<Vec<String>> {
         Ok(sys::ndr_use_vias(self.r(), ndr)?)
