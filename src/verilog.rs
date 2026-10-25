@@ -7,7 +7,8 @@
 //! - ports: the scalar ones in database order, then each bus (bits grouped by `name[i]`), by name,
 //!   most significant bit first — a master's pins the same way;
 //! - wires: every net that is not a port and not a supply net, in database order; bits of a bus
-//!   declared once, as `wire [hi:lo] name;`, after the scalars, by name;
+//!   declared once, as `wire [hi:lo] name;`, after the scalars, by name, its range always
+//!   spanning bit 0;
 //! - instances sorted by name; a pin with no net left out; a bus pin as `{msb, …, lsb}` with an
 //!   unconnected bit as `_NCn` (declared as a wire);
 //! - names escaped (`\name ` with its terminating space) wherever Verilog needs it.
@@ -102,6 +103,18 @@ fn group_ports(names: &[String]) -> Vec<Port> {
         out.push(Port::Bus { name, from, to, bits: bits.into_iter().map(|(_, n)| n).collect() });
     }
     out
+}
+
+/// Each wire bus's declared (high, low), by name. ⚠️ A range starts at (0, 0) and widens to take
+/// each bit, so it always spans bit 0: bits 3 to 5 alone are declared `[5:0]`.
+fn wire_bus_ranges(bits: Vec<(String, i64)>) -> BTreeMap<String, (i64, i64)> {
+    let mut buses: BTreeMap<String, (i64, i64)> = BTreeMap::new();
+    for (base, i) in bits {
+        let r = buses.entry(base).or_insert((0, 0));
+        r.0 = r.0.max(i);
+        r.1 = r.1.min(i);
+    }
+    buses
 }
 
 fn is_supply(sig_type: &str) -> bool {
@@ -202,21 +215,17 @@ pub fn write_verilog(db: &Db, include_pwr_gnd: bool, remove_cells: &[String]) ->
     }
 
     // ── the wires: every net that is not a port, in database order; buses by name ──
-    let mut buses: BTreeMap<String, (i64, i64)> = BTreeMap::new();
+    let mut bits = Vec::new();
     for net in db.net_names() {
         if !include_pwr_gnd && is_supply(&db.net_sigtype(&net)) || port_names.contains(net.as_str()) {
             continue;
         }
         match bus_bit(&net) {
-            Some((base, i)) => {
-                let r = buses.entry(base.to_string()).or_insert((i64::MIN, i64::MAX));
-                r.0 = r.0.max(i);
-                r.1 = r.1.min(i);
-            }
+            Some((base, i)) => bits.push((base.to_string(), i)),
             None => v.push_str(&format!(" wire {};\n", net_name(&net))),
         }
     }
-    for (name, (hi, lo)) in &buses {
+    for (name, (hi, lo)) in &wire_bus_ranges(bits) {
         v.push_str(&format!(" wire [{hi}:{lo}] {};\n", net_name(name)));
     }
     for i in 1..=nc {
@@ -269,5 +278,13 @@ mod tests {
             })
             .collect();
         assert_eq!(shape, ["clk", "rst", "a[1:0]=a[1],a[0]", "b[1:0]=b[1],b[0]"]);
+    }
+
+    /// A wire bus's range starts at (0, 0): bits 3 to 5 are declared `[5:0]`, never `[5:3]`.
+    #[test]
+    fn a_wire_bus_range_always_spans_bit_zero() {
+        let r = wire_bus_ranges(vec![("r".into(), 4), ("r".into(), 3), ("r".into(), 5), ("q".into(), 0)]);
+        assert_eq!(r["r"], (5, 0));
+        assert_eq!(r["q"], (0, 0));
     }
 }
