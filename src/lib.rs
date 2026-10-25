@@ -1015,6 +1015,9 @@ impl Db {
     /// record a baseline count before the edits, and destroy back down to it afterwards.
     pub fn eco_begin(&mut self) -> Result<()> { Ok(sys::eco_begin(self.r())?) }
 
+    /// `endEco`: stop recording, the ECO pushed onto the block's stack (still undoable).
+    pub fn eco_end(&mut self) -> Result<()> { Ok(sys::eco_end(self.r())?) }
+
     /// Keep the changes recorded since [`eco_begin`](Self::eco_begin).
     pub fn eco_commit(&mut self) -> Result<()> { Ok(sys::eco_commit(self.r())?) }
 
