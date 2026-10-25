@@ -2492,6 +2492,12 @@ impl Db {
         Ok(sys::psm_tech_layers(self.r())?)
     }
 
+    /// The power-grid solve's database inputs: die and core areas and each tech layer's type,
+    /// width and resistance (`psm_solve_inputs` in the opendb-lib shim), decoded by that engine.
+    pub fn psm_solve_inputs(&self, net: &str) -> Result<Vec<f64>> {
+        Ok(sys::psm_solve_inputs(self.r(), net)?)
+    }
+
     /// One supply net's special wires, instance terminals and block-terminal pins, read in the
     /// database's own iteration order in one call (layout at the shim, `psm_net`).
     pub fn psm_net(&self, net: &str) -> Result<Vec<i64>> {
