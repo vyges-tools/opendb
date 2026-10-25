@@ -19,6 +19,10 @@
 
 // The libodb-backed surface (`Db`, `eco`) is unix-only — libodb is not built on non-unix
 // targets. `Error`/`Result` stay cross-platform. See vyges-opendb-lib for the rationale.
+
+// The crate's own name inside it: the command-line entry ([`cli_main`]) is built into the
+// library too, and its `vyges_opendb::…` paths resolve here.
+extern crate self as vyges_opendb;
 #[cfg(unix)]
 use std::path::Path;
 #[cfg(unix)]
@@ -3508,3 +3512,9 @@ mod explain_tests {
     }
 }
 
+/// The `vyges-opendb` command-line entry (the binary's `main`), built into the library too so a
+/// suite binary can link every engine and run the one it is invoked as.
+#[cfg(feature = "suite")]
+#[doc(hidden)]
+#[path = "bin/vyges-opendb.rs"]
+pub mod cli_main;

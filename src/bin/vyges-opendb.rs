@@ -161,7 +161,7 @@ commands:
   --help,    -h       Print this help.
 ";
 
-fn main() {
+pub fn main() {
     // Centralize libodb's native (C++ utl::Logger) diagnostics through vyges-events, alongside the
     // Rust-surface events — so everything odb emits lands in the MCP causal trail.
     vyges_opendb::init_events_logging();

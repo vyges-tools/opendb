@@ -24,6 +24,9 @@ name = "d2d_gap"
 required-features = ["gen-write"]
 
 [features]
+# The command-line entry built into the library too (`cli_main`), for the suite binaries
+# that link every engine and run the one they are invoked as.
+suite = []
 # L2/governance-gated generated setter surface — forwards to the lib crate's feature.
 gen-write = ["vyges-opendb-lib/gen-write"]
 
