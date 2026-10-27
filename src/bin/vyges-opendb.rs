@@ -1688,7 +1688,7 @@ const CHECK_D2D_DESCRIBE: &str = r#"{
   "consumers": [
       "vyges-opendb view-3dblox --heatmap shades distance_um onto the plan view.",
       "Signed dx_um/dy_um separate a systematic error (a field displaced one way — placement or thermal expansion) from random overlay scatter; the magnitude alone cannot.",
-      "The same fields are the layout-side input a bonding-yield model (e.g. UCLA's YAP, integrated into OpenROAD over a file interface) consumes. This tool measures geometry; it does NOT predict yield, which needs process inputs (particle density, Cu recess, surface roughness) no layout carries."
+      "The same fields are the layout-side input a bonding-yield model (e.g. UCLA's YAP, which reads them over a file interface) consumes. This tool measures geometry; it does NOT predict yield, which needs process inputs (particle density, Cu recess, surface roughness) no layout carries."
   ]
 }
 "#;
@@ -2107,7 +2107,7 @@ fn read_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
 const IMPORT_DESCRIBE: &str = r#"{
   "step": "import",
-  "summary": "Build a design database from LEF plus a DEF or a structural Verilog netlist, with no OpenROAD in the loop.",
+  "summary": "Build a design database from LEF plus a DEF or a structural Verilog netlist, with no other tool in the loop.",
   "inputs": ["lef", "def", "verilog"],
   "outputs": ["odb"]
 }"#;
