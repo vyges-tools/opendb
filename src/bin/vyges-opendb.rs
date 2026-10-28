@@ -46,7 +46,7 @@ macro_rules! diag {
 type Fail = Box<dyn std::error::Error>;
 
 const USAGE: &str = "\
-vyges opendb — OpenROAD's OpenDB (libodb) design database
+vyges opendb — the OpenDB (libodb) design database
 
 usage:
   vyges opendb <command> [options]
