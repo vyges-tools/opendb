@@ -589,9 +589,11 @@ fn stream_pins(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut Stre
     let layers = layer_table(db)?;
     for t in db.block_get_b_terms() {
         for p in 0..db.num_bterm_get_b_pins(&t) {
-            for b in db.bpin_layer_boxes(&t, p)? {
+            let boxes = db.bpin_layer_boxes(&t, p)?;
+            for &b in &boxes {
                 stream_box(map, &layers, "PIN", b, els, so);
-                let Some((name, _)) = layers.get(&b.0) else { continue };
+            }
+            for (name, b) in port_label_boxes(&layers, &boxes) {
                 for &(layer, datatype) in map.label_targets(name, "LABEL") {
                     let origin = label_point(b.1, b.2, b.3, b.4);
                     els.push(GdsElement::Text { layer, datatype, origin, presentation: (0, 0), trans: STrans::IDENTITY, text: t.clone(), props: Vec::new() });
@@ -601,6 +603,29 @@ fn stream_pins(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut Stre
         }
     }
     Ok(())
+}
+
+/// One pin box: layer number, then x0, y0, x1, y1.
+type Box4 = (i64, i32, i32, i32, i32);
+
+/// The box each layer of one pin port is labelled at: the LAST box on that layer, one label per
+/// layer, layers in name order.
+///
+/// The KLayout DEF reader collects a port's shapes per layer and, when the port ends, puts one
+/// label per layer at the centre of the last shape collected on it (layers keyed by name in an
+/// ordered map). A port is an odb `dbBPin`, and odb returns a port's rectangles in the DEF's own
+/// order (the reader inserts them reversed, each insert prepends), so "last" is the same box from
+/// a DEF read here as from the DEF KLayout reads. KLayout also splits a layer by MASK; the boxes
+/// carry none here, so a multi-patterned pin layer would get one label where KLayout writes one
+/// per mask.
+fn port_label_boxes<'a>(layers: &'a HashMap<i64, (String, bool)>, boxes: &[Box4]) -> Vec<(&'a str, Box4)> {
+    let mut last: BTreeMap<&str, Box4> = BTreeMap::new();
+    for &b in boxes {
+        if let Some((name, _)) = layers.get(&b.0) {
+            last.insert(name.as_str(), b);
+        }
+    }
+    last.into_iter().collect()
 }
 
 /// The die outline as one polygon on each DIEAREA target.
@@ -663,6 +688,17 @@ mod tests {
     #[test]
     fn a_label_sits_at_the_integer_centre_of_its_box() {
         assert_eq!(label_point(333200, 519515, 333340, 520000), (333270, 519757));
+    }
+
+    /// KLayout's DEF reader labels a pin port once per layer, at the LAST shape on that layer, not
+    /// once per shape: a supply pin with four met5 straps and four met4 straps gets two labels.
+    #[test]
+    fn a_port_is_labelled_once_per_layer_at_its_last_box() {
+        let layers: HashMap<i64, (String, bool)> =
+            [(10, ("met4".to_string(), false)), (11, ("met5".to_string(), false)), (9, ("via3".to_string(), true))].into();
+        let boxes = [(11, 0, 0, 10, 2), (11, 0, 20, 10, 22), (10, 0, 0, 2, 30), (99, 0, 0, 1, 1), (10, 8, 0, 10, 30), (11, 0, 40, 10, 42)];
+        assert_eq!(port_label_boxes(&layers, &boxes), vec![("met4", (10, 8, 0, 10, 30)), ("met5", (11, 0, 40, 10, 42))]);
+        assert!(port_label_boxes(&layers, &[]).is_empty());
     }
 
     /// An odd-length string gains one NUL and its length says so; even strings, other records and
