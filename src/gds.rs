@@ -459,7 +459,8 @@ pub struct StreamOut {
 }
 
 /// The block in `db` (read with its LEFs and DEF) as GDS at `out`, its cells' contents taken from
-/// `cell_gds` (the first file defining a cell wins), its layers from `map`.
+/// `cell_gds` (the first file defining a cell wins), its layers from `map`. A cell library or
+/// the output named `.oas`/`.oasis` is OASIS ([`crate::oasis`]).
 ///
 /// One stage per step of the reference stream-out, in its order; see the module doc.
 pub fn write_gds(db: &mut Db, map: &LayerMap, cell_gds: &[impl AsRef<Path>], out: impl AsRef<Path>) -> Result<StreamOut> {
@@ -474,7 +475,8 @@ pub fn write_gds(db: &mut Db, map: &LayerMap, cell_gds: &[impl AsRef<Path>], out
     stream_die_area(db, map, &mut els, &mut so)?;
     db.gds_create_structure(lib, &top)?;
     db.gds_add(lib, &top, &els)?;
-    db.gds_write(lib, out)?;
+    // An `.oas` output is written by our OASIS writer (odb has none); anything else is GDS.
+    db.layout_write(lib, out)?;
     Ok(so)
 }
 
@@ -483,7 +485,7 @@ fn read_cell_gds(db: &mut Db, cell_gds: &[impl AsRef<Path>]) -> Result<Vec<GdsLi
     if cell_gds.is_empty() {
         return Err(Error::Odb("write-gds: no cell GDS given".to_string()));
     }
-    cell_gds.iter().map(|p| db.gds_read(p)).collect()
+    cell_gds.iter().map(|p| db.layout_read(p)).collect()
 }
 
 /// The output library, in the cell GDS's units, which must be the design's.

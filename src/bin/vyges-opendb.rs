@@ -134,9 +134,9 @@ commands:
                       Place I/O port pins (CUSTOM_IO_PLACEMENT in the config).
 
   write-def                 --input <f.odb> --output <f.def>
-  read-gds                  --input <f.gds> [--output <f.gds>]   (odb gdsin / gdsout)
+  read-gds                  --input <f.gds|f.oas> [--output <f.gds|f.oas>]   (odb gdsin / gdsout)
   write-gds                 (--input <f.odb> | --lef <f.lef>... --def <f.def>) --map <f.map>
-                            --gds <cells.gds>... --output <f.gds>
+                            --gds <cells.gds>... --output <f.gds|f.oas>
                       Export the design to a DEF 5.8 file (libodb v1 LEF/DEF I/O).
 
   read-def                  --input <in.odb> --def <f.def> --output <out.odb>
@@ -2073,17 +2073,18 @@ fn write_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
 const READ_GDS_DESCRIBE: &str = r#"{
   "step": "read-gds",
-  "summary": "Read a GDS with odb's own GDS reader and summarise it; with --output, write it back with odb's GDS writer.",
+  "summary": "Read a GDS with odb's own GDS reader (an .oas/.oasis file with the OASIS reader) and summarise it; with --output, write it back as GDS with odb's GDS writer, or as OASIS when the output is named .oas/.oasis.",
   "librelane_equivalent": "odb gdsin / gdsout",
   "unix_only": true,
   "args": [
-    { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "GDS file" },
-    { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "GDS file to write the library back to" }
+    { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "GDS or OASIS (.oas/.oasis) file" },
+    { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "GDS or OASIS (.oas/.oasis) file to write the library back to" }
   ]
 }"#;
 
-/// `read-gds --input <f.gds> [--output <f.gds>] | --describe` — odb's GDS reader, a JSON summary
-/// on stdout, and with `--output` odb's GDS writer.
+/// `read-gds --input <f.gds|f.oas> [--output <f.gds|f.oas>] | --describe` — odb's GDS reader (or
+/// the OASIS one), a JSON summary on stdout, and with `--output` odb's GDS writer (or OASIS).
+/// GDS → OASIS → GDS is a conversion either way.
 fn read_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let (mut input, mut output) = (None, None);
     while let Some(a) = args.next() {
@@ -2095,7 +2096,7 @@ fn read_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                diag!("usage: vyges-opendb read-gds --input <f.gds> [--output <f.gds>]");
+                diag!("usage: vyges-opendb read-gds --input <f.gds|f.oas> [--output <f.gds|f.oas>]");
                 return Ok(());
             }
             other => return Err(format!("read-gds: unknown argument: {other}").into()),
@@ -2103,7 +2104,7 @@ fn read_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     }
     let input = input.ok_or("read-gds: --input <f.gds> required")?;
     let mut db = Db::new();
-    let lib = db.gds_read(&input)?;
+    let lib = db.layout_read(&input)?;
     let (uu, m) = db.gds_units(lib)?;
     let mut structures = Vec::new();
     for name in db.gds_structures(lib)? {
@@ -2128,7 +2129,7 @@ fn read_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     });
     println!("{}", serde_json::to_string_pretty(&summary)?);
     if let Some(out) = output {
-        db.gds_write(lib, &out)?;
+        db.layout_write(lib, &out)?;
         diag!("read-gds: {input} -> {out}");
     }
     Ok(())
@@ -2136,7 +2137,7 @@ fn read_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
 const WRITE_GDS_DESCRIBE: &str = r#"{
   "step": "write-gds",
-  "summary": "Stream a placed and routed design out as GDSII: standard-cell contents from the cell GDS, routing, pins and labels through the PDK's LEF/DEF layer map, written by odb's GDS writer.",
+  "summary": "Stream a placed and routed design out as GDSII: standard-cell contents from the cell GDS, routing, pins and labels through the PDK's LEF/DEF layer map, written by odb's GDS writer — or as OASIS when the output is named .oas/.oasis.",
   "librelane_equivalent": "KLayout.StreamOut",
   "unix_only": true,
   "args": [
@@ -2144,8 +2145,8 @@ const WRITE_GDS_DESCRIBE: &str = r#"{
     { "name": "--lef",    "kind": "input",  "type": "path", "required": false, "repeatable": true, "description": "LEF; the first is the technology LEF" },
     { "name": "--def",    "kind": "input",  "type": "path", "required": false, "description": "routed DEF (with --lef)" },
     { "name": "--map",    "kind": "input",  "type": "path", "required": true,  "description": "the PDK's KLayout LEF/DEF layer map (.map)" },
-    { "name": "--gds",    "kind": "input",  "type": "path", "required": true,  "repeatable": true, "description": "cell GDS; the first file defining a cell wins" },
-    { "name": "--output", "kind": "output", "type": "path", "required": true,  "description": "output GDS" }
+    { "name": "--gds",    "kind": "input",  "type": "path", "required": true,  "repeatable": true, "description": "cell GDS or OASIS (.oas/.oasis); the first file defining a cell wins" },
+    { "name": "--output", "kind": "output", "type": "path", "required": true,  "description": "output GDS, or OASIS when named .oas/.oasis" }
   ]
 }"#;
 
@@ -2167,7 +2168,7 @@ fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb write-gds (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... --def <f.def>)\n\
-                       \x20                       --map <pdk.map> --gds <cells.gds> [--gds <more.gds>]... --output <f.gds>");
+                       \x20                       --map <pdk.map> --gds <cells.gds> [--gds <more.gds>]... --output <f.gds|f.oas>");
                 return Ok(());
             }
             other => return Err(format!("write-gds: unknown argument: {other}").into()),

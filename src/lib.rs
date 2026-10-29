@@ -52,6 +52,8 @@ pub mod gds;
 #[cfg(unix)]
 pub mod nets3d;
 #[cfg(unix)]
+pub mod oasis;
+#[cfg(unix)]
 pub mod report;
 pub mod verilog;
 #[cfg(unix)]

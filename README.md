@@ -424,6 +424,29 @@ same mask as the KLayout stream-out an open flow runs: on a 9,400-cell sky130 de
 identical on every layer under a flattened XOR. The writer pads odd-length string records to an
 even length, as GDSII requires.
 
+### OASIS
+
+Name the output (or a cell library) `.oas` and the same commands write and read OASIS, which
+OpenDB itself has neither a writer nor a reader for:
+
+```sh
+vyges-opendb write-gds ... --output design.oas                 # stream out as OASIS
+vyges-opendb read-gds --input design.oas --output design.gds    # OASIS to GDS, and back
+```
+
+The writer (`vyges_opendb::oasis`, and `Db::oasis_write` / `Db::oasis_read`) writes strict-mode
+OASIS with CBLOCK compression, standard properties and a cell-name table carrying each cell's
+offset; identical shapes are folded into repetitions, arrays kept as arrays. KLayout reads every
+file it writes in strict mode without a warning, and the result matches the source cell for cell:
+references, shapes per layer, labels and GDS properties, on a routed sky130 design and on the
+sky130, GF180MCU and IHP SG13G2 standard-cell libraries. A routed design comes out at about a
+thirtieth of its GDS size, close to what KLayout writes for it.
+
+What OASIS has no place for is not kept: a text's presentation, transform and size; characters
+outside printable ASCII in a text (written as `*`); round path ends (written as a flush path with
+a circle at each end). A path of odd width, or a polygon of fewer than three points, has no
+encoding and is refused.
+
 ## Build & test
 
 ```sh
