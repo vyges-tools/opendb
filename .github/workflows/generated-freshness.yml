@@ -29,7 +29,7 @@ permissions:
 jobs:
   check:
     name: generated files match a fresh run
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-${{ vars.VYGES_UBUNTU_VERSION || '24.04' }}
     steps:
       # Sibling layout, the same one `check-generated.sh` resolves against ("$here/../vyges-tools-opendb").
       - uses: actions/checkout@v7
