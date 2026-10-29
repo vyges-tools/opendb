@@ -405,6 +405,25 @@ and anything that would need an assembly netlist is declined rather than guessed
 A bond that is not checked — no bump map, a virtual bond, a nested instance path — is listed under
 `interfaces_skipped` and reported on stderr, never counted as clean.
 
+## GDSII
+
+OpenDB's own GDS model and its reader and writer, through the bridge: `Db::gds_read`,
+`Db::gds_write`, and the structures and elements of a library (`gds_structures`, `gds_elements`,
+`gds_add`). On top of them, a placed and routed design streamed out as GDSII:
+
+```sh
+vyges-opendb write-gds --lef tech.lef --lef cells.lef --def routed.def \
+    --map pdk.map --gds cells.gds --output design.gds        # or --input design.odb
+vyges-opendb read-gds --input design.gds [--output copy.gds]  # a JSON summary; --output writes it back
+```
+
+`write-gds` takes each instantiated cell's contents from the cell GDS (a cell with no GDS is an
+error), places one reference per instance, and draws the routing, the power grid, the pins with
+their labels and the die outline on the layers the PDK's LEF/DEF layer map gives. It writes the
+same mask as the KLayout stream-out an open flow runs: on a 9,400-cell sky130 design the two are
+identical on every layer under a flattened XOR. The writer pads odd-length string records to an
+even length, as GDSII requires.
+
 ## Build & test
 
 ```sh
@@ -419,5 +438,5 @@ pinned OpenROAD subtree and builds it — see that crate for details). Deps: a C
 
 Read + ECO write path over the db core (v0), plus a 3D/chiplet path: read a 3Dblox assembly,
 lint it, draw it, check its die-to-die interfaces and its stack-level net continuity.
-LEF/DEF/GDS I/O and richer traversal follow the
+LEF/DEF and GDSII I/O are in; richer traversal follows the
 `vyges-opendb-lib` roadmap. OpenROAD is BSD-3-Clause; this crate is Apache-2.0 (see NOTICE).

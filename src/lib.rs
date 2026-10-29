@@ -48,6 +48,8 @@ pub mod d2d;
 pub mod diodes;
 pub mod eco;
 #[cfg(unix)]
+pub mod gds;
+#[cfg(unix)]
 pub mod nets3d;
 #[cfg(unix)]
 pub mod report;

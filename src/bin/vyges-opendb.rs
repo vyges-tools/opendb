@@ -134,6 +134,9 @@ commands:
                       Place I/O port pins (CUSTOM_IO_PLACEMENT in the config).
 
   write-def                 --input <f.odb> --output <f.def>
+  read-gds                  --input <f.gds> [--output <f.gds>]   (odb gdsin / gdsout)
+  write-gds                 (--input <f.odb> | --lef <f.lef>... --def <f.def>) --map <f.map>
+                            --gds <cells.gds>... --output <f.gds>
                       Export the design to a DEF 5.8 file (libodb v1 LEF/DEF I/O).
 
   read-def                  --input <in.odb> --def <f.def> --output <out.odb>
@@ -203,6 +206,8 @@ fn run() -> Result<(), Fail> {
         "report-connectivity" => report_connectivity(args),
         "custom-io-placement" => custom_io_placement(args),
         "write-def" => write_def(args),
+        "read-gds" => read_gds(args),
+        "write-gds" => write_gds(args),
         "read-def" => read_def(args),
         "import" => import(args),
         "apply-def-template" => apply_def_template(args),
@@ -268,6 +273,8 @@ const TOOL_DESCRIBE: &str = r#"{
     "report-connectivity",
     "custom-io-placement",
     "write-def",
+    "read-gds",
+    "write-gds",
     "read-def",
     "import",
     "apply-def-template",
@@ -2061,6 +2068,134 @@ fn write_def(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let output = output.ok_or("write-def: --output <f.def> required")?;
     Db::open(&input)?.write_def(&output)?;
     diag!("write-def: {input} -> {output}");
+    Ok(())
+}
+
+const READ_GDS_DESCRIBE: &str = r#"{
+  "step": "read-gds",
+  "summary": "Read a GDS with odb's own GDS reader and summarise it; with --output, write it back with odb's GDS writer.",
+  "librelane_equivalent": "odb gdsin / gdsout",
+  "unix_only": true,
+  "args": [
+    { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "GDS file" },
+    { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "GDS file to write the library back to" }
+  ]
+}"#;
+
+/// `read-gds --input <f.gds> [--output <f.gds>] | --describe` — odb's GDS reader, a JSON summary
+/// on stdout, and with `--output` odb's GDS writer.
+fn read_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut output) = (None, None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--describe" => {
+                println!("{READ_GDS_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb read-gds --input <f.gds> [--output <f.gds>]");
+                return Ok(());
+            }
+            other => return Err(format!("read-gds: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("read-gds: --input <f.gds> required")?;
+    let mut db = Db::new();
+    let lib = db.gds_read(&input)?;
+    let (uu, m) = db.gds_units(lib)?;
+    let mut structures = Vec::new();
+    for name in db.gds_structures(lib)? {
+        let mut n = [0usize; 6];
+        for e in db.gds_elements(lib, &name)? {
+            use vyges_opendb::gds::GdsElement as E;
+            n[match e {
+                E::Boundary { .. } => 0,
+                E::Box { .. } => 1,
+                E::Path { .. } => 2,
+                E::SRef { .. } => 3,
+                E::ARef { .. } => 4,
+                E::Text { .. } => 5,
+            }] += 1;
+        }
+        structures.push(serde_json::json!({
+            "name": name, "boundaries": n[0], "boxes": n[1], "paths": n[2], "srefs": n[3], "arefs": n[4], "texts": n[5],
+        }));
+    }
+    let summary = serde_json::json!({
+        "libname": db.gds_lib_name(lib)?, "user_units_per_dbu": uu, "dbu_in_meters": m, "structures": structures,
+    });
+    println!("{}", serde_json::to_string_pretty(&summary)?);
+    if let Some(out) = output {
+        db.gds_write(lib, &out)?;
+        diag!("read-gds: {input} -> {out}");
+    }
+    Ok(())
+}
+
+const WRITE_GDS_DESCRIBE: &str = r#"{
+  "step": "write-gds",
+  "summary": "Stream a placed and routed design out as GDSII: standard-cell contents from the cell GDS, routing, pins and labels through the PDK's LEF/DEF layer map, written by odb's GDS writer.",
+  "librelane_equivalent": "KLayout.StreamOut",
+  "unix_only": true,
+  "args": [
+    { "name": "--input",  "kind": "input",  "type": "path", "required": false, "description": "design .odb (or give --lef and --def)" },
+    { "name": "--lef",    "kind": "input",  "type": "path", "required": false, "repeatable": true, "description": "LEF; the first is the technology LEF" },
+    { "name": "--def",    "kind": "input",  "type": "path", "required": false, "description": "routed DEF (with --lef)" },
+    { "name": "--map",    "kind": "input",  "type": "path", "required": true,  "description": "the PDK's KLayout LEF/DEF layer map (.map)" },
+    { "name": "--gds",    "kind": "input",  "type": "path", "required": true,  "repeatable": true, "description": "cell GDS; the first file defining a cell wins" },
+    { "name": "--output", "kind": "output", "type": "path", "required": true,  "description": "output GDS" }
+  ]
+}"#;
+
+/// `write-gds (--input <f.odb> | --lef <f.lef>... --def <f.def>) --map <f.map> --gds <cells.gds>...
+/// --output <f.gds> | --describe`.
+fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut lefs, mut def, mut map, mut gds, mut output) = (None, Vec::new(), None, None, Vec::new(), None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--lef" => lefs.push(args.next().ok_or("write-gds: --lef needs a FILE")?),
+            "--def" => def = args.next(),
+            "--map" => map = args.next(),
+            "--gds" => gds.push(args.next().ok_or("write-gds: --gds needs a FILE")?),
+            "--output" | "-o" => output = args.next(),
+            "--describe" => {
+                println!("{WRITE_GDS_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb write-gds (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... --def <f.def>)\n\
+                       \x20                       --map <pdk.map> --gds <cells.gds> [--gds <more.gds>]... --output <f.gds>");
+                return Ok(());
+            }
+            other => return Err(format!("write-gds: unknown argument: {other}").into()),
+        }
+    }
+    let map_path = map.ok_or("write-gds: --map <pdk.map> required")?;
+    let output = output.ok_or("write-gds: --output <f.gds> required")?;
+    if gds.is_empty() {
+        return Err("write-gds: at least one --gds <cells.gds> is required".into());
+    }
+    let mut db = match (input, def) {
+        (Some(i), None) if lefs.is_empty() => Db::open(&i)?,
+        (None, Some(d)) if !lefs.is_empty() => {
+            let mut db = Db::new();
+            for l in &lefs {
+                db.read_lef(l)?;
+            }
+            db.read_def(&d, "default")?;
+            db
+        }
+        _ => return Err("write-gds: give --input <f.odb>, or --lef ... with --def <f.def>".into()),
+    };
+    let map = vyges_opendb::gds::LayerMap::parse(&std::fs::read_to_string(&map_path)?)?;
+    let so = vyges_opendb::gds::write_gds(&mut db, &map, &gds, &output)?;
+    if so.unplaced > 0 {
+        diag!("[WARNING] write-gds: {} unplaced instance(s) not streamed", so.unplaced);
+    }
+    diag!("write-gds: {output}: {} cells, {} instances, {} shapes, {} labels", so.cells, so.instances, so.shapes, so.labels);
     Ok(())
 }
 
