@@ -38,7 +38,7 @@ jobs:
           # (x86_64-apple-darwin) is unsupported.
           - { os: "ubuntu-${{ vars.VYGES_UBUNTU_VERSION || '24.04' }}",    target: x86_64-unknown-linux-gnu  }
           - { os: "ubuntu-${{ vars.VYGES_UBUNTU_VERSION || '24.04' }}-arm", target: aarch64-unknown-linux-gnu }
-          - { os: macos-15,         target: aarch64-apple-darwin      }
+          - { os: "macos-${{ vars.VYGES_MACOS_VERSION || '15' }}",         target: aarch64-apple-darwin      }
     steps:
       # Sibling layout: <ws>/vyges-tools-opendb + <ws>/vyges-tools-opendb-lib +
       # <ws>/vyges-tools-layout, so BOTH `[patch]` path entries in Cargo.toml resolve on CI.
