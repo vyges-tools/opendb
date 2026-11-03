@@ -125,9 +125,6 @@ impl Db {
     pub fn net_is_marked(&self, net: &str) -> bool { sys::net_is_marked(self.r(), net) }
     pub fn net_is_mark_1ed(&self, net: &str) -> bool { sys::net_is_mark_1ed(self.r(), net) }
     pub fn net_is_select(&self, net: &str) -> bool { sys::net_is_select(self.r(), net) }
-    pub fn net_is_wire_ordered(&self, net: &str) -> bool { sys::net_is_wire_ordered(self.r(), net) }
-    pub fn net_is_disconnected(&self, net: &str) -> bool { sys::net_is_disconnected(self.r(), net) }
-    pub fn net_is_wire_altered(&self, net: &str) -> bool { sys::net_is_wire_altered(self.r(), net) }
     pub fn net_is_r_cgraph(&self, net: &str) -> bool { sys::net_is_r_cgraph(self.r(), net) }
     pub fn net_is_extracted(&self, net: &str) -> bool { sys::net_is_extracted(self.r(), net) }
     pub fn net_is_spef(&self, net: &str) -> bool { sys::net_is_spef(self.r(), net) }
@@ -447,6 +444,7 @@ impl Db {
     pub fn wire_get_block(&self, net: &str) -> String { sys::wire_get_block(self.r(), net) }
     pub fn wire_get_net(&self, net: &str) -> String { sys::wire_get_net(self.r(), net) }
     pub fn wire_is_global_wire(&self, net: &str) -> bool { sys::wire_is_global_wire(self.r(), net) }
+    pub fn wire_has_normalized_connectivity(&self, net: &str) -> bool { sys::wire_has_normalized_connectivity(self.r(), net) }
     pub fn wire_length(&self, net: &str) -> u32 { sys::wire_length(self.r(), net) }
     pub fn wire_count(&self, net: &str) -> u32 { sys::wire_count(self.r(), net) }
     pub fn wire_get_term_shape_junction_id(&self, net: &str, term_id: i32) -> u32 { sys::wire_get_term_shape_junction_id(self.r(), net, term_id) }

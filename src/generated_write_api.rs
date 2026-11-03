@@ -43,9 +43,6 @@ impl Db {
     pub fn net_set_mark(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_mark(self.r(), net, value)?) }
     pub fn net_set_mark_1(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_mark_1(self.r(), net, value)?) }
     pub fn net_set_select(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_select(self.r(), net, value)?) }
-    pub fn net_set_wire_ordered(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_wire_ordered(self.r(), net, value)?) }
-    pub fn net_set_disconnected(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_disconnected(self.r(), net, value)?) }
-    pub fn net_set_wire_altered(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_wire_altered(self.r(), net, value)?) }
     pub fn net_set_r_cgraph(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_r_cgraph(self.r(), net, value)?) }
     pub fn net_set_extracted(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_extracted(self.r(), net, value)?) }
     pub fn net_set_spef(&mut self, net: &str, value: bool) -> crate::Result<()> { Ok(sys::net_set_spef(self.r(), net, value)?) }
@@ -159,6 +156,7 @@ impl Db {
     pub fn guide_set_is_connected_to_term(&mut self, net: &str, idx: usize, is_connected: bool) -> crate::Result<()> { Ok(sys::guide_set_is_connected_to_term(self.r(), net, idx, is_connected)?) }
     pub fn gcell_set_capacity(&mut self, layer: &str, x_idx: u32, y_idx: u32, capacity: f32) -> crate::Result<()> { Ok(sys::gcell_set_capacity(self.r(), layer, x_idx, y_idx, capacity)?) }
     pub fn gcell_set_usage(&mut self, layer: &str, x_idx: u32, y_idx: u32, a3: f32) -> crate::Result<()> { Ok(sys::gcell_set_usage(self.r(), layer, x_idx, y_idx, a3)?) }
+    pub fn wire_set_normalized_connectivity(&mut self, net: &str, normalized_connectivity: bool) -> crate::Result<()> { Ok(sys::wire_set_normalized_connectivity(self.r(), net, normalized_connectivity)?) }
     pub fn wire_set_property(&mut self, net: &str, jid: i32, property: i32) -> crate::Result<()> { Ok(sys::wire_set_property(self.r(), net, jid, property)?) }
     pub fn box_set_soft(&mut self, idx: usize, value: bool) -> crate::Result<()> { Ok(sys::box_set_soft(self.r(), idx, value)?) }
     pub fn box_set_layer_mask(&mut self, idx: usize, mask: u32) -> crate::Result<()> { Ok(sys::box_set_layer_mask(self.r(), idx, mask)?) }
