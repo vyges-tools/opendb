@@ -2520,6 +2520,12 @@ impl Db {
         Ok(sys::psm_net_names(self.r(), net)?)
     }
 
+    /// A supply net's octilinear swire points and its pins' polygons with the positions of their
+    /// own boxes, in [`Self::psm_net`]'s order (layout at the shim, `psm_net_45`).
+    pub fn psm_net_45(&self, net: &str) -> Result<Vec<i64>> {
+        Ok(sys::psm_net_45(self.r(), net)?)
+    }
+
     /// Everything the power-grid short check walks besides the net itself — the other nets, the
     /// instances and their masters, block obstructions and fill — in the database's own order
     /// (layout at the shim, `psm_short_inputs`).
