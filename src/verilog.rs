@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The block's netlist as structural Verilog: its ports, its wires, one instance per cell with
-//! each connected pin, and an `assign` where an output port's net is named otherwise — the text a
+//! each connected pin, and an `assign` where a port's net is named otherwise — the text a
 //! timer, a simulator or an equivalence checker reads back.
 //!
 //! Written as the reference writes it, so the two compare line for line:
@@ -139,6 +139,7 @@ pub fn write_verilog(db: &Db, include_pwr_gnd: bool, remove_cells: &[String]) ->
     if db.has_hierarchy() {
         return Err("write-verilog: the block has hierarchical module instances; only a flat netlist is written".into());
     }
+    check_input_aliases(db)?;
     let mut v = String::new();
     // ── the module and its ports ──
     let bterms: Vec<String> = db
@@ -234,17 +235,42 @@ pub fn write_verilog(db: &Db, include_pwr_gnd: bool, remove_cells: &[String]) ->
     v.push('\n');
     v.push_str(&body);
 
-    // ── an output port whose net is named otherwise: `assign port = net;` ──
+    // ── a port whose net is named otherwise (`writeAssigns`): an output (or inout) port
+    // `assign port = net;`, an input port on a signal net `assign net = port;` ──
     for b in &bterms {
         let net = db.bterm_net(b);
-        let sig = db.net_sigtype(&net);
-        let out = db.bterm_get_io_type(b) == "OUTPUT" || (include_pwr_gnd && is_supply(&db.bterm_get_sig_type(b)));
-        if !net.is_empty() && (include_pwr_gnd || !is_supply(&sig)) && out && *b != net {
-            v.push_str(&format!(" assign {} = {};\n", net_name(b), net_name(&net)));
+        let net_supply = is_supply(&db.net_sigtype(&net));
+        let (io, port_supply) = (db.bterm_get_io_type(b), is_supply(&db.bterm_get_sig_type(b)));
+        let any_output = !port_supply && (io == "OUTPUT" || io == "INOUT");
+        let input = !port_supply && io == "INPUT";
+        let aliased = any_output || (input && !net_supply) || (include_pwr_gnd && port_supply);
+        if !net.is_empty() && (include_pwr_gnd || !net_supply) && aliased && *b != net {
+            let (lhs, rhs) = if input { (net_name(&net), net_name(b)) } else { (net_name(b), net_name(&net)) };
+            v.push_str(&format!(" assign {lhs} = {rhs};\n"));
         }
     }
     v.push_str("endmodule\n");
     Ok(v)
+}
+
+/// `VerilogWriter::checkInputAliases` (before the file is opened): two input ports on one signal
+/// net cannot be written — one `assign net = port;` each would drive the net twice (error 2749).
+fn check_input_aliases(db: &Db) -> Result<(), String> {
+    let mut input_ports: HashMap<String, String> = HashMap::new();
+    for b in db.bterm_names() {
+        let net = db.bterm_net(&b);
+        if net.is_empty() || is_supply(&db.net_sigtype(&net)) || is_supply(&db.bterm_get_sig_type(&b)) || db.bterm_get_io_type(&b) != "INPUT" {
+            continue;
+        }
+        match input_ports.get(&net) {
+            Some(first) if *first != b => return Err(format!("cannot write Verilog: input ports {first} and {b} share signal net {net}")),
+            Some(_) => {}
+            None => {
+                input_ports.insert(net, b);
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
