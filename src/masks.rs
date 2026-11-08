@@ -213,6 +213,10 @@ pub enum Finding {
     },
     /// An odd cycle of conflict edges on a two-mask layer: no two-colouring exists.
     OddCycle { layer: String, shapes: Vec<(String, [i32; 4])> },
+    /// A shape rule broken among one mask's shapes ([`crate::masks_check`]): `rule` is
+    /// FORBIDDENSPACING or EOLEXTENSIONSPACING SAMEMASK, `index` its place among the layer's rules
+    /// of that kind, `marker` the reference checker's marker box, `nets` its source nets.
+    SameMaskRule { layer: String, mask: u8, rule: &'static str, index: usize, marker: [i32; 4], nets: Vec<String> },
 }
 
 impl Finding {
@@ -225,6 +229,8 @@ impl Finding {
             Finding::Uncoloured { .. } => "uncoloured",
             Finding::SameMaskSpacing { .. } => "same_mask_spacing",
             Finding::OddCycle { .. } => "odd_cycle",
+            Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_FORBIDDEN => "forbidden_spacing",
+            Finding::SameMaskRule { .. } => "eol_extension_spacing",
         }
     }
 
@@ -247,6 +253,9 @@ impl Finding {
             Finding::OddCycle { layer, shapes } => json!({
                 "layer": layer,
                 "shapes": shapes.iter().map(|(n, r)| json!({"net": n, "rect": r})).collect::<Vec<_>>(),
+            }),
+            Finding::SameMaskRule { layer, mask, rule, index, marker, nets } => json!({
+                "layer": layer, "mask": mask, "rule": rule, "rule_index": index, "marker": marker, "nets": nets,
             }),
         };
         v["kind"] = json!(self.kind());
@@ -501,6 +510,9 @@ pub struct MaskShape {
     pub rect: [i32; 4],
     /// 0: none.
     pub mask: u8,
+    /// A fixed shape (special wire, block pin) rather than routing, as the reference checker
+    /// loads them; it decides which merged edges and rectangles are fixed.
+    pub fixed: bool,
 }
 
 /// Squared edge-to-edge gap of two rectangles; `None` when they touch or overlap.
@@ -650,11 +662,45 @@ pub fn check_layer(layer: &MaskLayer, shapes: &[MaskShape], findings: &mut Vec<F
             });
         }
     }
+    if let Some(r) = layer.rules.as_ref().filter(|r| r.has_shape_rules()) {
+        check_shape_rules_per_mask(layer, shapes, r, findings);
+    }
     if layer.num_masks == 2 {
         for cyc in odd_cycles(shapes.len(), &all) {
             findings.push(Finding::OddCycle {
                 layer: layer.name.clone(),
                 shapes: cyc.into_iter().map(|k| (shapes[k].net.clone(), shapes[k].rect)).collect(),
+            });
+        }
+    }
+}
+
+/// The shape rules on each mask's shapes as a layer of their own: merged per net, checked as the
+/// reference checks the rule (see [`crate::masks_check`]).
+fn check_shape_rules_per_mask(layer: &MaskLayer, shapes: &[MaskShape], rules: &SameMaskRulesDbu, findings: &mut Vec<Finding>) {
+    let nets: Vec<String> = shapes.iter().map(|s| s.net.clone()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    for mask in 1..=layer.num_masks {
+        let on_mask: Vec<crate::masks_geom::Shape> = shapes
+            .iter()
+            .filter(|s| s.mask == mask)
+            .map(|s| crate::masks_geom::Shape {
+                net: nets.binary_search(&s.net).expect("the net list was built from these shapes"),
+                rect: s.rect,
+                fixed: s.fixed,
+            })
+            .collect();
+        if on_mask.is_empty() {
+            continue;
+        }
+        let model = crate::masks_geom::LayerModel::build(&on_mask);
+        for m in crate::masks_check::check_shape_rules(&model, layer.horizontal, rules, &nets) {
+            findings.push(Finding::SameMaskRule {
+                layer: layer.name.clone(),
+                mask,
+                rule: m.rule,
+                index: m.index,
+                marker: m.bbox,
+                nets: m.nets.iter().map(|&n| nets[n].clone()).collect(),
             });
         }
     }
@@ -841,7 +887,12 @@ fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourRe
         let masks = db.net_wire_box_masks(&net)?;
         for (b, &m) in boxes.iter().zip(&masks) {
             if by_number.contains_key(&b.layer) {
-                shapes.entry(b.layer).or_default().push(MaskShape { net: net.clone(), rect: [b.x0, b.y0, b.x1, b.y1], mask: m });
+                shapes.entry(b.layer).or_default().push(MaskShape {
+                    net: net.clone(),
+                    rect: [b.x0, b.y0, b.x1, b.y1],
+                    mask: m,
+                    fixed: false,
+                });
             }
         }
     }
@@ -850,7 +901,7 @@ fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourRe
     let swn = db.swire_box_nets()?;
     for ((b, &m), n) in sw.iter().zip(&swm).zip(&swn) {
         if by_number.contains_key(&b.0) {
-            shapes.entry(b.0).or_default().push(MaskShape { net: n.clone(), rect: [b.1, b.2, b.3, b.4], mask: m });
+            shapes.entry(b.0).or_default().push(MaskShape { net: n.clone(), rect: [b.1, b.2, b.3, b.4], mask: m, fixed: true });
         }
     }
     for t in db.block_get_b_terms() {
@@ -860,7 +911,12 @@ fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourRe
             let masks = db.bpin_layer_box_masks(&t, p)?;
             for (b, &m) in boxes.iter().zip(&masks) {
                 if by_number.contains_key(&b.0) {
-                    shapes.entry(b.0).or_default().push(MaskShape { net: net.clone(), rect: [b.1, b.2, b.3, b.4], mask: m });
+                    shapes.entry(b.0).or_default().push(MaskShape {
+                        net: net.clone(),
+                        rect: [b.1, b.2, b.3, b.4],
+                        mask: m,
+                        fixed: true,
+                    });
                 }
             }
         }
@@ -885,6 +941,29 @@ mod tests {
 
     fn pat(origin: i32, count: i32, step: i32, first_mask: u8, same_mask: bool) -> TrackPattern {
         TrackPattern { origin, count, step, first_mask, same_mask }
+    }
+
+    /// Same-mask shape rules see one mask's shapes as a layer of their own: a forbidden gap with a
+    /// third wire of the SAME mask in it is a marker; with the third wire on the other mask the
+    /// pair has nothing between them on their mask, so no marker.
+    #[test]
+    fn shape_rules_run_per_mask() {
+        let mut rules = vyges_loom::lef58_samemask::SameMaskRules::default();
+        rules.read_property("LEF58_FORBIDDENSPACING", "FORBIDDENSPACING 0.2 0.3 SAMEMASK WIDTH 0.1 PRL 0.15 TWOEDGES 0.25 ;");
+        let mut l = layer(true, vec![pat(50, 40, 100, 1, false)]);
+        l.rules = Some(SameMaskRulesDbu::from_um(&rules, 1000.0));
+        let wire = |n: &str, y: i32, m: u8| sh(n, [0, y - 25, 1000, y + 25], m);
+        // d, a, c, b, e as in the reference oracle, all mask 1; then c moved to mask 2
+        let one = vec![wire("d", 850, 1), wire("a", 1050, 1), wire("c", 1250, 1), wire("b", 1350, 1), wire("e", 1550, 1)];
+        let mut f = Vec::new();
+        check_layer(&l, &one, &mut f);
+        let fs: Vec<&Finding> = f.iter().filter(|x| x.kind() == "forbidden_spacing").collect();
+        assert_eq!(fs.len(), 2, "{f:?}");
+        let mut two = one.clone();
+        two[2].mask = 2;
+        let mut f = Vec::new();
+        check_layer(&l, &two, &mut f);
+        assert!(!f.iter().any(|x| x.kind() == "forbidden_spacing"), "{f:?}");
     }
 
     /// DEF `TRACKS ... MASK n`: the first track has mask n and the masks then cycle; `SAMEMASK`
@@ -1007,7 +1086,7 @@ mod tests {
     }
 
     fn sh(net: &str, r: [i32; 4], mask: u8) -> MaskShape {
-        MaskShape { net: net.into(), rect: r, mask }
+        MaskShape { net: net.into(), rect: r, mask, fixed: false }
     }
 
     /// Conflicts are pairs under the spacing, edge to edge (Euclidean at corners); touching shapes

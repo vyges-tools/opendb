@@ -165,7 +165,8 @@ fn a_two_widths_same_mask_table_is_checked_by_width_and_run() {
     let m1 = &rep.layers[0];
     assert_eq!((m1.same_mask_spacing, m1.spacing_source), (60, SpacingSource::Lef58SameMask));
     let rules = m1.rules.as_ref().unwrap();
-    assert_eq!(rules.not_checked, vec![("FORBIDDENSPACING SAMEMASK", 1)], "stated, counted, not checked");
+    let not_checked = vec![(vyges_opendb::masks_check::NOT_CHECKED_FORBIDDEN_FORM, 1)];
+    assert_eq!(rules.not_checked, not_checked, "a form the reference refuses (no TWOEDGES, PRL, WIDTH): counted");
     let long_run = rep.findings.iter().find_map(|f| match f {
         Finding::SameMaskSpacing { a, b, gap, required, rule, mask: 1, .. }
             if [a.1, b.1].contains(&[25, 25, 975, 75]) && [a.1, b.1].contains(&[25, 225, 975, 275]) =>

@@ -51,6 +51,7 @@ pub mod eco;
 pub mod gds;
 pub mod masks;
 pub mod masks_check;
+pub mod masks_geom;
 #[cfg(unix)]
 pub mod nets3d;
 #[cfg(unix)]
