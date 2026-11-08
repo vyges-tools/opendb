@@ -188,6 +188,33 @@ fn hint(code: &str) -> Option<&'static str> {
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(unix)]
+/// Put the space odb's DEF writer leaves out between a routing point and the wire `MASK` after it
+/// (see [`Db::write_def`]), in the NETS and SPECIALNETS sections only.
+fn respace_def_masks(path: &Path) -> std::io::Result<()> {
+    use std::io::{BufRead, Write};
+    let text = std::io::BufReader::new(std::fs::File::open(path)?);
+    let tmp = path.with_extension("def.respace");
+    let mut out = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
+    let mut in_nets = false;
+    for line in text.lines() {
+        let line = line?;
+        let t = line.trim_start();
+        if t.starts_with("NETS ") || t.starts_with("SPECIALNETS ") {
+            in_nets = true;
+        } else if t.starts_with("END NETS") || t.starts_with("END SPECIALNETS") {
+            in_nets = false;
+        }
+        if in_nets && line.contains(")MASK ") {
+            writeln!(out, "{}", line.replace(")MASK ", ") MASK "))?;
+        } else {
+            writeln!(out, "{line}")?;
+        }
+    }
+    out.flush()?;
+    drop(out);
+    std::fs::rename(&tmp, path)
+}
+
 fn path_str(p: impl AsRef<Path>) -> Result<String> {
     p.as_ref().to_str().map(str::to_owned).ok_or(Error::NonUtf8Path)
 }
@@ -357,6 +384,32 @@ pub struct LayerBox {
     pub from_via: bool,
 }
 
+/// A via's mask colours on a multi-patterned stack, as a DEF `MASK <top><cut><bottom>` gives them:
+/// one per layer the via touches, 0 for none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ViaMask {
+    pub bottom: u8,
+    pub cut: u8,
+    pub top: u8,
+}
+
+impl ViaMask {
+    fn unpack(v: i32) -> Option<ViaMask> {
+        (v != 0).then_some(ViaMask { bottom: ((v >> 4) & 3) as u8, cut: ((v >> 2) & 3) as u8, top: (v & 3) as u8 })
+    }
+}
+
+/// The mask-colour state at one record of [`Db::net_wire_decode`]: what odb's wire decoder holds
+/// there (`getColor`, `getViaColor`). The state carries forward: a colour holds until the wire
+/// sets another, and odb's encoder clears the metal colour after every via it adds, so the
+/// colour of a segment is the state at the point that ENDS it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WireMaskState {
+    /// The metal mask (1..=3) of the shapes at this record, `None` when uncoloured.
+    pub color: Option<u8>,
+    pub via: Option<ViaMask>,
+}
+
 impl LayerBox {
     /// Do the two boxes touch or overlap in the plane? Abutment counts.
     pub fn touches(&self, o: &LayerBox) -> bool {
@@ -511,8 +564,22 @@ impl Db {
     }
 
     /// Export the design to a DEF file (libodb v1 — DEF 5.8).
+    ///
+    /// ⛔ **odb's DEF writer glues a wire's `MASK` to the point before it** (`( 50 50 )MASK 1
+    /// ( 950 * )`, `defout_impl.cpp` writes the mask statement with no leading space), and odb's own
+    /// DEF reader then refuses the file (DEFPARS-6017 "Odd punctuation"). When the technology has a
+    /// multi-mask layer the written NETS section is therefore re-spaced here; nothing else in the
+    /// file is touched, and a design without multi-mask layers is written exactly as odb writes it.
     pub fn write_def(&self, path: impl AsRef<Path>) -> Result<()> {
-        Ok(sys::write_def(self.r(), &path_str(path)?)?)
+        let p = path_str(path)?;
+        sys::write_def(self.r(), &p)?;
+        let multi_mask = (0..sys::num_layers(self.r())?)
+            .filter_map(|i| sys::nth_layer_name(self.r(), i).ok())
+            .any(|l| self.layer_get_num_masks(&l) > 1);
+        if multi_mask {
+            respace_def_masks(Path::new(&p)).map_err(|e| Error::Odb(format!("write_def: {p}: {e}")))?;
+        }
+        Ok(())
     }
 
     /// Import a DEF into the design. `mode`: `"default"` (design from scratch), `"floorplan"`
@@ -1766,6 +1833,21 @@ impl Db {
     pub fn net_wire_decode(&self, net: &str) -> Result<Vec<String>> {
         Ok(sys::net_wire_decode(self.r(), net)?)
     }
+    /// The mask-colour state at each record of [`Self::net_wire_decode`], record for record (the
+    /// `T|` header included, uncoloured). Empty without a wire.
+    pub fn net_wire_decode_masks(&self, net: &str) -> Result<Vec<WireMaskState>> {
+        Ok(sys::net_wire_decode_masks(self.r(), net)?
+            .chunks(2)
+            .filter(|c| c.len() == 2)
+            .map(|c| WireMaskState { color: (c[0] != 0).then_some(c[0] as u8), via: ViaMask::unpack(c[1]) })
+            .collect())
+    }
+    /// The mask of each box [`Self::net_wire_boxes`] returns, box for box (0 none): a segment or
+    /// patch takes the metal colour in force at it; a via's boxes take the via's bottom, cut or top
+    /// colour by the layer they are on.
+    pub fn net_wire_box_masks(&self, net: &str) -> Result<Vec<u8>> {
+        Ok(sys::net_wire_box_masks(self.r(), net)?.into_iter().map(|m| m as u8).collect())
+    }
     /// A net's global-route guides in stored order: `(layer, via layer (empty for a wire guide),
     /// box, congested)`.
     #[allow(clippy::type_complexity)]
@@ -1827,7 +1909,9 @@ impl Db {
     /// Replace a net's routing with paths from a flat op stream (records): `0 layer ndr` a new
     /// ROUTED path on `names[layer]` (ndr 1: with the net's rule for that layer), `1 x y` a
     /// point, `2 x y ext` a point with its extension, `3 via` the tech via `names[via]`, `4 via`
-    /// the block via `names[via]`, `5 xl yl xh yh` a rectangle about the last point.
+    /// the block via `names[via]`, `5 xl yl xh yh` a rectangle about the last point; mask colour
+    /// for the shapes that follow: `6 c` metal colour 1..=3, `7` none, `8 b c t` via colours 0..=3
+    /// (bottom, cut, top), `9` no via colour — odb's encoder clears the metal colour after each via.
     pub fn net_write_wire(&mut self, net: &str, ops: &[i32], names: &[String]) -> Result<()> {
         Ok(sys::net_write_wire(self.r(), net, ops, names)?)
     }
