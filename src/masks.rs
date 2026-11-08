@@ -26,6 +26,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use crate::{Db, Result, ViaMask, WireMaskState};
+use vyges_loom::lef58_samemask::SameMaskRules;
 
 // ---- the colour grid ----------------------------------------------------------------------------
 
@@ -53,6 +54,31 @@ pub struct MaskLayer {
     pub tracks: Vec<TrackPattern>,
     /// Required spacing between two shapes of the same mask.
     pub same_mask_spacing: i32,
+    /// Where [`MaskLayer::same_mask_spacing`] came from.
+    pub spacing_source: SpacingSource,
+}
+
+/// The origin of a layer's same-mask spacing, most specific first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpacingSource {
+    /// `--same-mask-spacing` / [`ColourOptions::same_mask_spacing`].
+    Option,
+    /// The layer's LEF58 SAMEMASK rules ([`SameMaskRules::min_spacing`]).
+    Lef58SameMask,
+    /// No same-mask rule known: the layer's base SPACING (else its table at minimum width).
+    BaseSpacing,
+}
+
+impl SpacingSource {
+    /// The word written in the report.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SpacingSource::Option => "option",
+            SpacingSource::Lef58SameMask => "lef58_samemask",
+            SpacingSource::BaseSpacing => "base_spacing",
+        }
+    }
 }
 
 /// Where a coordinate falls on a layer's track grid.
@@ -606,8 +632,10 @@ pub fn check_layer(layer: &MaskLayer, shapes: &[MaskShape], findings: &mut Vec<F
 /// Options of [`colour_masks`].
 #[derive(Debug, Clone, Default)]
 pub struct ColourOptions {
-    /// Same-mask spacing per layer, overriding the layer's own SPACING (DBU).
+    /// Same-mask spacing per layer (DBU), overriding everything else.
     pub same_mask_spacing: BTreeMap<String, i32>,
+    /// LEF58 same-mask rules per layer, read from the tech LEF (odb drops them). Microns.
+    pub same_mask_rules: BTreeMap<String, SameMaskRules>,
     /// Only check; write no colour.
     pub check_only: bool,
 }
@@ -645,15 +673,22 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
                 TrackPattern { origin, count, step, first_mask: m.first_mask, same_mask: m.same_mask }
             })
             .collect();
-        // The base rule only: odb drops the SAMEMASK forms of LEF58 spacing, so a stricter
-        // same-mask value comes from the option. A layer with a spacing table and no plain SPACING
-        // reads 0 there; its table at minimum width and no parallel run stands in.
-        let spacing = match opts.same_mask_spacing.get(&name) {
-            Some(&s) => s,
-            None => match db.layer_get_spacing(&name) {
-                0 => db.layer_find_v55_spacing(&name, db.layer_get_width(&name) as i32, 0).unwrap_or(0),
-                s => s,
-            },
+        // odb drops the SAMEMASK forms of LEF58 spacing, so they come from the tech LEF
+        // through `same_mask_rules`; the option overrides both. Without either, the base rule: a
+        // layer with a spacing table and no plain SPACING reads 0 there, so its table at minimum
+        // width and no parallel run stands in.
+        let lef58 = opts.same_mask_rules.get(&name).and_then(SameMaskRules::min_spacing);
+        let dbu = f64::from(db.dbu_per_micron());
+        let (spacing, spacing_source) = match (opts.same_mask_spacing.get(&name), lef58) {
+            (Some(&s), _) => (s, SpacingSource::Option),
+            (None, Some(um)) => ((um * dbu).round() as i32, SpacingSource::Lef58SameMask),
+            (None, None) => {
+                let base = match db.layer_get_spacing(&name) {
+                    0 => db.layer_find_v55_spacing(&name, db.layer_get_width(&name) as i32, 0).unwrap_or(0),
+                    s => s,
+                };
+                (base, SpacingSource::BaseSpacing)
+            }
         };
         out.push(MaskLayer {
             number: db.layer_get_number(&name) as i64,
@@ -661,6 +696,7 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
             horizontal,
             tracks,
             same_mask_spacing: spacing,
+            spacing_source,
             name,
         });
     }
@@ -804,7 +840,8 @@ mod tests {
     use super::*;
 
     fn layer(horizontal: bool, tracks: Vec<TrackPattern>) -> MaskLayer {
-        MaskLayer { name: "M1".into(), number: 1, num_masks: 2, horizontal, tracks, same_mask_spacing: 60 }
+        MaskLayer { name: "M1".into(), number: 1, num_masks: 2, horizontal, tracks, same_mask_spacing: 60,
+                    spacing_source: SpacingSource::Option }
     }
 
     fn pat(origin: i32, count: i32, step: i32, first_mask: u8, same_mask: bool) -> TrackPattern {

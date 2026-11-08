@@ -7,7 +7,8 @@
 //! the tenth track, mask 2.
 #![cfg(unix)]
 
-use vyges_opendb::masks::{self, ColourOptions, Finding};
+use vyges_loom::lef58_samemask::SameMaskRules;
+use vyges_opendb::masks::{self, ColourOptions, Finding, SpacingSource};
 use vyges_opendb::Db;
 
 fn fixture(f: &str) -> String {
@@ -67,7 +68,11 @@ fn a_line_end_pair_on_one_track_is_a_same_mask_finding() {
     let Finding::SameMaskSpacing { layer, mask, gap, same_track, .. } = same[0] else { unreachable!() };
     assert_eq!((layer.as_str(), *mask, *gap, *same_track), ("M1", 1, 10, true));
 
-    let opts = ColourOptions { same_mask_spacing: [("M1".to_string(), 120)].into(), check_only: true };
+    let opts = ColourOptions {
+        same_mask_spacing: [("M1".to_string(), 120)].into(),
+        check_only: true,
+        ..ColourOptions::default()
+    };
     let rep = masks::colour_masks(&mut db, &opts).unwrap();
     let mut pairs: Vec<([i32; 4], [i32; 4])> = rep
         .findings
@@ -90,4 +95,42 @@ fn a_design_without_multi_mask_layers_is_left_alone() {
     let rep = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
     assert!(rep.layers.is_empty());
     assert_eq!((rep.nets_checked, rep.nets_recoloured, rep.findings.len()), (0, 0, 0));
+}
+
+/// The same-mask spacing comes from the layer's LEF58 SAMEMASK rules (which odb drops) when the
+/// tech LEF is given: the larger of a plain `SPACING s SAMEMASK` and a TWOWIDTHS table's first
+/// entry, in DBU; `--same-mask-spacing` still overrides it, and a layer with no rule keeps its
+/// base spacing. The LEF58 value finds the same pairs as the equal option value.
+#[test]
+fn lef58_same_mask_rules_set_the_spacing() {
+    let mut m1 = SameMaskRules::default();
+    m1.read_property("LEF58_SPACINGTABLE", "SPACINGTABLE TWOWIDTHS SAMEMASK WIDTH 0 0.12 0.14 WIDTH 0.1 0.14 0.16 ;");
+    m1.read_property("LEF58_SPACING", "SPACING 0.11 SAMEMASK ;");
+    let opts = ColourOptions {
+        same_mask_rules: [("M1".to_string(), m1)].into(),
+        check_only: true,
+        ..ColourOptions::default()
+    };
+    let db = load();
+    let layers = masks::mask_layers(&db, &opts).unwrap();
+    let got: Vec<(&str, i32, SpacingSource)> =
+        layers.iter().map(|l| (l.name.as_str(), l.same_mask_spacing, l.spacing_source)).collect();
+    assert_eq!(got, [("M1", 120, SpacingSource::Lef58SameMask), ("M2", 50, SpacingSource::BaseSpacing)]);
+
+    let both = ColourOptions { same_mask_spacing: [("M1".to_string(), 70)].into(), ..opts.clone() };
+    let m1 = &masks::mask_layers(&db, &both).unwrap()[0];
+    assert_eq!((m1.same_mask_spacing, m1.spacing_source), (70, SpacingSource::Option));
+
+    // the same pairs as the option at the same value
+    let mut db = load();
+    let names = vec!["M1".to_string()];
+    #[rustfmt::skip]
+    let ops = [0, 0, 0, 1, 50, 250, 1, 500, 250, 0, 0, 0, 1, 560, 250, 1, 900, 250];
+    db.net_write_wire("b", &ops, &names).unwrap();
+    let _ = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    let by_lef = masks::colour_masks(&mut db, &opts).unwrap();
+    let by_option = ColourOptions { same_mask_spacing: [("M1".to_string(), 120)].into(), check_only: true, ..ColourOptions::default() };
+    let by_option = masks::colour_masks(&mut db, &by_option).unwrap();
+    assert_eq!(by_lef.findings, by_option.findings);
+    assert_eq!(by_lef.findings.iter().filter(|f| f.kind() == "same_mask_spacing").count(), 3);
 }

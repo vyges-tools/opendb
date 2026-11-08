@@ -105,7 +105,8 @@ commands:
   report-connectivity       --input <f.odb>
                       Dump the netlist connectivity graph as JSON (report).
 
-  color-masks               --input <in.odb> [--output <out.odb>] [--same-mask-spacing LAYER:DBU]...
+  color-masks               --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...
+                            [--same-mask-spacing LAYER:DBU]...
                             [--check-only] [--report <f.json>] [--fail-on-findings]
                       Colour routed wires on multi-mask layers by track parity (DEF TRACKS MASK, or
                       mask 1 on the first track), keep pre-coloured shapes, then check: off-track,
@@ -2218,14 +2219,15 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
   "args": [
     { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "routed design .odb" },
     { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "coloured .odb (default: in place); not written with --check-only" },
-    { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the layer's SPACING, else its spacing table at minimum width)" },
+    { "name": "--lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "tech LEF whose LEF58 SAMEMASK spacing rules (dropped by odb) set the same-mask spacing" },
+    { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the --lef SAMEMASK rules, else the layer's SPACING, else its spacing table at minimum width)" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
     { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
     { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when anything is reported" }
   ]
 }"#;
 
-/// `color-masks --input <in.odb> [--output <out.odb>] [--same-mask-spacing LAYER:DBU]...
+/// `color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]... [--same-mask-spacing LAYER:DBU]...
 /// [--check-only] [--report <f.json>] [--fail-on-findings] | --describe`.
 fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let (mut input, mut output, mut report) = (None, None, None);
@@ -2238,6 +2240,15 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "--report" => report = args.next(),
             "--check-only" => opts.check_only = true,
             "--fail-on-findings" => fail_on_findings = true,
+            "--lef" => {
+                let path = args.next().ok_or("color-masks: --lef needs a tech LEF path")?;
+                let lef = vyges_loom::lef::Lef::load(&path).map_err(|e| format!("color-masks: {path}: {}", e.0))?;
+                for (name, layer) in lef.layers {
+                    if !layer.same_mask.is_empty() {
+                        opts.same_mask_rules.insert(name, layer.same_mask);
+                    }
+                }
+            }
             "--same-mask-spacing" => {
                 let v = args.next().ok_or("color-masks: --same-mask-spacing needs LAYER:DBU")?;
                 let (l, d) = v.split_once(':').ok_or("color-masks: --same-mask-spacing wants LAYER:DBU")?;
@@ -2249,7 +2260,8 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 return Ok(());
             }
             "-h" | "--help" => {
-                diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--same-mask-spacing LAYER:DBU]...\n\
+                diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
+                       \x20                         [--same-mask-spacing LAYER:DBU]...\n\
                        \x20                         [--check-only] [--report <f.json>] [--fail-on-findings]");
                 return Ok(());
             }
@@ -2259,6 +2271,14 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let input = input.ok_or("color-masks: --input <in.odb> required")?;
     let mut db = Db::open(&input)?;
     let rep = vyges_opendb::masks::colour_masks(&mut db, &opts)?;
+    // A SAMEMASK statement the reader could not place is said, never dropped quietly.
+    let mut unread = serde_json::Map::new();
+    for (layer, r) in &opts.same_mask_rules {
+        if !r.unread.is_empty() {
+            diag!("color-masks: {layer}: {} LEF58 SAMEMASK statement(s) not read", r.unread.len());
+            unread.insert(layer.clone(), serde_json::json!(r.unread));
+        }
+    }
     let mut by_kind: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     for f in &rep.findings {
         *by_kind.entry(f.kind()).or_default() += 1;
@@ -2288,7 +2308,9 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "layers": rep.layers.iter().map(|l| serde_json::json!({
             "layer": l.name, "masks": l.num_masks, "horizontal": l.horizontal,
             "track_patterns": l.tracks.len(), "same_mask_spacing": l.same_mask_spacing,
+            "same_mask_spacing_source": l.spacing_source.as_str(),
         })).collect::<Vec<_>>(),
+        "same_mask_rules_unread": unread,
         "tracks_without_mask": rep.unmasked_tracks,
         "nets_checked": rep.nets_checked,
         "nets_recoloured": rep.nets_recoloured,
