@@ -363,9 +363,15 @@ pub fn pad_odd_strings(bytes: &[u8]) -> Result<Vec<u8>> {
 /// may appear on several lines, and then a shape goes to EVERY target: on sky130 a DEF pin on met2
 /// lands on 69/20 and on 69/16. `NAME <layer>/<purpose>,... L D` says where label text goes, and
 /// `DIEAREA ALL L D` where the die outline goes.
+///
+/// A purpose may carry a mask, `<purpose>:MASK:<n>`: the target of a shape on a multi-patterned
+/// layer that has mask `n`. 🔑 As the KLayout DEF reader applies it (measured on 0.30.4): a shape
+/// with a mask goes ONLY to its masked entry and an uncoloured shape only to the unmasked one —
+/// neither falls back to the other, and a shape with no entry for its mask is not streamed.
 #[derive(Debug, Default, Clone)]
 pub struct LayerMap {
-    shapes: HashMap<(String, String), Vec<Ld>>,
+    /// (layer, purpose, mask) — mask 0 for an unmasked entry.
+    shapes: HashMap<(String, String, u8), Vec<Ld>>,
     names: HashMap<(String, String), Vec<Ld>>,
     diearea: Vec<Ld>,
 }
@@ -395,7 +401,8 @@ impl LayerMap {
                 "DIEAREA" => m.diearea.push(ld),
                 layer => {
                     for p in t[1].split(',') {
-                        m.shapes.entry((layer.to_string(), p.to_uppercase())).or_default().push(ld);
+                        let (purpose, mask) = split_mask(p).map_err(|e| format!("layer map line {}: {e}", n + 1))?;
+                        m.shapes.entry((layer.to_string(), purpose, mask)).or_default().push(ld);
                     }
                 }
             }
@@ -403,10 +410,23 @@ impl LayerMap {
         Ok(m)
     }
 
-    /// Where a shape on `layer` with `purpose` goes; empty when the map does not stream it.
+    /// Where an uncoloured shape on `layer` with `purpose` goes; empty when the map does not
+    /// stream it.
     pub fn targets(&self, layer: &str, purpose: &str) -> &[Ld] {
-        let k = |p: &str| (layer.to_string(), p.to_string());
+        self.targets_masked(layer, purpose, 0)
+    }
+
+    /// Where a shape on `layer` with `purpose` and mask `mask` (0: none) goes: that mask's entries
+    /// only, never another mask's or the unmasked ones (see the type's doc).
+    pub fn targets_masked(&self, layer: &str, purpose: &str, mask: u8) -> &[Ld] {
+        let k = |p: &str| (layer.to_string(), p.to_string(), mask);
         self.shapes.get(&k(purpose)).or_else(|| self.shapes.get(&k("ALL"))).map_or(&[], Vec::as_slice)
+    }
+
+    /// Does the map stream ANY mask of `purpose` on `layer` — so a masked shape it has no entry
+    /// for is a gap in the map rather than a purpose the map leaves out on purpose.
+    pub fn has_purpose(&self, layer: &str, purpose: &str) -> bool {
+        self.shapes.keys().any(|(l, p, _)| l == layer && (p == purpose || p == "ALL"))
     }
 
     /// Where the label of a shape on `layer` with `purpose` goes.
@@ -416,6 +436,18 @@ impl LayerMap {
 
     pub fn diearea(&self) -> &[Ld] {
         &self.diearea
+    }
+}
+
+/// `NET:MASK:2` -> (`NET`, 2); `NET` -> (`NET`, 0).
+fn split_mask(p: &str) -> std::result::Result<(String, u8), String> {
+    let up = p.to_uppercase();
+    match up.split_once(":MASK:") {
+        None => Ok((up, 0)),
+        Some((purpose, n)) => match n.parse::<u8>() {
+            Ok(m @ 1..=3) => Ok((purpose.to_string(), m)),
+            _ => Err(format!("mask must be 1, 2 or 3: {p}")),
+        },
     }
 }
 
@@ -456,6 +488,9 @@ pub struct StreamOut {
     pub unplaced: usize,
     pub shapes: usize,
     pub labels: usize,
+    /// Shapes carrying a mask the map has no entry for, on a layer and purpose it does stream
+    /// (KLayout: "No mapping for layer ... Mask n - layer is ignored"). Not streamed.
+    pub unmapped_masked: usize,
 }
 
 /// The block in `db` (read with its LEFs and DEF) as GDS at `out`, its cells' contents taken from
@@ -561,11 +596,15 @@ fn layer_table(db: &Db) -> Result<HashMap<i64, (String, bool)>> {
     Ok(t)
 }
 
-fn stream_box(map: &LayerMap, layers: &HashMap<i64, (String, bool)>, purpose: &str, b: (i64, i32, i32, i32, i32), els: &mut Vec<GdsElement>, so: &mut StreamOut) {
+fn stream_box(map: &LayerMap, layers: &HashMap<i64, (String, bool)>, purpose: &str, b: (i64, i32, i32, i32, i32), mask: u8, els: &mut Vec<GdsElement>, so: &mut StreamOut) {
     let Some((name, cut)) = layers.get(&b.0) else { return };
     // A via's shapes are the VIA purpose on every layer it touches; on a cut layer nothing else is.
     let purpose = if *cut { "VIA" } else { purpose };
-    for &ld in map.targets(name, purpose) {
+    let targets = map.targets_masked(name, purpose, mask);
+    if targets.is_empty() && mask != 0 && map.has_purpose(name, purpose) {
+        so.unmapped_masked += 1;
+    }
+    for &ld in targets {
         els.push(GdsElement::rect(ld, b.1, b.2, b.3, b.4));
         so.shapes += 1;
     }
@@ -575,13 +614,16 @@ fn stream_box(map: &LayerMap, layers: &HashMap<i64, (String, bool)>, purpose: &s
 fn stream_routing(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
     let layers = layer_table(db)?;
     for n in db.block_get_nets() {
-        for b in db.net_wire_boxes(&n) {
+        let masks = db.net_wire_box_masks(&n)?;
+        for (k, b) in db.net_wire_boxes(&n).into_iter().enumerate() {
             let purpose = if b.from_via { "VIA" } else { "NET" };
-            stream_box(map, &layers, purpose, (b.layer, b.x0, b.y0, b.x1, b.y1), els, so);
+            let mask = masks.get(k).copied().unwrap_or(0);
+            stream_box(map, &layers, purpose, (b.layer, b.x0, b.y0, b.x1, b.y1), mask, els, so);
         }
     }
-    for b in db.swire_boxes()? {
-        stream_box(map, &layers, "SPNET", b, els, so);
+    let masks = db.swire_box_masks()?;
+    for (k, b) in db.swire_boxes()?.into_iter().enumerate() {
+        stream_box(map, &layers, "SPNET", b, masks.get(k).copied().unwrap_or(0), els, so);
     }
     Ok(())
 }
@@ -592,10 +634,12 @@ fn stream_pins(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut Stre
     for t in db.block_get_b_terms() {
         for p in 0..db.num_bterm_get_b_pins(&t) {
             let boxes = db.bpin_layer_boxes(&t, p)?;
-            for &b in &boxes {
-                stream_box(map, &layers, "PIN", b, els, so);
+            let masks = db.bpin_layer_box_masks(&t, p)?;
+            let masked: Vec<(Box4, u8)> = boxes.iter().enumerate().map(|(k, &b)| (b, masks.get(k).copied().unwrap_or(0))).collect();
+            for &(b, mask) in &masked {
+                stream_box(map, &layers, "PIN", b, mask, els, so);
             }
-            for (name, b) in port_label_boxes(&layers, &boxes) {
+            for (name, b) in port_label_boxes(&layers, &masked) {
                 for &(layer, datatype) in map.label_targets(name, "LABEL") {
                     let origin = label_point(b.1, b.2, b.3, b.4);
                     els.push(GdsElement::Text { layer, datatype, origin, presentation: (0, 0), trans: STrans::IDENTITY, text: t.clone(), props: Vec::new() });
@@ -610,24 +654,23 @@ fn stream_pins(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut Stre
 /// One pin box: layer number, then x0, y0, x1, y1.
 type Box4 = (i64, i32, i32, i32, i32);
 
-/// The box each layer of one pin port is labelled at: the LAST box on that layer, one label per
-/// layer, layers in name order.
+/// The box each layer and mask of one pin port is labelled at: the LAST box on that layer with
+/// that mask, one label per (layer, mask), in name then mask order.
 ///
-/// The KLayout DEF reader collects a port's shapes per layer and, when the port ends, puts one
-/// label per layer at the centre of the last shape collected on it (layers keyed by name in an
+/// The KLayout DEF reader collects a port's shapes per layer and mask and, when the port ends, puts
+/// one label per group at the centre of the last shape collected in it (keyed by name in an
 /// ordered map). A port is an odb `dbBPin`, and odb returns a port's rectangles in the DEF's own
 /// order (the reader inserts them reversed, each insert prepends), so "last" is the same box from
-/// a DEF read here as from the DEF KLayout reads. KLayout also splits a layer by MASK; the boxes
-/// carry none here, so a multi-patterned pin layer would get one label where KLayout writes one
-/// per mask.
-fn port_label_boxes<'a>(layers: &'a HashMap<i64, (String, bool)>, boxes: &[Box4]) -> Vec<(&'a str, Box4)> {
-    let mut last: BTreeMap<&str, Box4> = BTreeMap::new();
-    for &b in boxes {
+/// a DEF read here as from the DEF KLayout reads. Measured on KLayout 0.30.4: a pin with one M2
+/// box on mask 1 and one on mask 2 gets two M2 labels, each at its own box.
+fn port_label_boxes<'a>(layers: &'a HashMap<i64, (String, bool)>, boxes: &[(Box4, u8)]) -> Vec<(&'a str, Box4)> {
+    let mut last: BTreeMap<(&str, u8), Box4> = BTreeMap::new();
+    for &(b, mask) in boxes {
         if let Some((name, _)) = layers.get(&b.0) {
-            last.insert(name.as_str(), b);
+            last.insert((name.as_str(), mask), b);
         }
     }
-    last.into_iter().collect()
+    last.into_iter().map(|((name, _), b)| (name, b)).collect()
 }
 
 /// The die outline as one polygon on each DIEAREA target.
@@ -699,8 +742,35 @@ mod tests {
         let layers: HashMap<i64, (String, bool)> =
             [(10, ("met4".to_string(), false)), (11, ("met5".to_string(), false)), (9, ("via3".to_string(), true))].into();
         let boxes = [(11, 0, 0, 10, 2), (11, 0, 20, 10, 22), (10, 0, 0, 2, 30), (99, 0, 0, 1, 1), (10, 8, 0, 10, 30), (11, 0, 40, 10, 42)];
+        let boxes: Vec<(Box4, u8)> = boxes.iter().map(|&b| (b, 0)).collect();
         assert_eq!(port_label_boxes(&layers, &boxes), vec![("met4", (10, 8, 0, 10, 30)), ("met5", (11, 0, 40, 10, 42))]);
         assert!(port_label_boxes(&layers, &[]).is_empty());
+    }
+
+    /// A multi-patterned pin layer is labelled once per MASK, at the last box of each (KLayout
+    /// 0.30.4 on a pin with an M2 box on each mask: two M2 labels).
+    #[test]
+    fn a_port_is_labelled_once_per_layer_and_mask() {
+        let layers: HashMap<i64, (String, bool)> = [(2, ("M2".to_string(), false))].into();
+        let boxes = [((2, 0, 0, 5, 5), 2), ((2, 10, 0, 15, 5), 1), ((2, 20, 0, 25, 5), 2)];
+        assert_eq!(port_label_boxes(&layers, &boxes), vec![("M2", (2, 10, 0, 15, 5)), ("M2", (2, 20, 0, 25, 5))]);
+    }
+
+    /// `<purpose>:MASK:<n>` entries take that mask's shapes only: a masked shape never falls back
+    /// to the unmasked entry, nor an uncoloured shape to a masked one (KLayout 0.30.4 drops both,
+    /// warning "No mapping for layer ... Mask n").
+    #[test]
+    fn masked_purposes_take_only_their_masks_shapes() {
+        let m = LayerMap::parse("M1 NET,PIN 10 0\nM1 NET:MASK:1,PIN:MASK:1 10 1\nM1 NET:MASK:2 10 2\n").unwrap();
+        assert_eq!(m.targets("M1", "NET"), [(10, 0)]);
+        assert_eq!(m.targets_masked("M1", "NET", 1), [(10, 1)]);
+        assert_eq!(m.targets_masked("M1", "NET", 2), [(10, 2)]);
+        assert!(m.targets_masked("M1", "PIN", 2).is_empty(), "no PIN:MASK:2 entry, no fallback");
+        assert!(m.has_purpose("M1", "PIN") && !m.has_purpose("M1", "FILL"));
+        let only = LayerMap::parse("M1 NET:MASK:1 10 1\n").unwrap();
+        assert!(only.targets("M1", "NET").is_empty(), "an uncoloured shape has no masked fallback");
+        assert!(LayerMap::parse("M1 NET:MASK:4 10 1\n").is_err());
+        assert!(LayerMap::parse("M1 NET:MASK:x 10 1\n").is_err());
     }
 
     /// An odd-length string gains one NUL and its length says so; even strings, other records and

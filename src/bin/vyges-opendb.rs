@@ -2196,6 +2196,9 @@ fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     if so.unplaced > 0 {
         diag!("[WARNING] write-gds: {} unplaced instance(s) not streamed", so.unplaced);
     }
+    if so.unmapped_masked > 0 {
+        diag!("[WARNING] write-gds: {} shape(s) carry a mask the layer map has no entry for; not streamed", so.unmapped_masked);
+    }
     diag!("write-gds: {output}: {} cells, {} instances, {} shapes, {} labels", so.cells, so.instances, so.shapes, so.labels);
     Ok(())
 }

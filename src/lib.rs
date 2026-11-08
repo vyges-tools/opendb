@@ -2339,6 +2339,15 @@ impl Db {
             .map(|c| (c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32))
             .collect())
     }
+    /// The mask of each box [`Self::swire_boxes`] returns, box for box (0 none): a wire's DEF
+    /// `MASK`; a via's boxes its bottom, cut or top mask by the layer they are on.
+    pub fn swire_box_masks(&self) -> Result<Vec<u8>> {
+        Ok(sys::swire_box_masks(self.r())?.into_iter().map(|m| m as u8).collect())
+    }
+    /// The net of each box [`Self::swire_boxes`] returns, box for box.
+    pub fn swire_box_nets(&self) -> Result<Vec<String>> {
+        Ok(sys::swire_box_nets(self.r())?)
+    }
     /// The WIRE (non-via) boxes of every SPECIAL net: `(layer number, x0, y0, x1, y1, shape)`,
     /// `shape` the `dbWireShapeType` name (`"STRIPE"`, `"DRCFILL"`, …).
     ///
@@ -2806,6 +2815,10 @@ impl Db {
             .filter(|c| c.len() == 5)
             .map(|c| (c[0] as i64, c[1], c[2], c[3], c[4]))
             .collect())
+    }
+    /// The DEF `MASK` of each box [`Self::bpin_layer_boxes`] returns, box for box (0 none).
+    pub fn bpin_layer_box_masks(&self, bterm: &str, pin: usize) -> Result<Vec<u8>> {
+        Ok(sys::bpin_layer_box_masks(self.r(), bterm, pin)?.into_iter().map(|m| m as u8).collect())
     }
     /// Every boundary rectangle of a named region.
     ///
