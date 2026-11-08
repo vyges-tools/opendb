@@ -1,0 +1,3 @@
+VYT ML_EDGE w(1125,1075)-(1125,1125)d5 prev=100 next=50 max=0 len=50 two=1 res=1
+VYT ML_EDGE x(1605,1075)-(1605,1125)d5 prev=80 next=30 max=0 len=50 two=1 res=0
+VYT ML_EDGE y(2095,1075)-(2095,1125)d5 prev=70 next=20 max=0 len=50 two=1 res=0

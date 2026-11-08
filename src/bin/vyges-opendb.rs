@@ -2289,7 +2289,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             diag!("color-masks: {}: {n} {kind} rule(s) stated, not checked", l.name);
         }
         if let Some(n) = l.rules.as_ref().map(|r| r.approximated()).filter(|&n| n > 0) {
-            diag!("color-masks: {}: {n} EOLEXTENSIONSPACING SAMEMASK rule(s) checked without MINLENGTH, TWOSIDES or a second EXTENSION value", l.name);
+            diag!("color-masks: {}: {n} EOLEXTENSIONSPACING SAMEMASK rule(s) checked without a second EXTENSION value or a TWOSIDES that has no MINLENGTH", l.name);
         }
     }
     // A SAMEMASK statement the reader could not place is said, never dropped quietly.
@@ -2334,7 +2334,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "same_mask_rules": l.rules.as_ref().map(|r| serde_json::json!({
                 "spacing": r.spacing, "two_widths_tables": r.two_widths.len(),
                 "forbidden_spacing": r.forbidden.len(), "eol_extension_spacing": r.eol_extension.len(),
-                // EOL-extension rules checked without MINLENGTH / TWOSIDES / a second extension
+                // EOL-extension rules checked without a second EXTENSION value or a lone TWOSIDES
                 "eol_extension_approximated": r.approximated(),
                 "not_checked": r.not_checked.iter().map(|(k, n)| (k.to_string(), serde_json::json!(n)))
                     .collect::<serde_json::Map<_, _>>(),

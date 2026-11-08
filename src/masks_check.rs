@@ -242,8 +242,10 @@ pub struct EolExtDbu {
     pub parallel_only: bool,
     pub rows: Vec<i32>,
     pub exts: Vec<i32>,
-    /// An entry states MINLENGTH, TWOSIDES or a second EXTENSION value, which the reference's
-    /// grammar has no place for; checked without them.
+    /// Per row: the entry's `MINLENGTH l [TWOSIDES]` as `(l, two_sides)`, `None` when absent.
+    pub min_length: Vec<Option<(i32, bool)>>,
+    /// An entry states a second EXTENSION value (which no reference models) or a TWOSIDES with no
+    /// MINLENGTH; checked without it.
     pub unmodelled: bool,
 }
 
@@ -256,8 +258,10 @@ impl EolExtDbu {
         if rows.is_empty() {
             return None;
         }
-        let unmodelled = e.entries.iter().any(|x| x.extension.len() > 1 || x.min_length.is_some() || x.two_sides);
-        Some(EolExtDbu { spacing: dbu(e.spacing, per_um), parallel_only: e.parallel_only, rows, exts, unmodelled })
+        // TWOSIDES only qualifies a MINLENGTH; one without it is reported, as is a second value.
+        let unmodelled = e.entries.iter().any(|x| x.extension.len() > 1 || (x.two_sides && x.min_length.is_none()));
+        let min_length = e.entries.iter().map(|x| x.min_length.map(|l| (dbu(l, per_um), x.two_sides))).collect();
+        Some(EolExtDbu { spacing: dbu(e.spacing, per_um), parallel_only: e.parallel_only, rows, exts, min_length, unmodelled })
     }
 
     /// drt `fr1DLookupTbl::find` with `lowerBound = false`: inside the rows, the entry AFTER the
@@ -265,16 +269,28 @@ impl EolExtDbu {
     /// value; below the first row the first value, above the last the last.
     #[must_use]
     pub fn find(&self, len: i32) -> i32 {
+        // past the end only for len == last row, which no EOL edge has (len < max_row)
+        self.exts.get(self.row_index(len)).or(self.exts.last()).copied().unwrap_or(0)
+    }
+
+    /// The row an end of length `len` falls in, as [`EolExtDbu::find`] looks it up.
+    fn row_index(&self, len: i32) -> usize {
         let (first, last) = (self.rows[0], self.rows[self.rows.len() - 1]);
-        let idx = if len >= first && len <= last {
+        if len >= first && len <= last {
             self.rows.partition_point(|&r| r <= len).min(self.rows.len())
         } else if len < first {
             0
         } else {
             self.rows.len() - 1
-        };
-        // past the end only for len == last row, which no EOL edge has (len < max_row)
-        self.exts.get(idx).or(self.exts.last()).copied().unwrap_or(0)
+        }
+    }
+
+    /// The `MINLENGTH l [TWOSIDES]` that governs an end of length `len`: its row's, found as the
+    /// extension is (interpretation: the reference has no per-row length clause).
+    #[must_use]
+    pub fn min_length_for(&self, len: i32) -> Option<(i32, bool)> {
+        let i = self.row_index(len);
+        self.min_length.get(i).or(self.min_length.last()).copied().flatten()
     }
     /// drt `findMax`: the LAST value, not the largest.
     fn find_max(&self) -> i32 {
@@ -301,10 +317,34 @@ fn tracing() -> bool {
     *T.get_or_init(|| std::env::var_os("VYGES_MASKS_TRACE").is_some())
 }
 
+std::thread_local! {
+    static CAPTURE: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Run `f` with this thread's trace lines collected instead of printed: the same `VYT` lines
+/// `VYGES_MASKS_TRACE` prints, in call order. Tests compare them with the reference's trace.
+pub fn capture_trace<R>(f: impl FnOnce() -> R) -> (R, Vec<String>) {
+    let saved = CAPTURE.with(|c| c.replace(Some(Vec::new())));
+    let r = f();
+    let lines = CAPTURE.with(|c| c.replace(saved)).unwrap_or_default();
+    (r, lines)
+}
+
+fn capturing() -> bool {
+    CAPTURE.with(|c| c.borrow().is_some())
+}
+
+fn emit(line: String) {
+    let pushed = CAPTURE.with(|c| c.borrow_mut().as_mut().map(|v| v.push(line.clone())).is_some());
+    if !pushed {
+        eprintln!("{line}");
+    }
+}
+
 macro_rules! vyt {
     ($($a:tt)*) => {
-        if tracing() {
-            eprintln!($($a)*);
+        if capturing() || tracing() {
+            emit(format!($($a)*));
         }
     };
 }
@@ -438,6 +478,9 @@ fn check_forbidden_spc_pair(
         vyt!("VYT FS_PAIR skip short");
         return;
     }
+    // Kept as the reference has it, though unreachable here: the query box spans the rectangle's
+    // own extent along its direction, so a candidate's distance along that axis is always 0 and
+    // only the other axis's run length is read (a mutant removing this cannot be observed).
     if dist_x != 0 {
         prl_x = -prl_x;
     }
@@ -508,6 +551,44 @@ fn is_eol_edge(model: &LayerModel, e: usize, con: &EolExtDbu) -> bool {
     turns_left(&model.edges[ed.prev], ed) && turns_left(ed, &model.edges[ed.next])
 }
 
+/// drt `checkMetalEndOfLine_eol_hasMinMaxLength`, its MINLENGTH branch: an end qualifies when its
+/// previous OR next side edge is at least `min_len` long; with TWOSIDES, when BOTH are. Closed
+/// comparisons.
+///
+/// 🔑 Interpretation. The reference applies this to a different rule (the LEF58 SPACING ENDOFLINE
+/// `MINLENGTH l [TWOSIDES]` clause); its EOL-extension grammar has no MINLENGTH or TWOSIDES at all
+/// and drops such a rule. Here it qualifies the end of an EOL-extension rule, at the point the
+/// reference qualifies an end of its EOL spacing rule: after the end test, on the triggering end
+/// only (the far edge's own end test in the helper does not apply it). TWOSIDES is taken as
+/// written; the reference's EOL-spacing reader passes a different flag for it, so there a
+/// `MINLENGTH l TWOSIDES` is evaluated one-sided.
+fn check_metal_end_of_line_eol_has_min_max_length(
+    model: &LayerModel,
+    e: usize,
+    (min_len, two_sides): (i32, bool),
+    nets: &[String],
+) -> bool {
+    let ed = &model.edges[e];
+    let prev = model.edges[ed.prev].len();
+    let next = model.edges[ed.next].len();
+    let res = has_min_length(prev, next, min_len, two_sides);
+    vyt!(
+        "VYT ML_EDGE {}({},{})-({},{})d{} prev={} next={} max=0 len={} two={} res={}",
+        net_name(model, ed.pin, nets), ed.low.0, ed.low.1, ed.high.0, ed.high.1, ed.dir() as i32, prev, next, min_len,
+        two_sides as i32, res as i32
+    );
+    res
+}
+
+/// The MINLENGTH test on the two side-edge lengths of an end.
+#[must_use]
+pub fn has_min_length(prev: i32, next: i32, min_len: i32, two_sides: bool) -> bool {
+    if two_sides {
+        return prev >= min_len && next >= min_len;
+    }
+    prev >= min_len || next >= min_len
+}
+
 /// drt `getMetalEolExtRect`: the edge pushed outward by `ext` (N edge east, W north, S west,
 /// E south — the polygon's outside).
 fn get_metal_eol_ext_rect(model: &LayerModel, e: usize, ext: i32) -> Rect {
@@ -558,6 +639,11 @@ pub fn check_metal_end_of_line_ext(
     );
     if !eol {
         return;
+    }
+    if let Some(ml) = con.min_length_for(ed.len()) {
+        if !check_metal_end_of_line_eol_has_min_max_length(model, e, ml, nets) {
+            return;
+        }
     }
     let ext = con.find(ed.len());
     vyt!("VYT EX_EDGE len={} ext={}", ed.len(), ext);
@@ -690,7 +776,7 @@ mod tests {
     /// value even when an earlier one is larger.
     #[test]
     fn the_extension_table_looks_up_as_the_reference() {
-        let t = EolExtDbu { spacing: 80, parallel_only: false, rows: vec![40, 60], exts: vec![50, 30], unmodelled: false };
+        let t = EolExtDbu { spacing: 80, parallel_only: false, rows: vec![40, 60], exts: vec![50, 30], min_length: vec![None, None], unmodelled: false };
         assert_eq!(t.find(30), 50);
         assert_eq!(t.find(40), 30, "upper_bound: the row after");
         assert_eq!(t.find(50), 30);
@@ -755,6 +841,37 @@ mod tests {
         };
         assert_eq!(run(true), 0);
         assert!(run(false) > 0);
+    }
+
+    /// The reference's MINLENGTH test (`checkMetalEndOfLine_eol_hasMinMaxLength`, MINLENGTH branch):
+    /// one side edge at least `l` is enough; with TWOSIDES both must be. Both comparisons closed.
+    #[test]
+    fn min_length_is_one_side_or_both_and_closed() {
+        assert!(has_min_length(100, 50, 100, false));
+        assert!(has_min_length(50, 100, 100, false));
+        assert!(!has_min_length(99, 99, 100, false));
+        assert!(has_min_length(100, 100, 100, true));
+        assert!(!has_min_length(100, 99, 100, true));
+        assert!(!has_min_length(99, 100, 100, true));
+    }
+
+    /// Each row carries its own MINLENGTH; an end takes the row its length selects, as it takes
+    /// the extension (upper-bound lookup): a 50 end in [40, 60) takes the second row's.
+    #[test]
+    fn min_length_follows_the_extension_row() {
+        let t = EolExtDbu {
+            spacing: 80,
+            parallel_only: false,
+            rows: vec![40, 60],
+            exts: vec![50, 30],
+            min_length: vec![Some((10, false)), Some((20, true))],
+            unmodelled: false,
+        };
+        assert_eq!(t.min_length_for(30), Some((10, false)));
+        assert_eq!(t.min_length_for(50), Some((20, true)));
+        assert_eq!(t.find(50), 30);
+        let none = EolExtDbu { min_length: vec![None, Some((20, true))], ..t };
+        assert_eq!(none.min_length_for(30), None);
     }
 
     #[test]

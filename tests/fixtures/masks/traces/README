@@ -1,0 +1,17 @@
+Reference traces for tests/masks_shape_rules.rs. Each file is the sorted VYT lines printed by
+OpenROAD's detailed-router checker (drt::check_drc, one thread), patched with fprintf trace lines at
+the points listed in the test file, run on the synthetic fixtures in the parent directory with the
+rules written WITHOUT SAMEMASK (the reference drops the SAMEMASK forms).
+
+ref-v1   shape_rules.def; M1 FORBIDDENSPACING 0.2 0.3 WIDTH 0.1 PRL 0.15 TWOEDGES 0.25;
+         M2 EOLEXTENSIONSPACING 0.08 ENDOFLINE 0.06 EXTENSION 0.03
+ref-v2   as ref-v1, M2 EOLEXTENSIONSPACING 0.08 PARALLELONLY ENDOFLINE 0.04 EXTENSION 0.02
+         ENDOFLINE 0.06 EXTENSION 0.03
+ref-v1-cases  shape_rules2.def, rules as ref-v1
+ref-v2-cases  shape_rules2.def, rules as ref-v2
+ref-ml1  eol_minlength.def; M2 SPACING 0.08 ENDOFLINE 0.06 WITHIN 0.025 MINLENGTH 0.05 TWOSIDES
+ref-ml2  as ref-ml1 with MINLENGTH 0.1 TWOSIDES
+ref-ml3  as ref-ml1 with MINLENGTH 0.1
+ref-ml4  as ref-ml1 with MINLENGTH 0.05 TWOSIDES PARALLELEDGE 0.1 WITHIN 0.2 TWOEDGES
+ref-ml5  as ref-ml4 with MINLENGTH 0.1
+ref-ml6  as ref-ml4 with MINLENGTH 0.08
