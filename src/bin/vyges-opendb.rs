@@ -105,6 +105,12 @@ commands:
   report-connectivity       --input <f.odb>
                       Dump the netlist connectivity graph as JSON (report).
 
+  color-masks               --input <in.odb> [--output <out.odb>] [--same-mask-spacing LAYER:DBU]...
+                            [--check-only] [--report <f.json>] [--fail-on-findings]
+                      Colour routed wires on multi-mask layers by track parity (DEF TRACKS MASK, or
+                      mask 1 on the first track), keep pre-coloured shapes, then check: off-track,
+                      wrong-way, uncoloured, same-mask pairs under the spacing, odd cycles (report).
+
   read-3dblox               --input <f.3dbx> --output <out.odb> [--into <in.odb>]
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
                       database, so it can be linted or queried. Reports anything the
@@ -208,6 +214,7 @@ fn run() -> Result<(), Fail> {
         "write-def" => write_def(args),
         "read-gds" => read_gds(args),
         "write-gds" => write_gds(args),
+        "color-masks" => color_masks(args),
         "read-def" => read_def(args),
         "import" => import(args),
         "apply-def-template" => apply_def_template(args),
@@ -275,6 +282,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "write-def",
     "read-gds",
     "write-gds",
+    "color-masks",
     "read-def",
     "import",
     "apply-def-template",
@@ -2200,6 +2208,104 @@ fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         diag!("[WARNING] write-gds: {} shape(s) carry a mask the layer map has no entry for; not streamed", so.unmapped_masked);
     }
     diag!("write-gds: {output}: {} cells, {} instances, {} shapes, {} labels", so.cells, so.instances, so.shapes, so.labels);
+    Ok(())
+}
+
+const COLOR_MASKS_DESCRIBE: &str = r#"{
+  "step": "color-masks",
+  "summary": "Assign mask colours to routed wires on multi-mask (multi-patterned) layers by track parity, keep pre-coloured shapes, and report what cannot be coloured cleanly: off-track or wrong-way shapes, uncoloured shapes, same-mask pairs closer than the same-mask spacing, odd conflict cycles on two-mask layers. Never forces a colour.",
+  "unix_only": true,
+  "args": [
+    { "name": "--input",  "kind": "input",  "type": "path", "required": true,  "description": "routed design .odb" },
+    { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "coloured .odb (default: in place); not written with --check-only" },
+    { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the layer's SPACING, else its spacing table at minimum width)" },
+    { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
+    { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
+    { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when anything is reported" }
+  ]
+}"#;
+
+/// `color-masks --input <in.odb> [--output <out.odb>] [--same-mask-spacing LAYER:DBU]...
+/// [--check-only] [--report <f.json>] [--fail-on-findings] | --describe`.
+fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut output, mut report) = (None, None, None);
+    let mut opts = vyges_opendb::masks::ColourOptions::default();
+    let mut fail_on_findings = false;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--report" => report = args.next(),
+            "--check-only" => opts.check_only = true,
+            "--fail-on-findings" => fail_on_findings = true,
+            "--same-mask-spacing" => {
+                let v = args.next().ok_or("color-masks: --same-mask-spacing needs LAYER:DBU")?;
+                let (l, d) = v.split_once(':').ok_or("color-masks: --same-mask-spacing wants LAYER:DBU")?;
+                let d: i32 = d.parse().map_err(|_| format!("color-masks: not a DBU value: {d}"))?;
+                opts.same_mask_spacing.insert(l.to_string(), d);
+            }
+            "--describe" => {
+                println!("{COLOR_MASKS_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--same-mask-spacing LAYER:DBU]...\n\
+                       \x20                         [--check-only] [--report <f.json>] [--fail-on-findings]");
+                return Ok(());
+            }
+            other => return Err(format!("color-masks: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("color-masks: --input <in.odb> required")?;
+    let mut db = Db::open(&input)?;
+    let rep = vyges_opendb::masks::colour_masks(&mut db, &opts)?;
+    let mut by_kind: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for f in &rep.findings {
+        *by_kind.entry(f.kind()).or_default() += 1;
+    }
+    // 🔑 A pass word never comes from a run that did nothing: no multi-mask layer is its own
+    // status, not "applied".
+    let status = if rep.layers.is_empty() {
+        "no_multi_mask_layers"
+    } else if opts.check_only {
+        "checked"
+    } else if rep.nets_recoloured == 0 {
+        "up_to_date"
+    } else {
+        "applied"
+    };
+    let written = if !opts.check_only && rep.nets_recoloured > 0 {
+        let out = output.unwrap_or_else(|| input.clone());
+        db.write(&out)?;
+        Some(out)
+    } else {
+        None
+    };
+    let json = serde_json::json!({
+        "tool": "vyges-opendb",
+        "command": "color-masks",
+        "status": status,
+        "layers": rep.layers.iter().map(|l| serde_json::json!({
+            "layer": l.name, "masks": l.num_masks, "horizontal": l.horizontal,
+            "track_patterns": l.tracks.len(), "same_mask_spacing": l.same_mask_spacing,
+        })).collect::<Vec<_>>(),
+        "tracks_without_mask": rep.unmasked_tracks,
+        "nets_checked": rep.nets_checked,
+        "nets_recoloured": rep.nets_recoloured,
+        "shapes": rep.shapes,
+        "coloured": rep.coloured,
+        "findings_by_kind": by_kind,
+        "findings": rep.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),
+        "odb_written": written,
+    });
+    let text = serde_json::to_string_pretty(&json)?;
+    if let Some(r) = report {
+        std::fs::write(&r, &text)?;
+    }
+    println!("{text}");
+    if fail_on_findings && !rep.findings.is_empty() {
+        return Err(format!("color-masks: {} finding(s)", rep.findings.len()).into());
+    }
     Ok(())
 }
 

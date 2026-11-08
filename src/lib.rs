@@ -49,6 +49,7 @@ pub mod diodes;
 pub mod eco;
 #[cfg(unix)]
 pub mod gds;
+pub mod masks;
 #[cfg(unix)]
 pub mod nets3d;
 #[cfg(unix)]
