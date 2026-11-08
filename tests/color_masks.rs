@@ -131,6 +131,52 @@ fn lef58_same_mask_rules_set_the_spacing() {
     let by_lef = masks::colour_masks(&mut db, &opts).unwrap();
     let by_option = ColourOptions { same_mask_spacing: [("M1".to_string(), 120)].into(), check_only: true, ..ColourOptions::default() };
     let by_option = masks::colour_masks(&mut db, &by_option).unwrap();
-    assert_eq!(by_lef.findings, by_option.findings);
-    assert_eq!(by_lef.findings.iter().filter(|f| f.kind() == "same_mask_spacing").count(), 3);
+    type Pair = ([i32; 4], [i32; 4], i64, i32, &'static str);
+    let pairs = |r: &masks::ColourReport| -> Vec<Pair> {
+        r.findings
+            .iter()
+            .filter_map(|f| match f {
+                Finding::SameMaskSpacing { a, b, gap, required, rule, .. } => Some((a.1, b.1, *gap, *required, *rule)),
+                _ => None,
+            })
+            .collect()
+    };
+    let (lef, opt) = (pairs(&by_lef), pairs(&by_option));
+    assert_eq!(lef.len(), 3, "{lef:?}");
+    // the same pairs and requirement; the rule named is the table's first entry (0.12 > 0.11)
+    let strip = |v: &[Pair]| -> Vec<Pair> { v.iter().map(|p| (p.0, p.1, p.2, p.3, "")).collect() };
+    assert_eq!(strip(&lef), strip(&opt));
+    assert!(lef.iter().all(|p| p.4 == "SPACINGTABLE TWOWIDTHS SAMEMASK"), "{lef:?}");
+    assert!(opt.iter().all(|p| p.4 == "layer same-mask spacing"), "{opt:?}");
+}
+
+/// The TWOWIDTHS SAMEMASK table is checked pair by pair, with odb's TWOWIDTHS lookup: two
+/// same-mask M1 wires (y = 50 and y = 250, both mask 1, 150 apart) running in parallel for 950
+/// take the long-run row (PRL 0.5) and must keep 200, which the screening spacing (the table's
+/// first entry, 60) does not see. A short run keeps the first row.
+#[test]
+fn a_two_widths_same_mask_table_is_checked_by_width_and_run() {
+    let mut m1 = SameMaskRules::default();
+    m1.read_property("LEF58_SPACINGTABLE", "SPACINGTABLE TWOWIDTHS SAMEMASK WIDTH 0 0.06 0.06 WIDTH 0.04 PRL 0.5 0.06 0.2 ;");
+    m1.read_property("LEF58_FORBIDDENSPACING", "FORBIDDENSPACING 0.2 0.25 SAMEMASK ;");
+    let opts = ColourOptions { same_mask_rules: [("M1".to_string(), m1)].into(), ..ColourOptions::default() };
+    let mut db = load();
+    let rep = masks::colour_masks(&mut db, &opts).unwrap();
+    let m1 = &rep.layers[0];
+    assert_eq!((m1.same_mask_spacing, m1.spacing_source), (60, SpacingSource::Lef58SameMask));
+    let rules = m1.rules.as_ref().unwrap();
+    assert_eq!(rules.not_checked, vec![("FORBIDDENSPACING SAMEMASK", 1)], "stated, counted, not checked");
+    let long_run = rep.findings.iter().find_map(|f| match f {
+        Finding::SameMaskSpacing { a, b, gap, required, rule, mask: 1, .. }
+            if [a.1, b.1].contains(&[25, 25, 975, 75]) && [a.1, b.1].contains(&[25, 225, 975, 275]) =>
+        {
+            Some((*gap, *required, *rule))
+        }
+        _ => None,
+    });
+    assert_eq!(long_run, Some((150, 200, "SPACINGTABLE TWOWIDTHS SAMEMASK")), "{:?}", rep.findings);
+    // the same design under the screening value alone: the pair is clean
+    let flat = ColourOptions { same_mask_spacing: [("M1".to_string(), 60)].into(), check_only: true, ..ColourOptions::default() };
+    let rep = masks::colour_masks(&mut db, &flat).unwrap();
+    assert!(!rep.findings.iter().any(|f| matches!(f, Finding::SameMaskSpacing { gap: 150, .. })), "{:?}", rep.findings);
 }

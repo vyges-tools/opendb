@@ -26,6 +26,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use crate::{Db, Result, ViaMask, WireMaskState};
+use crate::masks_check::SameMaskRulesDbu;
 use vyges_loom::lef58_samemask::SameMaskRules;
 
 // ---- the colour grid ----------------------------------------------------------------------------
@@ -56,6 +57,9 @@ pub struct MaskLayer {
     pub same_mask_spacing: i32,
     /// Where [`MaskLayer::same_mask_spacing`] came from.
     pub spacing_source: SpacingSource,
+    /// The layer's LEF58 same-mask rules in DBU, checked pair by pair; `None` without rules or
+    /// when the option overrides them.
+    pub rules: Option<SameMaskRulesDbu>,
 }
 
 /// The origin of a layer's same-mask spacing, most specific first.
@@ -195,7 +199,18 @@ pub enum Finding {
     Uncoloured { net: String, layer: String, rect: [i32; 4] },
     /// Two shapes of the same mask closer than the same-mask spacing. `same_track`: they share a
     /// track (a line-end pair).
-    SameMaskSpacing { layer: String, mask: u8, a: (String, [i32; 4]), b: (String, [i32; 4]), gap: i64, same_track: bool },
+    SameMaskSpacing {
+        layer: String,
+        mask: u8,
+        a: (String, [i32; 4]),
+        b: (String, [i32; 4]),
+        gap: i64,
+        same_track: bool,
+        /// The spacing the pair must keep and the rule that sets it: a LEF58 SAMEMASK rule
+        /// ([`crate::masks_check`]) or, without one, the layer's same-mask spacing.
+        required: i32,
+        rule: &'static str,
+    },
     /// An odd cycle of conflict edges on a two-mask layer: no two-colouring exists.
     OddCycle { layer: String, shapes: Vec<(String, [i32; 4])> },
 }
@@ -225,9 +240,9 @@ impl Finding {
             }
             Finding::NotRewritten { net, why } => json!({"net": net, "why": why}),
             Finding::Uncoloured { net, layer, rect } => json!({"net": net, "layer": layer, "rect": rect}),
-            Finding::SameMaskSpacing { layer, mask, a, b, gap, same_track } => json!({
+            Finding::SameMaskSpacing { layer, mask, a, b, gap, same_track, required, rule } => json!({
                 "layer": layer, "mask": mask, "a": {"net": a.0, "rect": a.1}, "b": {"net": b.0, "rect": b.1},
-                "gap": gap, "same_track": same_track,
+                "gap": gap, "same_track": same_track, "required": required, "rule": rule,
             }),
             Finding::OddCycle { layer, shapes } => json!({
                 "layer": layer,
@@ -383,9 +398,9 @@ fn segment_mask(
 /// is "none" again.
 ///
 /// ⛔ **odb's DEF writer writes a wire `MASK` only before the 2nd, 4th, 6th … point of a path**
-/// (`defout_impl.cpp`, `point_cnt % 2 == 0`; a via does not restart the count), and the DEF
-/// reader's colour is sticky, so a colour on an odd-numbered point is not just lost in the DEF but
-/// read back as the previous segment's. A coloured segment that would end on an odd point is
+/// (`defout_impl.cpp`, `point_cnt % 2 == 0`; a via does not restart the count; OpenROAD issue
+/// #12166), and the DEF reader's colour is sticky, so a colour on an odd-numbered point is not
+/// just lost in the DEF but read back as the previous segment's. A coloured segment that would end on an odd point is
 /// therefore started as a new path at its first point: the same rectangles (each segment keeps
 /// its end extensions), one segment per path, which is also how a router writes its paths.
 pub fn encode_ops(
@@ -596,11 +611,27 @@ pub fn check_layer(layer: &MaskLayer, shapes: &[MaskShape], findings: &mut Vec<F
     for s in shapes.iter().filter(|s| s.mask == 0) {
         findings.push(Finding::Uncoloured { net: s.net.clone(), layer: layer.name.clone(), rect: s.rect });
     }
-    let all = conflict_edges(shapes, layer.same_mask_spacing);
+    // The rules can reach farther than the screening spacing: search to the farthest, keep the
+    // screening spacing for the conflict graph.
+    let rules = layer.rules.as_ref().filter(|r| r.has_checked_rules());
+    let radius = rules.map_or(0, SameMaskRulesDbu::max_required).max(layer.same_mask_spacing);
+    let near = conflict_edges(shapes, radius);
+    let screen = layer.same_mask_spacing as i64;
+    let all: Vec<(usize, usize, i64)> = near.iter().copied().filter(|e| e.2 < screen * screen).collect();
     // Shapes of ONE net that do not touch still conflict; touching ones of one net never reach
     // here (gap2 is None), and touching ones of two nets are shorts, also excluded.
-    for &(i, j, g2) in &all {
+    for &(i, j, g2) in &near {
         let (a, b) = (&shapes[i], &shapes[j]);
+        let (required, rule) = match rules {
+            Some(r) => match r.required(&a.rect, &b.rect) {
+                Some(x) => x,
+                None => continue,
+            },
+            None => (layer.same_mask_spacing, "layer same-mask spacing"),
+        };
+        if g2 >= (required as i64) * (required as i64) {
+            continue;
+        }
         if a.mask != 0 && a.mask == b.mask {
             let same_track = if layer.horizontal {
                 a.rect[1] < b.rect[3] && b.rect[1] < a.rect[3]
@@ -614,6 +645,8 @@ pub fn check_layer(layer: &MaskLayer, shapes: &[MaskShape], findings: &mut Vec<F
                 b: (b.net.clone(), b.rect),
                 gap: (g2 as f64).sqrt().round() as i64,
                 same_track,
+                required,
+                rule,
             });
         }
     }
@@ -679,6 +712,11 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
         // width and no parallel run stands in.
         let lef58 = opts.same_mask_rules.get(&name).and_then(SameMaskRules::min_spacing);
         let dbu = f64::from(db.dbu_per_micron());
+        let rules = if opts.same_mask_spacing.contains_key(&name) {
+            None
+        } else {
+            opts.same_mask_rules.get(&name).map(|r| SameMaskRulesDbu::from_um(r, dbu))
+        };
         let (spacing, spacing_source) = match (opts.same_mask_spacing.get(&name), lef58) {
             (Some(&s), _) => (s, SpacingSource::Option),
             (None, Some(um)) => ((um * dbu).round() as i32, SpacingSource::Lef58SameMask),
@@ -697,6 +735,7 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
             tracks,
             same_mask_spacing: spacing,
             spacing_source,
+            rules,
             name,
         });
     }
@@ -841,7 +880,7 @@ mod tests {
 
     fn layer(horizontal: bool, tracks: Vec<TrackPattern>) -> MaskLayer {
         MaskLayer { name: "M1".into(), number: 1, num_masks: 2, horizontal, tracks, same_mask_spacing: 60,
-                    spacing_source: SpacingSource::Option }
+                    spacing_source: SpacingSource::Option, rules: None }
     }
 
     fn pat(origin: i32, count: i32, step: i32, first_mask: u8, same_mask: bool) -> TrackPattern {

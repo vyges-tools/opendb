@@ -2271,6 +2271,11 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let input = input.ok_or("color-masks: --input <in.odb> required")?;
     let mut db = Db::open(&input)?;
     let rep = vyges_opendb::masks::colour_masks(&mut db, &opts)?;
+    for l in &rep.layers {
+        for (kind, n) in l.rules.iter().flat_map(|r| r.not_checked.iter()) {
+            diag!("color-masks: {}: {n} {kind} rule(s) stated, not checked", l.name);
+        }
+    }
     // A SAMEMASK statement the reader could not place is said, never dropped quietly.
     let mut unread = serde_json::Map::new();
     for (layer, r) in &opts.same_mask_rules {
@@ -2309,6 +2314,12 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "layer": l.name, "masks": l.num_masks, "horizontal": l.horizontal,
             "track_patterns": l.tracks.len(), "same_mask_spacing": l.same_mask_spacing,
             "same_mask_spacing_source": l.spacing_source.as_str(),
+            // the LEF58 SAMEMASK rules checked pair by pair, and those stated but not checked
+            "same_mask_rules": l.rules.as_ref().map(|r| serde_json::json!({
+                "spacing": r.spacing, "two_widths_tables": r.two_widths.len(),
+                "not_checked": r.not_checked.iter().map(|(k, n)| (k.to_string(), serde_json::json!(n)))
+                    .collect::<serde_json::Map<_, _>>(),
+            })),
         })).collect::<Vec<_>>(),
         "same_mask_rules_unread": unread,
         "tracks_without_mask": rep.unmasked_tracks,

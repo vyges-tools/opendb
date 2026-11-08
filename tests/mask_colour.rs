@@ -133,7 +133,8 @@ fn written_colours_survive_a_def_round_trip() {
 /// ⛔ odb's DEF writer (`defout_impl.cpp`, `point_cnt % 2 == 0`) writes a wire `MASK` only before
 /// the 2nd, 4th … point of a path, and the reader's colour is sticky: the colour of a segment
 /// ending on the 3rd point is not merely dropped but read back as the previous segment's. Pinned
-/// so a change upstream is noticed; the colour pass writes one coloured segment per path for it.
+/// so a change upstream is noticed (OpenROAD issue #12166); the colour pass writes one coloured
+/// segment per path for it.
 #[test]
 fn the_def_writer_drops_the_mask_of_an_odd_point() {
     let mut db = load(&fixture("masks.def"));

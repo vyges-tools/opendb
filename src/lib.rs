@@ -50,6 +50,7 @@ pub mod eco;
 #[cfg(unix)]
 pub mod gds;
 pub mod masks;
+pub mod masks_check;
 #[cfg(unix)]
 pub mod nets3d;
 #[cfg(unix)]
@@ -577,9 +578,10 @@ impl Db {
     ///
     /// ⛔ **odb's DEF writer glues a wire's `MASK` to the point before it** (`( 50 50 )MASK 1
     /// ( 950 * )`, `defout_impl.cpp` writes the mask statement with no leading space), and odb's own
-    /// DEF reader then refuses the file (DEFPARS-6017 "Odd punctuation"). When the technology has a
-    /// multi-mask layer the written NETS section is therefore re-spaced here; nothing else in the
-    /// file is touched, and a design without multi-mask layers is written exactly as odb writes it.
+    /// DEF reader then refuses the file (DEFPARS-6017 "Odd punctuation"; OpenROAD issue #12165).
+    /// When the technology has a multi-mask layer the written NETS section is therefore re-spaced
+    /// here; nothing else in the file is touched, and a design without multi-mask layers is written
+    /// exactly as odb writes it.
     pub fn write_def(&self, path: impl AsRef<Path>) -> Result<()> {
         let p = path_str(path)?;
         sys::write_def(self.r(), &p)?;
