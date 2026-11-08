@@ -425,6 +425,19 @@ pub struct SpecialVia {
     pub masks: [u8; 3],
 }
 
+/// One marker of a marker category ([`Db::category_markers`]): what a router reading violations back
+/// from the database uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategoryMarker {
+    /// The marker's layer, `None` when it has none.
+    pub layer: Option<String>,
+    /// Its bounding box (x0, y0, x1, y1).
+    pub rect: [i32; 4],
+    /// Its NET sources, in the database's source order; instance, terminal and obstruction
+    /// sources are left out.
+    pub source_nets: Vec<String>,
+}
+
 /// One non-via box of a net's special wiring ([`Db::special_boxes`]), addressed for
 /// [`Db::set_special_box_mask`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2402,6 +2415,24 @@ impl Db {
                 }
             };
             out.push((c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32, shape));
+        }
+        Ok(out)
+    }
+    /// Every marker of the top-level marker category `name` and of every category under it, in
+    /// the database's own order for that walk (`dbMarkerCategory::getAllMarkers`: by marker id,
+    /// then by category, so sibling categories interleave). An absent category gives no markers.
+    /// Read-only.
+    pub fn category_markers(&self, name: &str) -> Result<Vec<CategoryMarker>> {
+        let recs = sys::marker_category_all_records(self.r(), name)?;
+        let layers = sys::marker_category_all_layers(self.r(), name)?;
+        let mut nets = sys::marker_category_all_source_nets(self.r(), name)?.into_iter();
+        let mut out = Vec::with_capacity(layers.len());
+        for (c, layer) in recs.chunks(6).filter(|c| c.len() == 6).zip(layers) {
+            out.push(CategoryMarker {
+                layer: (c[0] != 0).then_some(layer),
+                rect: [c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32],
+                source_nets: nets.by_ref().take(c[5] as usize).collect(),
+            });
         }
         Ok(out)
     }
