@@ -28,7 +28,7 @@
 //! PR, the track is taken from the block's track grid (with its DEF `MASK`/`SAMEMASK`), not from
 //! the layer pitch, and an off-track shape is reported instead of snapped to the nearest track.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::{Db, Result, ViaMask, WireMaskState};
 use crate::masks_check::SameMaskRulesDbu;
@@ -134,6 +134,43 @@ impl MaskLayer {
         }
     }
 
+    /// How many distinct track centrelines lie in `[lo, hi]` (closed) across the preferred
+    /// direction, over every pattern.
+    pub fn tracks_within(&self, lo: i32, hi: i32) -> usize {
+        let mut seen = std::collections::BTreeSet::new();
+        for p in &self.tracks {
+            if p.step <= 0 || p.count <= 0 || hi < lo {
+                continue;
+            }
+            let (o, st) = (p.origin as i64, p.step as i64);
+            let first = ((lo as i64 - o) + st - 1).div_euclid(st).max(0);
+            let last = (hi as i64 - o).div_euclid(st).min(p.count as i64 - 1);
+            for k in first..=last {
+                seen.insert(o + k * st);
+            }
+        }
+        seen.len()
+    }
+
+    /// Where a special-wire rectangle sits on this layer's tracks ([`SpecialFit`]).
+    pub fn special_fit(&self, r: [i32; 4]) -> SpecialFit {
+        let (along, across) = if self.horizontal { ((r[0], r[2]), (r[1], r[3])) } else { ((r[1], r[3]), (r[0], r[2])) };
+        if along.1 - along.0 < across.1 - across.0 {
+            return SpecialFit::WrongWay;
+        }
+        let sum = across.0 as i64 + across.1 as i64;
+        if sum % 2 != 0 {
+            return SpecialFit::Off;
+        }
+        match self.track_at((sum / 2) as i32) {
+            TrackHit::Off => SpecialFit::Off,
+            TrackHit::On { mask, .. } => match self.tracks_within(across.0, across.1) {
+                1 => SpecialFit::Track(mask),
+                n => SpecialFit::Multi(n),
+            },
+        }
+    }
+
     /// The colour track parity gives a point, `None` off the grid.
     fn mask_at(&self, p: (i32, i32)) -> Option<u8> {
         match self.track_at(self.across(p)) {
@@ -141,6 +178,20 @@ impl MaskLayer {
             TrackHit::Off => None,
         }
     }
+}
+
+/// A special-wire rectangle against its layer's tracks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecialFit {
+    /// Runs the preferred direction, its centreline is a track, and it reaches no other track
+    /// centreline: the track's mask.
+    Track(u8),
+    /// Its centreline is no track (a followpin between tracks).
+    Off,
+    /// Centred on a track but reaching this many track centrelines (a wide strap).
+    Multi(usize),
+    /// Shorter along the preferred direction than across it.
+    WrongWay,
 }
 
 // ---- a wire, as the decoder walks it ------------------------------------------------------------
@@ -202,6 +253,9 @@ pub enum Finding {
     NotRewritten { net: String, why: String },
     /// A shape on a multi-mask layer with no mask after the pass.
     Uncoloured { net: String, layer: String, rect: [i32; 4] },
+    /// A special-wire shape centred on a track but reaching `tracks` track centrelines (a wide
+    /// strap): no single track names its mask, so it is left as it was.
+    MultiTrack { net: String, layer: String, rect: [i32; 4], tracks: usize },
     /// Two shapes of the same mask closer than the same-mask spacing. `same_track`: they share a
     /// track (a line-end pair).
     SameMaskSpacing {
@@ -232,6 +286,7 @@ impl Finding {
             Finding::PrecolouredMismatch { .. } => "precoloured_mismatch",
             Finding::NotRewritten { .. } => "not_rewritten",
             Finding::Uncoloured { .. } => "uncoloured",
+            Finding::MultiTrack { .. } => "multi_track",
             Finding::SameMaskSpacing { .. } => "same_mask_spacing",
             Finding::OddCycle { .. } => "odd_cycle",
             Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_FORBIDDEN => "forbidden_spacing",
@@ -251,6 +306,9 @@ impl Finding {
             }
             Finding::NotRewritten { net, why } => json!({"net": net, "why": why}),
             Finding::Uncoloured { net, layer, rect } => json!({"net": net, "layer": layer, "rect": rect}),
+            Finding::MultiTrack { net, layer, rect, tracks } => {
+                json!({"net": net, "layer": layer, "rect": rect, "tracks": tracks})
+            }
             Finding::SameMaskSpacing { layer, mask, a, b, gap, same_track, required, rule } => json!({
                 "layer": layer, "mask": mask, "a": {"net": a.0, "rect": a.1}, "b": {"net": b.0, "rect": b.1},
                 "gap": gap, "same_track": same_track, "required": required, "rule": rule,
@@ -732,6 +790,10 @@ pub struct ColourReport {
     pub unmasked_tracks: Vec<String>,
     pub nets_checked: usize,
     pub nets_recoloured: usize,
+    /// Special-wire shapes (power grid) given their track's mask by [`colour_special_nets`].
+    pub special_coloured: usize,
+    /// Special vias whose landing metal took the mask of the coloured shape holding it.
+    pub special_vias_coloured: usize,
     /// Shapes on multi-mask layers after the pass, and how many carry a mask.
     pub shapes: usize,
     pub coloured: usize,
@@ -820,6 +882,9 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
             colour_net(db, &net, &recs, &by_name, &mut rep)?;
         }
     }
+    if !opts.check_only {
+        colour_special_nets(db, &by_name, &mut rep)?;
+    }
     check_block(db, &by_name, &mut rep)?;
     Ok(rep)
 }
@@ -876,6 +941,83 @@ fn colour_net(
         return Ok(());
     }
     rep.nets_recoloured += 1;
+    Ok(())
+}
+
+/// Stage: give power-grid shapes (special wires: followpins, straps) on multi-mask layers their
+/// track's mask. The pdn engine is a transcription of a reference that colours nothing, so the
+/// colours are this add-on's. Policy, shape by shape (vias are not special boxes here):
+/// - pre-coloured: kept; a single-track shape on a track of another mask is reported;
+/// - [`SpecialFit::Track`]: takes the track's mask;
+/// - off-track, multi-track and wrong-way shapes are reported and never forced: no single track
+///   names their mask;
+/// - a via's landing metal (bottom or top) on a multi-mask layer takes the mask of the same net's
+///   coloured shapes that wholly contain it, when they agree; a pre-coloured landing that differs
+///   is reported and kept; any other landing is left uncoloured (reported by [`check_block`]).
+///   The cut's mask passes through.
+///
+/// Same-mask spacing to the neighbours is then checked by [`check_block`] with everything else.
+fn colour_special_nets(db: &mut Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourReport) -> Result<()> {
+    let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
+    for b in db.special_boxes()? {
+        let Some(layer) = by_number.get(&b.layer) else { continue };
+        let r = b.rect;
+        let fit = layer.special_fit(r);
+        let centre = ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2);
+        let (net, name) = (b.net.clone(), layer.name.clone());
+        match fit {
+            SpecialFit::Track(t) if b.mask != 0 => {
+                if t != b.mask {
+                    rep.findings.push(Finding::PrecolouredMismatch { net, layer: name, at: centre, has: b.mask, track: t });
+                }
+            }
+            _ if b.mask != 0 => {}
+            SpecialFit::Track(t) => {
+                db.set_special_box_mask(&b.net, b.swire, b.sbox, t)?;
+                rep.special_coloured += 1;
+            }
+            SpecialFit::Off => rep.findings.push(Finding::OffTrack { net, layer: name, at: centre }),
+            SpecialFit::Multi(n) => rep.findings.push(Finding::MultiTrack { net, layer: name, rect: r, tracks: n }),
+            SpecialFit::WrongWay => {
+                let (from, to) = if layer.horizontal {
+                    ((centre.0, r[1]), (centre.0, r[3]))
+                } else {
+                    ((r[0], centre.1), (r[2], centre.1))
+                };
+                rep.findings.push(Finding::WrongWay { net, layer: name, from, to });
+            }
+        }
+    }
+    colour_special_vias(db, &by_number, rep)
+}
+
+/// Stage: a special via's landing metal takes the mask of the coloured shapes holding it.
+fn colour_special_vias(db: &mut Db, by_number: &BTreeMap<i64, &MaskLayer>, rep: &mut ColourReport) -> Result<()> {
+    let boxes = db.special_boxes()?;
+    for v in db.special_vias()? {
+        let mut masks = v.masks;
+        for (slot, (num, rect)) in [(0, v.bottom), (2, v.top)] {
+            let (Some(layer), Some(r)) = (by_number.get(&num), rect) else { continue };
+            let holders: BTreeSet<u8> = boxes
+                .iter()
+                .filter(|b| b.net == v.net && b.layer == num && b.mask != 0)
+                .filter(|b| b.rect[0] <= r[0] && b.rect[1] <= r[1] && b.rect[2] >= r[2] && b.rect[3] >= r[3])
+                .map(|b| b.mask)
+                .collect();
+            let [m] = holders.iter().copied().collect::<Vec<_>>()[..] else { continue };
+            if masks[slot] == 0 {
+                masks[slot] = m;
+            } else if masks[slot] != m {
+                let at = ((r[0] + r[2]) / 2, (r[1] + r[3]) / 2);
+                let (net, name) = (v.net.clone(), layer.name.clone());
+                rep.findings.push(Finding::PrecolouredMismatch { net, layer: name, at, has: masks[slot], track: m });
+            }
+        }
+        if masks != v.masks {
+            db.set_special_via_masks(&v.net, v.swire, v.sbox, masks)?;
+            rep.special_vias_coloured += 1;
+        }
+    }
     Ok(())
 }
 
@@ -969,6 +1111,28 @@ mod tests {
         let mut f = Vec::new();
         check_layer(&l, &two, &mut f);
         assert!(!f.iter().any(|x| x.kind() == "forbidden_spacing"), "{f:?}");
+    }
+
+    /// A special-wire rectangle takes a track's mask only when it runs the preferred direction,
+    /// its centreline is a track, and it reaches no other track centreline (closed interval: an
+    /// edge on a neighbour's centreline reaches it).
+    #[test]
+    fn a_special_shape_fits_one_track_or_none() {
+        let h = layer(true, vec![pat(50, 20, 100, 1, false)]);
+        assert_eq!(h.tracks_within(25, 75), 1);
+        assert_eq!(h.tracks_within(50, 150), 2);
+        assert_eq!(h.tracks_within(51, 149), 0);
+        assert_eq!(h.tracks_within(-500, 5000), 20, "clipped to the pattern");
+        assert_eq!(h.special_fit([0, 325, 1000, 375]), SpecialFit::Track(2));
+        assert_eq!(h.special_fit([0, 75, 1000, 125]), SpecialFit::Off, "between tracks");
+        assert_eq!(h.special_fit([0, 325, 1000, 376]), SpecialFit::Off, "odd span: centre off the grid, not rounded onto y = 350");
+        assert_eq!(h.special_fit([0, 425, 1000, 675]), SpecialFit::Multi(3));
+        assert_eq!(h.special_fit([0, 250, 1000, 450]), SpecialFit::Multi(3), "edges on neighbours count");
+        assert_eq!(h.special_fit([0, 325, 49, 375]), SpecialFit::WrongWay);
+        assert_eq!(h.special_fit([0, 325, 50, 375]), SpecialFit::Track(2), "a square is not wrong-way");
+        let v = layer(false, vec![pat(50, 20, 100, 2, false)]);
+        assert_eq!(v.special_fit([1525, 0, 1575, 2000]), SpecialFit::Track(1));
+        assert_eq!(v.special_fit([0, 325, 1000, 375]), SpecialFit::WrongWay);
     }
 
     /// DEF `TRACKS ... MASK n`: the first track has mask n and the masks then cycle; `SAMEMASK`

@@ -109,8 +109,10 @@ commands:
                             [--same-mask-spacing LAYER:DBU]...
                             [--check-only] [--report <f.json>] [--fail-on-findings]
                       Colour routed wires on multi-mask layers by track parity (DEF TRACKS MASK, or
-                      mask 1 on the first track), keep pre-coloured shapes, then check: off-track,
-                      wrong-way, uncoloured, same-mask pairs under the spacing, odd cycles (report).
+                      mask 1 on the first track), and power-grid shapes that sit on one track (their
+                      via landings follow), keep pre-coloured shapes, then check: off-track,
+                      wrong-way, multi-track, uncoloured, same-mask pairs under the spacing, odd
+                      cycles (report).
 
   read-3dblox               --input <f.3dbx> --output <out.odb> [--into <in.odb>]
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
@@ -2310,12 +2312,12 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "no_multi_mask_layers"
     } else if opts.check_only {
         "checked"
-    } else if rep.nets_recoloured == 0 {
+    } else if rep.nets_recoloured == 0 && rep.special_coloured == 0 && rep.special_vias_coloured == 0 {
         "up_to_date"
     } else {
         "applied"
     };
-    let written = if !opts.check_only && rep.nets_recoloured > 0 {
+    let written = if !opts.check_only && (rep.nets_recoloured > 0 || rep.special_coloured > 0 || rep.special_vias_coloured > 0) {
         let out = output.unwrap_or_else(|| input.clone());
         db.write(&out)?;
         Some(out)
@@ -2344,6 +2346,8 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "tracks_without_mask": rep.unmasked_tracks,
         "nets_checked": rep.nets_checked,
         "nets_recoloured": rep.nets_recoloured,
+        "special_shapes_coloured": rep.special_coloured,
+        "special_vias_coloured": rep.special_vias_coloured,
         "shapes": rep.shapes,
         "coloured": rep.coloured,
         "findings_by_kind": by_kind,

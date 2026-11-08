@@ -411,6 +411,36 @@ impl ViaMask {
     }
 }
 
+/// One block-via box of a net's special wiring ([`Db::special_vias`]), addressed for
+/// [`Db::set_special_via_masks`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpecialVia {
+    pub net: String,
+    pub swire: usize,
+    pub sbox: usize,
+    /// The bottom layer's number and landing-metal bounding box.
+    pub bottom: (i64, Option<[i32; 4]>),
+    pub top: (i64, Option<[i32; 4]>),
+    /// Bottom, cut and top layer masks (0 = none).
+    pub masks: [u8; 3],
+}
+
+/// One non-via box of a net's special wiring ([`Db::special_boxes`]), addressed for
+/// [`Db::set_special_box_mask`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpecialBox {
+    pub net: String,
+    /// Index of the special wire among the net's, and of the box within it.
+    pub swire: usize,
+    pub sbox: usize,
+    pub layer: i64,
+    pub rect: [i32; 4],
+    /// 0 when uncoloured.
+    pub mask: u8,
+    /// The `dbWireShapeType` name: `"FOLLOWPIN"`, `"STRIPE"`, `"RING"`, …
+    pub shape: String,
+}
+
 /// The mask-colour state at one record of [`Db::net_wire_decode`]: what odb's wire decoder holds
 /// there (`getColor`, `getViaColor`). The state carries forward: a colour holds until the wire
 /// sets another, and odb's encoder clears the metal colour after every via it adds, so the
@@ -2374,6 +2404,64 @@ impl Db {
             out.push((c[0], c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32, shape));
         }
         Ok(out)
+    }
+    /// The non-via boxes of every net's special wiring, each with its address (net, swire, sbox)
+    /// for [`Self::set_special_box_mask`], its layer mask and its shape type name.
+    pub fn special_boxes(&self) -> Result<Vec<SpecialBox>> {
+        let flat = sys::special_sbox_records(self.r())?;
+        let nets = sys::special_sbox_record_nets(self.r())?;
+        let mut names: std::collections::BTreeMap<i64, String> = std::collections::BTreeMap::new();
+        let mut out = Vec::with_capacity(nets.len());
+        for (c, net) in flat.chunks(9).filter(|c| c.len() == 9).zip(nets) {
+            let shape = match names.get(&c[8]) {
+                Some(n) => n.clone(),
+                None => {
+                    let n = sys::wire_shape_type_name(c[8] as i32)?;
+                    names.insert(c[8], n.clone());
+                    n
+                }
+            };
+            out.push(SpecialBox {
+                net,
+                swire: c[0] as usize,
+                sbox: c[1] as usize,
+                layer: c[2],
+                rect: [c[3] as i32, c[4] as i32, c[5] as i32, c[6] as i32],
+                mask: c[7] as u8,
+                shape,
+            });
+        }
+        Ok(out)
+    }
+    /// Set the layer mask (0 = none, 1..=3) of one non-via special box, addressed as
+    /// [`Self::special_boxes`] lists it. A via box is refused (its masks are per layer).
+    pub fn set_special_box_mask(&mut self, net: &str, swire: usize, sbox: usize, mask: u8) -> Result<()> {
+        Ok(sys::sbox_set_layer_mask(self.r(), net, swire, sbox, u32::from(mask))?)
+    }
+    /// Every block-via special box with its landing metal below and above (each the bounding box
+    /// of the via's shapes on that layer; `None` when it has none) and its three layer masks.
+    pub fn special_vias(&self) -> Result<Vec<SpecialVia>> {
+        let flat = sys::special_via_records(self.r())?;
+        let nets = sys::special_via_record_nets(self.r())?;
+        let rect = |c: &[i64]| (c[0] <= c[2] && c[1] <= c[3]).then(|| [c[0] as i32, c[1] as i32, c[2] as i32, c[3] as i32]);
+        Ok(flat
+            .chunks(16)
+            .filter(|c| c.len() == 16)
+            .zip(nets)
+            .map(|(c, net)| SpecialVia {
+                net,
+                swire: c[0] as usize,
+                sbox: c[1] as usize,
+                bottom: (c[2], rect(&c[3..7])),
+                top: (c[7], rect(&c[8..12])),
+                masks: [c[12] as u8, c[13] as u8, c[14] as u8],
+            })
+            .collect())
+    }
+    /// Set a via special box's bottom, cut and top masks (0 = none).
+    pub fn set_special_via_masks(&mut self, net: &str, swire: usize, sbox: usize, masks: [u8; 3]) -> Result<()> {
+        let [b, c, t] = masks.map(u32::from);
+        Ok(sys::sbox_set_via_masks(self.r(), net, swire, sbox, b, c, t)?)
     }
     /// Obstruction rectangles as `(layer number, x0, y0, x1, y1)`.
     pub fn obstruction_boxes(&self) -> Result<Vec<(i64, i32, i32, i32, i32)>> {
