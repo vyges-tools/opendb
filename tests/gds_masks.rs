@@ -54,6 +54,7 @@ fn masked_shapes_stream_to_their_masks_datatypes_as_klayout_does() {
     let out = tmp("masks.gds");
     let so = gds::write_gds(&mut db, &map, &[&cells], &out).unwrap();
     assert_eq!(so.unmapped_masked, 1, "the V1 cut with DEF mask 2 has no V1 VIA:MASK:2 entry");
+    assert_eq!(so.masked_on_single_mask, 1, "V1 is single-mask in the tech");
 
     let mut rd = Db::new();
     let back = rd.gds_read(&out).unwrap();
@@ -77,6 +78,46 @@ fn masked_shapes_stream_to_their_masks_datatypes_as_klayout_does() {
     assert_eq!(shapes, want);
     let want: BTreeSet<_> = KLAYOUT_LABELS.iter().map(|&(l, d, t, o)| (l, d, t.to_string(), o)).collect();
     assert_eq!(labels, want);
+    let _ = std::fs::remove_file(out);
+    let _ = std::fs::remove_file(cells);
+}
+
+/// A colour on a cut layer the tech marks single-mask is never silently streamed to a mask
+/// datatype. The fixture's V1 is single-mask and one via carries cut mask 2. With a map that HAS a
+/// `V1 VIA:MASK:2` entry, the shape follows the map (as KLayout would) but is reported as a mask on a
+/// single-mask layer; with that map restricted to an allowed list that has no V1 mask datatype,
+/// the entry is dropped and the shape is reported unmapped and not streamed.
+#[test]
+fn a_mask_on_a_single_mask_cut_layer_is_reported_and_the_allowed_list_refuses_it() {
+    let mut db = Db::new();
+    db.read_lef(fixture("masks.lef")).unwrap();
+    db.read_def(fixture("masks.def"), "default").unwrap();
+    let cells = tmp("cells_sm.gds");
+    let lib = db.gds_create_lib("cells").unwrap();
+    db.gds_set_units(lib, 1e-3, 1e-9).unwrap();
+    db.gds_write(lib, &cells).unwrap();
+    let text = std::fs::read_to_string(fixture("masks.map")).unwrap() + "V1 VIA:MASK:2 15 2\n";
+    let on_v1_mask = |out: &std::path::Path| {
+        let mut rd = Db::new();
+        let back = rd.gds_read(out).unwrap();
+        let els = rd.gds_elements(back, "masks").unwrap();
+        els.iter().filter(|e| matches!(e, GdsElement::Boundary { layer: 15, datatype: 2, .. })).count()
+    };
+
+    let map = LayerMap::parse(&text).unwrap();
+    let out = tmp("sm_open.gds");
+    let so = gds::write_gds(&mut db, &map, &[&cells], &out).unwrap();
+    assert_eq!((so.masked_on_single_mask, so.unmapped_masked), (1, 0));
+    assert_eq!(on_v1_mask(&out), 1, "the map has the entry, so the shape follows it");
+    let _ = std::fs::remove_file(&out);
+
+    let mut map = LayerMap::parse(&text).unwrap();
+    let allowed = gds::parse_allowed_pairs("10 0\n10 1\n10 2\n20 0\n20 1\n20 2\n15 0\n25 0\n30 0\n10 10\n20 10\n100 0\n").unwrap();
+    assert_eq!(map.restrict_to(&allowed), vec!["V1 VIA:MASK:2 15 2".to_string()]);
+    let out = tmp("sm_allowed.gds");
+    let so = gds::write_gds(&mut db, &map, &[&cells], &out).unwrap();
+    assert_eq!((so.masked_on_single_mask, so.unmapped_masked), (1, 1));
+    assert_eq!(on_v1_mask(&out), 0, "a disallowed pair is never written");
     let _ = std::fs::remove_file(out);
     let _ = std::fs::remove_file(cells);
 }

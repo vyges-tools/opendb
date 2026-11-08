@@ -14,6 +14,11 @@
 //!   is a line-end pair), and on a two-mask layer an odd cycle of conflict edges — which no
 //!   assignment of two masks can satisfy — is reported with its shapes.
 //!
+//! Only the routing layers the tech marks multi-mask are coloured. A via's cut mask, and any
+//! mask on a layer the tech marks single-mask (cut or contact layers included), passes through
+//! exactly as the design or the cell library carried it: this step never assigns one and never
+//! clears one.
+//!
 //! The colours are written back through odb's own wire encoder (`dbWireEncoder::setColor` /
 //! `setViaColor`), so odb's DEF writer emits `MASK` and the GDS stream-out maps them to datatypes.
 //!
@@ -1041,6 +1046,37 @@ mod tests {
         assert_eq!(plan.via[3], Some(ViaMask { bottom: 2, cut: 0, top: 1 }));
         assert_eq!(plan.color[2], Some(2));
         assert_eq!(plan.color[4], Some(1), "the M2 segment after the via");
+    }
+
+    /// The colour step assigns masks ONLY on the multi-mask routing layers. A via's cut digit, and
+    /// the digit of any layer the tech marks single-mask, pass through exactly as the design (or
+    /// the cell library) carried them: never assigned, never cleared. Here M2 is single-mask, so
+    /// only the M1 digit is taken from its track.
+    #[test]
+    fn cut_and_single_mask_digits_pass_through_unchanged() {
+        let h = MaskLayer { name: "M1".into(), ..layer(true, vec![pat(50, 10, 100, 1, false)]) };
+        let layers = BTreeMap::from([("M1".to_string(), h)]);
+        let recs = vec![
+            WireRec::Path("M1".into()),
+            WireRec::Point(50, 150),
+            WireRec::Point(150, 150),
+            WireRec::Via { block: false, name: "V12".into(), bottom: "M1".into(), top: "M2".into() },
+            WireRec::Point(150, 350),
+            WireRec::End,
+        ];
+        for carried in [ViaMask { bottom: 0, cut: 2, top: 0 }, ViaMask { bottom: 0, cut: 1, top: 2 }] {
+            let mut state = vec![st(None); recs.len()];
+            state[3].via = Some(carried);
+            let mut f = Vec::new();
+            let plan = plan_net("n", &layers, &recs, &state, &mut f);
+            assert!(f.is_empty(), "{f:?}");
+            let want = ViaMask { bottom: 2, ..carried };
+            assert_eq!(plan.via[3], Some(want), "cut and single-mask top kept from {carried:?}");
+        }
+        // Nothing to assign and nothing carried: the via stays uncoloured on its single-mask side.
+        let mut f = Vec::new();
+        let plan = plan_net("n", &layers, &recs, &vec![st(None); recs.len()], &mut f);
+        assert_eq!(plan.via[3], Some(ViaMask { bottom: 2, cut: 0, top: 0 }));
     }
 
     /// The re-encoded stream sets a colour only where it changes, re-sets it after a via (odb's

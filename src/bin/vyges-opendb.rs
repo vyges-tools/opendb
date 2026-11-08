@@ -143,7 +143,7 @@ commands:
   write-def                 --input <f.odb> --output <f.def>
   read-gds                  --input <f.gds|f.oas> [--output <f.gds|f.oas>]   (odb gdsin / gdsout)
   write-gds                 (--input <f.odb> | --lef <f.lef>... --def <f.def>) --map <f.map>
-                            --gds <cells.gds>... --output <f.gds|f.oas>
+                            [--allowed-pairs <f.txt>] --gds <cells.gds>... --output <f.gds|f.oas>
                       Export the design to a DEF 5.8 file (libodb v1 LEF/DEF I/O).
 
   read-def                  --input <in.odb> --def <f.def> --output <out.odb>
@@ -2154,6 +2154,7 @@ const WRITE_GDS_DESCRIBE: &str = r#"{
     { "name": "--lef",    "kind": "input",  "type": "path", "required": false, "repeatable": true, "description": "LEF; the first is the technology LEF" },
     { "name": "--def",    "kind": "input",  "type": "path", "required": false, "description": "routed DEF (with --lef)" },
     { "name": "--map",    "kind": "input",  "type": "path", "required": true,  "description": "the PDK's KLayout LEF/DEF layer map (.map)" },
+    { "name": "--allowed-pairs", "kind": "input", "type": "path", "required": false, "description": "the foundry's allowed GDS layer/datatype pairs, one `L D` per line; map targets outside it are dropped and listed" },
     { "name": "--gds",    "kind": "input",  "type": "path", "required": true,  "repeatable": true, "description": "cell GDS or OASIS (.oas/.oasis); the first file defining a cell wins" },
     { "name": "--output", "kind": "output", "type": "path", "required": true,  "description": "output GDS, or OASIS when named .oas/.oasis" }
   ]
@@ -2163,12 +2164,14 @@ const WRITE_GDS_DESCRIBE: &str = r#"{
 /// --output <f.gds> | --describe`.
 fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let (mut input, mut lefs, mut def, mut map, mut gds, mut output) = (None, Vec::new(), None, None, Vec::new(), None);
+    let mut allowed = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
             "--lef" => lefs.push(args.next().ok_or("write-gds: --lef needs a FILE")?),
             "--def" => def = args.next(),
             "--map" => map = args.next(),
+            "--allowed-pairs" => allowed = Some(args.next().ok_or("write-gds: --allowed-pairs needs a FILE")?),
             "--gds" => gds.push(args.next().ok_or("write-gds: --gds needs a FILE")?),
             "--output" | "-o" => output = args.next(),
             "--describe" => {
@@ -2177,7 +2180,8 @@ fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb write-gds (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... --def <f.def>)\n\
-                       \x20                       --map <pdk.map> --gds <cells.gds> [--gds <more.gds>]... --output <f.gds|f.oas>");
+                       \x20                       --map <pdk.map> [--allowed-pairs <pairs.txt>]\n\
+                       \x20                       --gds <cells.gds> [--gds <more.gds>]... --output <f.gds|f.oas>");
                 return Ok(());
             }
             other => return Err(format!("write-gds: unknown argument: {other}").into()),
@@ -2200,13 +2204,22 @@ fn write_gds(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         }
         _ => return Err("write-gds: give --input <f.odb>, or --lef ... with --def <f.def>".into()),
     };
-    let map = vyges_opendb::gds::LayerMap::parse(&std::fs::read_to_string(&map_path)?)?;
+    let mut map = vyges_opendb::gds::LayerMap::parse(&std::fs::read_to_string(&map_path)?)?;
+    if let Some(path) = allowed {
+        let pairs = vyges_opendb::gds::parse_allowed_pairs(&std::fs::read_to_string(&path)?)?;
+        for line in map.restrict_to(&pairs) {
+            diag!("[WARNING] write-gds: layer map entry outside the allowed pairs dropped: {line}");
+        }
+    }
     let so = vyges_opendb::gds::write_gds(&mut db, &map, &gds, &output)?;
     if so.unplaced > 0 {
         diag!("[WARNING] write-gds: {} unplaced instance(s) not streamed", so.unplaced);
     }
     if so.unmapped_masked > 0 {
         diag!("[WARNING] write-gds: {} shape(s) carry a mask the layer map has no entry for; not streamed", so.unmapped_masked);
+    }
+    if so.masked_on_single_mask > 0 {
+        diag!("[WARNING] write-gds: {} shape(s) carry a mask on a layer the technology marks single-mask", so.masked_on_single_mask);
     }
     diag!("write-gds: {output}: {} cells, {} instances, {} shapes, {} labels", so.cells, so.instances, so.shapes, so.labels);
     Ok(())

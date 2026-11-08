@@ -437,6 +437,54 @@ impl LayerMap {
     pub fn diearea(&self) -> &[Ld] {
         &self.diearea
     }
+
+    /// Keep only the targets in `allowed` (the foundry's allowed layer/datatype pairs); return
+    /// what was dropped, one `<layer> <purpose>[:MASK:<n>] <gds layer> <datatype>` line each, in
+    /// order. An entry left with no target is removed, so a shape that only had disallowed
+    /// targets is not streamed (and, when it is masked, is counted as unmapped).
+    pub fn restrict_to(&mut self, allowed: &BTreeSet<Ld>) -> Vec<String> {
+        let mut dropped = Vec::new();
+        for ((layer, purpose, mask), lds) in &mut self.shapes {
+            let tag = if *mask == 0 { purpose.clone() } else { format!("{purpose}:MASK:{mask}") };
+            lds.retain(|ld| allowed.contains(ld) || {
+                dropped.push(format!("{layer} {tag} {} {}", ld.0, ld.1));
+                false
+            });
+        }
+        self.shapes.retain(|_, lds| !lds.is_empty());
+        for ((layer, purpose), lds) in &mut self.names {
+            lds.retain(|ld| allowed.contains(ld) || {
+                dropped.push(format!("NAME {layer}/{purpose} {} {}", ld.0, ld.1));
+                false
+            });
+        }
+        self.names.retain(|_, lds| !lds.is_empty());
+        self.diearea.retain(|ld| allowed.contains(ld) || {
+            dropped.push(format!("DIEAREA ALL {} {}", ld.0, ld.1));
+            false
+        });
+        dropped.sort();
+        dropped
+    }
+}
+
+/// An allowed-pairs list: one `<gds layer> <datatype>` pair per line (`L D`, `L/D` or `L;D`);
+/// `#` starts a comment.
+pub fn parse_allowed_pairs(text: &str) -> std::result::Result<BTreeSet<Ld>, String> {
+    let mut out = BTreeSet::new();
+    for (n, raw) in text.lines().enumerate() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let t: Vec<&str> = line.split(|c: char| c.is_whitespace() || c == '/' || c == ';').filter(|t| !t.is_empty()).collect();
+        let num = |s: &str| s.parse::<i16>().map_err(|_| format!("allowed pairs line {}: not a number: {s}", n + 1));
+        match t.as_slice() {
+            [l, d] => out.insert((num(l)?, num(d)?)),
+            _ => return Err(format!("allowed pairs line {}: expected `<gds layer> <datatype>`: {raw}", n + 1)),
+        };
+    }
+    Ok(out)
 }
 
 /// `NET:MASK:2` -> (`NET`, 2); `NET` -> (`NET`, 0).
@@ -491,6 +539,10 @@ pub struct StreamOut {
     /// Shapes carrying a mask the map has no entry for, on a layer and purpose it does stream
     /// (KLayout: "No mapping for layer ... Mask n - layer is ignored"). Not streamed.
     pub unmapped_masked: usize,
+    /// Shapes carrying a mask on a layer the tech marks single-mask (no `MASK n`, n >= 2). Streamed
+    /// as the map says; a map restricted to the allowed pairs ([`LayerMap::restrict_to`]) leaves
+    /// such a mask no entry, and the shape then counts in `unmapped_masked` too.
+    pub masked_on_single_mask: usize,
 }
 
 /// The block in `db` (read with its LEFs and DEF) as GDS at `out`, its cells' contents taken from
@@ -586,18 +638,34 @@ fn place_instances(db: &Db, els: &mut Vec<GdsElement>, so: &mut StreamOut) {
 }
 
 /// Layer number -> (name, is a cut layer).
-fn layer_table(db: &Db) -> Result<HashMap<i64, (String, bool)>> {
-    let mut t = HashMap::new();
+/// The tech's layers by number: name and whether it is a cut layer, plus the layers the tech marks
+/// multi-mask (`MASK n`, n >= 2).
+struct Layers {
+    names: HashMap<i64, (String, bool)>,
+    multi_mask: BTreeSet<i64>,
+}
+
+fn layer_table(db: &Db) -> Result<Layers> {
+    let mut t = Layers { names: HashMap::new(), multi_mask: BTreeSet::new() };
     for i in 0..sys::num_layers(db.r())? {
         let name = sys::nth_layer_name(db.r(), i)?;
         let cut = db.layer_get_type(&name)? == "CUT";
-        t.insert(db.layer_get_number(&name) as i64, (name, cut));
+        let number = db.layer_get_number(&name) as i64;
+        if db.layer_get_num_masks(&name) >= 2 {
+            t.multi_mask.insert(number);
+        }
+        t.names.insert(number, (name, cut));
     }
     Ok(t)
 }
 
-fn stream_box(map: &LayerMap, layers: &HashMap<i64, (String, bool)>, purpose: &str, b: (i64, i32, i32, i32, i32), mask: u8, els: &mut Vec<GdsElement>, so: &mut StreamOut) {
-    let Some((name, cut)) = layers.get(&b.0) else { return };
+fn stream_box(map: &LayerMap, layers: &Layers, purpose: &str, b: (i64, i32, i32, i32, i32), mask: u8, els: &mut Vec<GdsElement>, so: &mut StreamOut) {
+    let Some((name, cut)) = layers.names.get(&b.0) else { return };
+    // A mask on a layer the tech marks single-mask is carried through as the design has it (the
+    // map decides where it goes), but it is never a colour this flow assigns: report it.
+    if mask != 0 && !layers.multi_mask.contains(&b.0) {
+        so.masked_on_single_mask += 1;
+    }
     // A via's shapes are the VIA purpose on every layer it touches; on a cut layer nothing else is.
     let purpose = if *cut { "VIA" } else { purpose };
     let targets = map.targets_masked(name, purpose, mask);
@@ -639,7 +707,7 @@ fn stream_pins(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut Stre
             for &(b, mask) in &masked {
                 stream_box(map, &layers, "PIN", b, mask, els, so);
             }
-            for (name, b) in port_label_boxes(&layers, &masked) {
+            for (name, b) in port_label_boxes(&layers.names, &masked) {
                 for &(layer, datatype) in map.label_targets(name, "LABEL") {
                     let origin = label_point(b.1, b.2, b.3, b.4);
                     els.push(GdsElement::Text { layer, datatype, origin, presentation: (0, 0), trans: STrans::IDENTITY, text: t.clone(), props: Vec::new() });
@@ -700,6 +768,29 @@ mod tests {
         met2    LEFPIN,PIN               69  16\n\
         NAME    met2/LABEL,met2/LEFPIN   69  5\n\
         DIEAREA ALL                      235 4\n";
+
+    /// A map restricted to the allowed pairs loses exactly the disallowed targets: a mask datatype
+    /// on a cut layer that the allowed list does not carry goes, its unmasked entry stays, and the
+    /// dropped entries are listed for the report.
+    #[test]
+    fn a_map_restricted_to_the_allowed_pairs_drops_only_the_disallowed_targets() {
+        let mut m = LayerMap::parse(
+            "M1 NET 10 0\nM1 NET:MASK:1 10 1\nM1 NET:MASK:2 10 2\nV1 VIA 15 0\nV1 VIA:MASK:1 15 1\n\
+             NAME M1/LABEL 10 10\nDIEAREA ALL 100 0\n",
+        )
+        .unwrap();
+        let allowed = parse_allowed_pairs("# allowed\n10 0\n10/1\n10;2\n15 0\n100 0\n").unwrap();
+        let dropped = m.restrict_to(&allowed);
+        assert_eq!(dropped, vec!["NAME M1/LABEL 10 10".to_string(), "V1 VIA:MASK:1 15 1".to_string()]);
+        assert_eq!(m.targets_masked("M1", "NET", 2), [(10, 2)]);
+        assert_eq!(m.targets("V1", "VIA"), [(15, 0)]);
+        assert!(m.targets_masked("V1", "VIA", 1).is_empty());
+        assert!(m.has_purpose("V1", "VIA"), "the unmasked entry keeps the purpose, so a masked cut is reported");
+        assert!(m.label_targets("M1", "LABEL").is_empty());
+        assert_eq!(m.diearea(), [(100, 0)]);
+        assert!(parse_allowed_pairs("10\n").is_err());
+        assert!(parse_allowed_pairs("10 x\n").is_err());
+    }
 
     /// A purpose listed on two lines streams to both: a sky130 DEF pin on met2 is 69/20 and 69/16.
     #[test]
