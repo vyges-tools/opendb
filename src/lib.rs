@@ -384,6 +384,15 @@ pub struct LayerBox {
     pub from_via: bool,
 }
 
+/// A track pattern's DEF mask (`TRACKS ... MASK first_mask [SAMEMASK]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TrackMask {
+    /// The first track's mask, 1..=3; 0 when the pattern carries none.
+    pub first_mask: u8,
+    /// Every track of the pattern on `first_mask`.
+    pub same_mask: bool,
+}
+
 /// A via's mask colours on a multi-patterned stack, as a DEF `MASK <top><cut><bottom>` gives them:
 /// one per layer the via touches, 0 for none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1973,6 +1982,32 @@ impl Db {
     pub fn add_track_pattern_y(&mut self, layer: &str, origin: i32, count: i32, step: i32)
         -> Result<()> {
         Ok(sys::add_track_pattern_y(self.r(), layer, origin, count, step)?)
+    }
+
+    /// [`Self::add_track_pattern_x`] with a DEF track mask (`TRACKS ... MASK first_mask
+    /// [SAMEMASK]`): the first track's mask (1..=3, 0 for none), from which the masks then
+    /// alternate track by track, or stay on it with `same_mask`.
+    pub fn add_track_pattern_x_masked(&mut self, layer: &str, origin: i32, count: i32, step: i32, first_mask: i32, same_mask: bool)
+        -> Result<()> {
+        Ok(sys::add_track_pattern_x_masked(self.r(), layer, origin, count, step, first_mask, same_mask)?)
+    }
+
+    /// [`Self::add_track_pattern_y`] with a DEF track mask; see [`Self::add_track_pattern_x_masked`].
+    pub fn add_track_pattern_y_masked(&mut self, layer: &str, origin: i32, count: i32, step: i32, first_mask: i32, same_mask: bool)
+        -> Result<()> {
+        Ok(sys::add_track_pattern_y_masked(self.r(), layer, origin, count, step, first_mask, same_mask)?)
+    }
+
+    /// The DEF track mask of each pattern [`Self::track_patterns`] returns, x and y, pattern for
+    /// pattern.
+    pub fn track_pattern_masks(&self, layer: &str) -> Result<(Vec<TrackMask>, Vec<TrackMask>)> {
+        let pairs = |v: Vec<i32>| -> Vec<TrackMask> {
+            v.chunks(2)
+                .filter(|c| c.len() == 2)
+                .map(|c| TrackMask { first_mask: c[0] as u8, same_mask: c[1] != 0 })
+                .collect()
+        };
+        Ok((pairs(sys::track_pattern_masks_x(self.r(), layer)?), pairs(sys::track_pattern_masks_y(self.r(), layer)?)))
     }
 
     pub fn track_grid(&self, layer: &str) -> Result<(Vec<i32>, Vec<i32>)> {
