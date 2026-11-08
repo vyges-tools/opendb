@@ -1922,6 +1922,16 @@ impl Db {
     pub fn layer_lef58_type(&self, layer: &str) -> String {
         sys::layer_lef58_type(self.r(), layer)
     }
+    /// A layer's string properties, `(name, value)`, read-only, in odb's order. odb's LEF reader
+    /// keeps EVERY layer `PROPERTY` this way, the ones it parses into rules and the ones it does
+    /// not (its ODB-0388 "unsupported property" INFO), so a consumer can list what odb left
+    /// unparsed from the database alone. Empty for a layer the technology does not have.
+    pub fn layer_string_properties(&self, layer: &str) -> Vec<(String, String)> {
+        sys::layer_string_properties(self.r(), layer)
+            .into_iter()
+            .filter_map(|e| e.split_once('\t').map(|(k, v)| (k.to_string(), v.to_string())))
+            .collect()
+    }
     /// Which rule families a layer carries, `(family, count)` for each present — for a consumer
     /// to REFUSE what it does not model rather than silently ignore it. Families: `min_step`,
     /// `lef58_min_step`, `min_cut`, `lef58_min_cut`, `two_widths_spacing`, `v55_influence`,
