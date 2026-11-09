@@ -125,6 +125,9 @@ pub struct LayerModel {
     pub rects: Vec<MaxRect>,
     /// Per net, its fixed shapes (for `hasRoute`).
     pub fixed_shapes: BTreeMap<usize, Vec<Rect>>,
+    /// Per net, its route (not fixed) shapes (drt `gcNet::getPolygons(layer, false)`, for the
+    /// end-of-line check's `hasRoute`).
+    pub route_shapes: BTreeMap<usize, Vec<Rect>>,
 }
 
 // ---- rectangle helpers (boost polygon / gtl semantics) -------------------------------------------
@@ -465,6 +468,10 @@ impl LayerModel {
                 for r in pr {
                     m.rects.push(MaxRect { rect: r, fixed: fixed_max.contains(&r), pin });
                 }
+            }
+            let route: Vec<Rect> = v.iter().filter(|s| !s.fixed).map(|s| s.rect).collect();
+            if !route.is_empty() {
+                m.route_shapes.insert(net, route);
             }
             if !fixed.is_empty() {
                 m.fixed_shapes.insert(net, fixed);

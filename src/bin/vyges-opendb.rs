@@ -2346,6 +2346,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 "spacing": r.spacing, "two_widths_tables": r.two_widths.len(),
                 "forbidden_spacing": r.forbidden.len(), "eol_extension_spacing": r.eol_extension.len(),
                 "joint_corner_spacing": r.joint_corner.len(),
+                "eol_spacing": r.eol_spacing.len(),
                 // EOL-extension rules checked without a second EXTENSION value or a lone TWOSIDES
                 "eol_extension_approximated": r.approximated(),
                 "not_checked": r.not_checked.iter().map(|(k, n)| (k.to_string(), serde_json::json!(n)))

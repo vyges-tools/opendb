@@ -15,7 +15,10 @@
 //! Also checked, on the merged-shape model of [`crate::masks_geom`], as the reference detailed
 //! router checks the same rules WITHOUT `SAMEMASK` (drt `FlexGC_metspc.cpp`, `FlexGC_eol.cpp`):
 //! * `FORBIDDENSPACING … SAMEMASK` ([`check_forbidden_spc_main`]);
-//! * `EOLEXTENSIONSPACING … SAMEMASK` ([`check_metal_end_of_line_ext`]).
+//! * `EOLEXTENSIONSPACING … SAMEMASK` ([`check_metal_end_of_line_ext`]);
+//! * `SPACING … ENDOFLINE … SAMEMASK` ([`check_metal_end_of_line_eol`]). odb keeps this form and
+//!   the reference checks it mask-blind; here it is checked per mask, with two readings of the
+//!   reference that look like defects made explicit ([`EolWithin`], [`EolTwoSides`]).
 //!
 //! And, with no reference at all (odb keeps only the raw text, so the rule is read from the
 //! layer's string property): `JOINTCORNERSPACING … SAMEMASK`, as the LEF/DEF 5.8 reference text
@@ -104,6 +107,9 @@ pub struct SameMaskRulesDbu {
     pub forbidden: Vec<ForbiddenDbu>,
     /// `EOLEXTENSIONSPACING … SAMEMASK` rules.
     pub eol_extension: Vec<EolExtDbu>,
+    /// `SPACING … ENDOFLINE … SAMEMASK` rules ([`check_metal_end_of_line_eol`]; odb keeps this
+    /// form and the reference checks it mask-blind, so they are read from the database).
+    pub eol_spacing: Vec<EolSpacingDbu>,
     /// `JOINTCORNERSPACING … SAMEMASK` rules ([`crate::joint_corner`]; odb keeps them only as
     /// raw layer text, so they are added from the database, not from this reader).
     pub joint_corner: Vec<JointCornerDbu>,
@@ -133,6 +139,7 @@ impl SameMaskRulesDbu {
             two_widths: r.two_widths.iter().filter_map(|t| TwoWidthsDbu::from_um(t, per_um)).collect(),
             forbidden,
             eol_extension,
+            eol_spacing: Vec::new(),
             joint_corner: Vec::new(),
             not_checked,
         }
@@ -147,7 +154,10 @@ impl SameMaskRulesDbu {
     /// True when there is a shape rule (forbidden spacing, EOL extension) to check.
     #[must_use]
     pub fn has_shape_rules(&self) -> bool {
-        !self.forbidden.is_empty() || !self.eol_extension.is_empty() || !self.joint_corner.is_empty()
+        !self.forbidden.is_empty()
+            || !self.eol_extension.is_empty()
+            || !self.eol_spacing.is_empty()
+            || !self.joint_corner.is_empty()
     }
 
     /// EOL-extension rules checked without the parts the reference has no model of.
@@ -382,6 +392,9 @@ pub fn check_shape_rules(
         for (ci, con) in rules.eol_extension.iter().enumerate() {
             check_metal_end_of_line_ext(model, e, con, ci, nets, &mut out);
         }
+        for (ci, con) in rules.eol_spacing.iter().enumerate() {
+            check_metal_end_of_line_eol(model, e, con, ci, nets, &mut out);
+        }
     }
     // no reference stage: the LEF/DEF reference's joint corner spacing, after the reference's two
     for (ci, con) in rules.joint_corner.iter().enumerate() {
@@ -578,17 +591,17 @@ fn is_eol_edge(model: &LayerModel, e: usize, con: &EolExtDbu) -> bool {
 fn check_metal_end_of_line_eol_has_min_max_length(
     model: &LayerModel,
     e: usize,
-    (min_len, two_sides): (i32, bool),
+    (is_max, len, two_sides): (bool, i32, bool),
     nets: &[String],
 ) -> bool {
     let ed = &model.edges[e];
     let prev = model.edges[ed.prev].len();
     let next = model.edges[ed.next].len();
-    let res = has_min_length(prev, next, min_len, two_sides);
+    let res = if is_max { has_max_length(prev, next, len, two_sides) } else { has_min_length(prev, next, len, two_sides) };
     vyt!(
-        "VYT ML_EDGE {}({},{})-({},{})d{} prev={} next={} max=0 len={} two={} res={}",
-        net_name(model, ed.pin, nets), ed.low.0, ed.low.1, ed.high.0, ed.high.1, ed.dir() as i32, prev, next, min_len,
-        two_sides as i32, res as i32
+        "VYT ML_EDGE {}({},{})-({},{})d{} prev={} next={} max={} len={} two={} res={}",
+        net_name(model, ed.pin, nets), ed.low.0, ed.low.1, ed.high.0, ed.high.1, ed.dir() as i32, prev, next,
+        is_max as i32, len, two_sides as i32, res as i32
     );
     res
 }
@@ -600,6 +613,17 @@ pub fn has_min_length(prev: i32, next: i32, min_len: i32, two_sides: bool) -> bo
         return prev >= min_len && next >= min_len;
     }
     prev >= min_len || next >= min_len
+}
+
+/// The MAXLENGTH test on the two side-edge lengths of an end (drt
+/// `checkMetalEndOfLine_eol_hasMinMaxLength`, `isMaxLength`): closed, both sides with TWOSIDES,
+/// either side without.
+#[must_use]
+pub fn has_max_length(prev: i32, next: i32, max_len: i32, two_sides: bool) -> bool {
+    if two_sides {
+        return prev <= max_len && next <= max_len;
+    }
+    prev <= max_len || next <= max_len
 }
 
 /// drt `getMetalEolExtRect`: the edge pushed outward by `ext` (N edge east, W north, S west,
@@ -654,7 +678,7 @@ pub fn check_metal_end_of_line_ext(
         return;
     }
     if let Some(ml) = con.min_length_for(ed.len()) {
-        if !check_metal_end_of_line_eol_has_min_max_length(model, e, ml, nets) {
+        if !check_metal_end_of_line_eol_has_min_max_length(model, e, (false, ml.0, ml.1), nets) {
             return;
         }
     }
@@ -729,6 +753,398 @@ fn check_metal_end_of_line_ext_helper(
     let bbox = generalized_intersect(&marker_rect, &a.rect());
     let nets: BTreeSet<usize> = [a.pin, b.pin].iter().map(|&q| model.net_of(q)).collect();
     out.insert(Marker { rule: RULE_EOL_EXTENSION, index: ci, bbox, nets });
+}
+
+// ---- SPACING ENDOFLINE … SAMEMASK (drt FlexGC_eol.cpp, checkMetalEndOfLine_eol) -----------------
+
+/// The rule name in markers and findings.
+pub const RULE_EOL_SPACING: &str = "SPACING ENDOFLINE SAMEMASK";
+
+/// How the WITHIN of a SAMEMASK end-of-line rule is read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EolWithin {
+    /// As the reference reads it: drt `frLef58SpacingEndOfLineWithinConstraint::getEolWithin`
+    /// returns 0 for a SAMEMASK rule, whatever WITHIN says.
+    #[default]
+    Reference,
+    /// As written in the LEF (the LEF/DEF reference text says nothing of WITHIN changing with
+    /// SAMEMASK).
+    AsWritten,
+}
+
+/// How `MINLENGTH l TWOSIDES` (or MAXLENGTH) of an end-of-line rule is read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EolTwoSides {
+    /// As the reference reads it: drt `io.cpp` passes the PARALLELEDGE TWOEDGES flag where
+    /// TWOSIDES belongs, so `MINLENGTH l TWOSIDES` without TWOEDGES is evaluated one-sided.
+    #[default]
+    Reference,
+    /// As written: TWOSIDES means both sides (the LEF/DEF reference text).
+    AsWritten,
+}
+
+/// `MINLENGTH l` / `MAXLENGTH l` of an end-of-line rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EolMinMax {
+    pub max: bool,
+    pub length: i32,
+    /// TWOSIDES as written.
+    pub two_sides: bool,
+    /// PARALLELEDGE … TWOEDGES (always false here: PARALLELEDGE is not checked).
+    pub two_edges: bool,
+}
+
+/// `ENDTOEND s [EXTENSION e]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EolEndToEnd {
+    pub space: i32,
+    pub extension: Option<i32>,
+}
+
+/// `SPACING s ENDOFLINE w WITHIN wi SAMEMASK [ENDTOEND …] [MINLENGTH | MAXLENGTH …]` in DBU, read
+/// from odb's rule (odb keeps this form; the reference checks it mask-blind).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EolSpacingDbu {
+    pub eol_space: i32,
+    pub eol_width: i32,
+    /// WITHIN as written.
+    pub within: i32,
+    pub end_to_end: Option<EolEndToEnd>,
+    pub min_max: Option<EolMinMax>,
+    pub within_policy: EolWithin,
+    pub two_sides_policy: EolTwoSides,
+}
+
+impl EolSpacingDbu {
+    /// drt `getEolWithin` under the chosen reading.
+    #[must_use]
+    pub fn eol_within(&self) -> i32 {
+        match self.within_policy {
+            EolWithin::Reference => 0,
+            EolWithin::AsWritten => self.within,
+        }
+    }
+
+    /// drt `isTwoSides` under the chosen reading.
+    #[must_use]
+    pub fn two_sides(&self) -> bool {
+        self.min_max.is_some_and(|m| match self.two_sides_policy {
+            EolTwoSides::Reference => m.two_edges,
+            EolTwoSides::AsWritten => m.two_sides,
+        })
+    }
+}
+
+/// The layer's SAMEMASK end-of-line rules from odb, and the ones not checked by clause. Rules
+/// without SAMEMASK are the reference's (checked mask-blind there) and are not read.
+pub fn eol_spacing_rules(
+    db: &crate::Db,
+    layer: &str,
+    within_policy: EolWithin,
+    two_sides_policy: EolTwoSides,
+) -> (Vec<EolSpacingDbu>, Vec<(&'static str, usize)>) {
+    let mut out = Vec::new();
+    let mut nc: Vec<(&'static str, usize)> = Vec::new();
+    for i in 0..db.num_layer_get_tech_layer_spacing_eol_rules(layer) {
+        if !db.spacingeolrule_is_same_mask_valid(layer, i) {
+            continue;
+        }
+        let unmodelled: [(&'static str, bool); 18] = [
+            ("SPACING ENDOFLINE SAMEMASK EXACTWIDTH", db.spacingeolrule_is_exact_width_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK EXCEPTEXACTWIDTH", db.spacingeolrule_is_except_exact_width_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK FILLCONCAVECORNER", db.spacingeolrule_is_fill_concave_corner_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK EQUALRECTWIDTH", db.spacingeolrule_is_equal_rect_width_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK WRONGDIRSPACING", db.spacingeolrule_is_wrong_dir_spacing_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK OPPOSITEWIDTH", db.spacingeolrule_is_opposite_width_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK wrongDirWithin", db.spacingeolrule_is_wrong_dir_within_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK WITHCUT", db.spacingeolrule_is_withcut_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK ENCLOSUREEND", db.spacingeolrule_is_enclosure_end_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK ENDPRLSPACING", db.spacingeolrule_is_end_prl_spacing_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK ENDTOEND cut spaces", db.spacingeolrule_is_cut_spaces_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK ENDTOEND wrong-direction extension", db.spacingeolrule_is_wrong_dir_extension_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK OTHERENDWIDTH", db.spacingeolrule_is_other_end_width_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK PARALLELEDGE", db.spacingeolrule_is_parallel_edge_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK ENCLOSECUT", db.spacingeolrule_is_enclose_cut_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK TOCONCAVECORNER", db.spacingeolrule_is_to_concave_corner_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK TONOTCHLENGTH", db.spacingeolrule_is_to_notch_length_valid(layer, i)),
+            ("SPACING ENDOFLINE SAMEMASK MINADJACENTLENGTH", db.spacingeolrule_is_min_adjacent_length_valid(layer, i)),
+        ];
+        if let Some((clause, _)) = unmodelled.iter().find(|(_, on)| *on) {
+            match nc.iter_mut().find(|(c, _)| c == clause) {
+                Some(e) => e.1 += 1,
+                None => nc.push((clause, 1)),
+            }
+            continue;
+        }
+        let end_to_end = db.spacingeolrule_is_end_to_end_valid(layer, i).then(|| EolEndToEnd {
+            space: db.spacingeolrule_get_end_to_end_space(layer, i),
+            extension: db.spacingeolrule_is_extension_valid(layer, i).then(|| db.spacingeolrule_get_extension(layer, i)),
+        });
+        // drt io: MINLENGTH wins when both are given (`if (min) … else max`)
+        let min_max = if db.spacingeolrule_is_min_length_valid(layer, i) {
+            Some((false, db.spacingeolrule_get_min_length(layer, i)))
+        } else if db.spacingeolrule_is_max_length_valid(layer, i) {
+            Some((true, db.spacingeolrule_get_max_length(layer, i)))
+        } else {
+            None
+        }
+        .map(|(max, length)| EolMinMax {
+            max,
+            length,
+            two_sides: db.spacingeolrule_is_two_sides_valid(layer, i),
+            two_edges: db.spacingeolrule_is_two_edges_valid(layer, i),
+        });
+        out.push(EolSpacingDbu {
+            eol_space: db.spacingeolrule_get_eol_space(layer, i),
+            eol_width: db.spacingeolrule_get_eol_width(layer, i),
+            within: db.spacingeolrule_get_eol_within(layer, i),
+            end_to_end,
+            min_max,
+            within_policy,
+            two_sides_policy,
+        });
+    }
+    (out, nc)
+}
+
+/// drt `checkMetalEndOfLine_eol_hasParallelEdge_oneDir_getParallelEdgeRect`: the one-DBU strip
+/// on the inside of an edge.
+fn get_parallel_edge_rect(model: &LayerModel, e: usize) -> Rect {
+    let ed = &model.edges[e];
+    let (l, h) = (ed.low, ed.high);
+    match ed.dir() {
+        Dir::E => [l.0, l.1, h.0, h.1 + 1],
+        Dir::W => [h.0, h.1 - 1, l.0, l.1],
+        Dir::N => [l.0 - 1, l.1, h.0, h.1],
+        Dir::S => [h.0, h.1, l.0 + 1, l.1],
+    }
+}
+
+/// `gtl::intersects(a, b, false)`: the interiors overlap.
+fn overlaps(a: &Rect, b: &Rect) -> bool {
+    a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+}
+
+/// drt `tmpPoly &= getPolygons(layer, false)` non-empty: some ROUTE (not fixed) shape of the net
+/// overlaps `region` with area.
+fn has_route_in(model: &LayerModel, net: usize, region: &Rect) -> bool {
+    model.route_shapes.get(&net).is_some_and(|v| v.iter().any(|r| overlaps(r, region)))
+}
+
+/// drt `checkMetalEndOfLine_eol_isEolEdge` for an end-of-line rule: shorter than the EOL width,
+/// both corners convex.
+fn check_metal_end_of_line_eol_is_eol_edge(model: &LayerModel, e: usize, con: &EolSpacingDbu) -> bool {
+    let ed = &model.edges[e];
+    if ed.len() >= con.eol_width {
+        return false;
+    }
+    turns_left(&model.edges[ed.prev], ed) && turns_left(ed, &model.edges[ed.next])
+}
+
+/// drt `qualifiesAsEol`: the end test, whether the end has route shapes (`hasRoute`), the
+/// parallel-edge test (no PARALLELEDGE here: true) and the min/max length test, as
+/// `(qualifies, hasRoute)`; `hasRoute` is set before the length test, as the reference sets it.
+fn qualifies_as_eol(model: &LayerModel, e: usize, con: &EolSpacingDbu, nets: &[String]) -> (bool, bool) {
+    if !check_metal_end_of_line_eol_is_eol_edge(model, e, con) {
+        return (false, false);
+    }
+    let ed = &model.edges[e];
+    let mut has_route = false;
+    if !ed.fixed {
+        has_route = has_route_in(model, model.net_of(ed.pin), &get_parallel_edge_rect(model, e));
+    }
+    if let Some(m) = con.min_max {
+        if !check_metal_end_of_line_eol_has_min_max_length(model, e, (m.max, m.length, con.two_sides()), nets) {
+            return (false, has_route);
+        }
+    }
+    (true, has_route)
+}
+
+/// drt `checkMetalEndOfLine_eol_hasEol_getQueryBox` for an end (`isEolEdge` true): the box
+/// `eolSpace` out from the edge and `eolWithin` past its ends; ENDTOEND raises the space to its
+/// own and, with EXTENSION, makes the within twice the extension.
+fn check_metal_end_of_line_eol_has_eol_get_query_box(model: &LayerModel, e: usize, con: &EolSpacingDbu) -> Rect {
+    let ed = &model.edges[e];
+    let mut within = con.eol_within();
+    let mut space = con.eol_space;
+    if let Some(ee) = con.end_to_end {
+        space = space.max(ee.space);
+        if let Some(x) = ee.extension {
+            within = x * 2;
+        }
+    }
+    let (l, h) = (ed.low, ed.high);
+    match ed.dir() {
+        Dir::E => [l.0 - within, l.1 - space, h.0 + within, h.1],
+        Dir::W => [h.0 - within, h.1, l.0 + within, l.1 + space],
+        Dir::N => [l.0, l.1 - within, h.0 + space, h.1 + within],
+        Dir::S => [h.0 - space, h.1 - within, l.0, l.1 + within],
+    }
+}
+
+/// drt `checkMetalEndOfLine_eol`: an end of line against every edge in its query box.
+pub fn check_metal_end_of_line_eol(
+    model: &LayerModel,
+    e: usize,
+    con: &EolSpacingDbu,
+    ci: usize,
+    nets: &[String],
+    out: &mut BTreeSet<Marker>,
+) {
+    let ed = &model.edges[e];
+    let eol = check_metal_end_of_line_eol_is_eol_edge(model, e, con);
+    vyt!(
+        "VYT EL_EDGE {}({},{})-({},{})d{} fixed={} eol={}",
+        net_name(model, ed.pin, nets), ed.low.0, ed.low.1, ed.high.0, ed.high.1, ed.dir() as i32, ed.fixed as i32, eol as i32
+    );
+    if !eol {
+        return;
+    }
+    let (ok, has_route) = qualifies_as_eol(model, e, con, nets);
+    vyt!("VYT EL_Q ok={} route={}", ok as i32, has_route as i32);
+    if ok {
+        check_metal_end_of_line_eol_has_eol(model, e, con, has_route, ci, nets, out);
+    }
+}
+
+/// drt `checkMetalEndOfLine_eol_hasEol`.
+fn check_metal_end_of_line_eol_has_eol(
+    model: &LayerModel,
+    e: usize,
+    con: &EolSpacingDbu,
+    has_route: bool,
+    ci: usize,
+    nets: &[String],
+    out: &mut BTreeSet<Marker>,
+) {
+    let query = check_metal_end_of_line_eol_has_eol_get_query_box(model, e, con);
+    let results: Vec<usize> = (0..model.edges.len()).filter(|&k| intersects(&model.edges[k].rect(), &query)).collect();
+    vyt!("VYT EL_QUERY query={} n={}", r4(&query), results.len());
+    for k in results {
+        check_metal_end_of_line_eol_has_eol_check(model, e, k, &query, con, has_route, ci, nets, out);
+    }
+}
+
+/// drt `checkMetalEndOfLine_eol_hasEol_check`: one edge in the box against the end.
+#[allow(clippy::too_many_arguments)]
+fn check_metal_end_of_line_eol_has_eol_check(
+    model: &LayerModel,
+    e: usize,
+    k: usize,
+    query: &Rect,
+    con: &EolSpacingDbu,
+    mut has_route: bool,
+    ci: usize,
+    nets: &[String],
+    out: &mut BTreeSet<Marker>,
+) {
+    let (a, b) = (&model.edges[e], &model.edges[k]);
+    vyt!(
+        "VYT EL_PAIR e2={}({},{})-({},{})d{} f={}{}",
+        net_name(model, b.pin, nets), b.low.0, b.low.1, b.high.0, b.high.1, b.dir() as i32, a.fixed as i32, b.fixed as i32
+    );
+    if a.pin == b.pin {
+        vyt!("VYT EL_PAIR skip samepin");
+        return;
+    }
+    if a.fixed && b.fixed {
+        vyt!("VYT EL_PAIR skip fixed");
+        return;
+    }
+    if a.dir() as i32 + b.dir() as i32 != 7 {
+        vyt!("VYT EL_PAIR skip notopposite");
+        return;
+    }
+    let trigger = get_parallel_edge_rect(model, k);
+    if !overlaps(query, &trigger) {
+        vyt!("VYT EL_PAIR skip noarea");
+        return;
+    }
+    if !has_route && !b.fixed {
+        let region = [query[0].max(trigger[0]), query[1].max(trigger[1]), query[2].min(trigger[2]), query[3].min(trigger[3])];
+        has_route = has_route_in(model, model.net_of(b.pin), &region);
+    }
+    if !has_route {
+        vyt!("VYT EL_PAIR skip noroute");
+        return;
+    }
+    if !check_metal_end_of_line_eol_has_eol_end_to_end_helper(model, e, k, con) {
+        vyt!("VYT EL_PAIR skip e2e");
+        return;
+    }
+    check_metal_end_of_line_eol_has_eol_helper(model, e, k, ci, out);
+}
+
+/// `gtl::bloat(rect, orient, amount)`: grown by `amount` on both sides along the edge's own
+/// orientation.
+fn bloat_along(r: &Rect, horizontal: bool, amount: i32) -> Rect {
+    if horizontal {
+        [r[0] - amount, r[1], r[2] + amount, r[3]]
+    } else {
+        [r[0], r[1] - amount, r[2], r[3] + amount]
+    }
+}
+
+/// drt `checkMetalEndOfLine_eol_hasEol_endToEndHelper`: whether the two edges are closer than the
+/// governing space with a positive parallel run (the end grown by the within, or both ends by
+/// the ENDTOEND extension when the other edge is an end too).
+fn check_metal_end_of_line_eol_has_eol_end_to_end_helper(model: &LayerModel, e1: usize, e2: usize, con: &EolSpacingDbu) -> bool {
+    let (a, b) = (&model.edges[e1], &model.edges[e2]);
+    let mut space = con.eol_space;
+    let mut rect1 = a.rect();
+    let mut rect2 = b.rect();
+    let a_h = a.low.1 == a.high.1;
+    let b_h = b.low.1 == b.high.1;
+    let edge2_is_eol = check_metal_end_of_line_eol_is_eol_edge(model, e2, con);
+    match con.end_to_end {
+        Some(ee) if edge2_is_eol => {
+            space = ee.space;
+            if let Some(x) = ee.extension {
+                rect1 = bloat_along(&rect1, a_h, x);
+                rect2 = bloat_along(&rect2, b_h, x);
+            }
+        }
+        _ => rect1 = bloat_along(&rect1, a_h, con.eol_within()),
+    }
+    let m = generalized_intersect(&rect1, &rect2);
+    let (mut prl_x, mut prl_y) = (m[2] - m[0], m[3] - m[1]);
+    let (dist_x, dist_y) = (axis_distance(&rect1, &rect2, true), axis_distance(&rect1, &rect2, false));
+    let res = if dist_x == 0 && dist_y == 0 {
+        false
+    } else {
+        if dist_x != 0 {
+            prl_x = -prl_x;
+        }
+        if dist_y != 0 {
+            prl_y = -prl_y;
+        }
+        prl_x.max(prl_y) > 0 && dist_x.max(dist_y) < space
+    };
+    vyt!(
+        "VYT EL_E2E eol2={} space={} r1={} r2={} prl=({},{}) dist=({},{}) res={}",
+        edge2_is_eol as i32, space, r4(&rect1), r4(&rect2), prl_x, prl_y, dist_x, dist_y, res as i32
+    );
+    res
+}
+
+/// drt `checkMetalEndOfLine_eol_hasEol_helper`: the marker between the two edges, unless a
+/// maximal rectangle fills part of it.
+fn check_metal_end_of_line_eol_has_eol_helper(model: &LayerModel, e1: usize, e2: usize, ci: usize, out: &mut BTreeSet<Marker>) {
+    let (a, b) = (&model.edges[e1], &model.edges[e2]);
+    let marker = generalized_intersect(&get_parallel_edge_rect(model, e1), &get_parallel_edge_rect(model, e2));
+    let mut bloated = marker;
+    if (marker[2] - marker[0]) as i64 * (marker[3] - marker[1]) as i64 == 0 {
+        bloated = bloat_along(&marker, matches!(a.dir(), Dir::W | Dir::E), 1);
+    }
+    let blocked = query_max_rectangle(model, &bloated).into_iter().any(|r| overlaps(&bloated, &model.rects[r].rect));
+    vyt!("VYT EL_HELP marker={} blocked={}", r4(&marker), blocked as i32);
+    if blocked {
+        return;
+    }
+    vyt!("VYT EL_MARK");
+    let nets: BTreeSet<usize> = [a.pin, b.pin].iter().map(|&q| model.net_of(q)).collect();
+    out.insert(Marker { rule: RULE_EOL_SPACING, index: ci, bbox: marker, nets });
 }
 
 #[cfg(test)]
@@ -866,6 +1282,13 @@ mod tests {
         assert!(has_min_length(100, 100, 100, true));
         assert!(!has_min_length(100, 99, 100, true));
         assert!(!has_min_length(99, 100, 100, true));
+        // MAXLENGTH, closed: either side at most the length, or both with TWOSIDES
+        assert!(has_max_length(100, 150, 100, false));
+        assert!(has_max_length(150, 100, 100, false));
+        assert!(!has_max_length(101, 101, 100, false));
+        assert!(has_max_length(100, 100, 100, true));
+        assert!(!has_max_length(100, 101, 100, true));
+        assert!(!has_max_length(101, 100, 100, true));
     }
 
     /// Each row carries its own MINLENGTH; an end takes the row its length selects, as it takes
@@ -885,6 +1308,135 @@ mod tests {
         assert_eq!(t.find(50), 30);
         let none = EolExtDbu { min_length: vec![None, Some((20, true))], ..t };
         assert_eq!(none.min_length_for(30), None);
+    }
+
+    /// A SAMEMASK end-of-line rule in DBU for the unit tests: SPACING 0.07 ENDOFLINE 0.06, read as
+    /// the reference reads it, no MINLENGTH.
+    fn eol_con(end_to_end: Option<EolEndToEnd>) -> EolSpacingDbu {
+        EolSpacingDbu {
+            eol_space: 70,
+            eol_width: 60,
+            within: 20,
+            end_to_end,
+            min_max: None,
+            within_policy: EolWithin::Reference,
+            two_sides_policy: EolTwoSides::Reference,
+        }
+    }
+
+    /// Every end-of-line marker of the shapes `(net, rect)`, as `(bbox, nets)`.
+    fn eol_markers(shapes: &[(usize, Rect)], con: &EolSpacingDbu) -> Vec<(Rect, Vec<usize>)> {
+        use crate::masks_geom::Shape;
+        let v: Vec<Shape> = shapes.iter().map(|&(net, rect)| Shape { net, rect, fixed: false }).collect();
+        let m = LayerModel::build(&v);
+        let nets: Vec<String> = (0..4).map(|k| format!("n{k}")).collect();
+        let mut out = BTreeSet::new();
+        for e in 0..m.edges.len() {
+            check_metal_end_of_line_eol(&m, e, con, 0, &nets, &mut out);
+        }
+        out.into_iter().map(|mk| (mk.bbox, mk.nets.into_iter().collect())).collect()
+    }
+
+    /// drt `isEolEdge`: shorter than the EOL width (strict) with BOTH corners convex. The short
+    /// edge of a step whose previous corner is concave is no end.
+    #[test]
+    fn an_end_is_short_with_both_corners_convex() {
+        use crate::masks_geom::Shape;
+        let con = eol_con(None);
+        let top = |w: i32| {
+            let m = LayerModel::build(&[Shape { net: 0, rect: [0, 0, w, 500], fixed: false }]);
+            let e = (0..m.edges.len()).find(|&k| m.edges[k].low.1 == 500 && m.edges[k].high.1 == 500).expect("a top edge");
+            check_metal_end_of_line_eol_is_eol_edge(&m, e, &con)
+        };
+        assert!(top(59));
+        assert!(!top(60), "60 is not under 60");
+        // (50, 150) S to (50, 100) then W: concave; W then S at (0, 100): convex
+        let m = LayerModel::build(&[
+            Shape { net: 0, rect: [0, 0, 100, 100], fixed: false },
+            Shape { net: 0, rect: [50, 100, 100, 150], fixed: false },
+        ]);
+        let e = (0..m.edges.len()).find(|&k| m.edges[k].low == (50, 100) && m.edges[k].high == (0, 100)).expect("the step");
+        assert!(!check_metal_end_of_line_eol_is_eol_edge(&m, e, &con));
+    }
+
+    /// drt `hasEol_getQueryBox`: ENDTOEND raises the query's space to its own only when larger
+    /// (`max`); a wide neighbour 0.06 from an end is in reach of SPACING 0.07 under ENDTOEND 0.05.
+    #[test]
+    fn end_to_end_never_shrinks_the_query() {
+        let con = eol_con(Some(EolEndToEnd { space: 50, extension: None }));
+        let got = eol_markers(&[(0, [0, 0, 50, 1000]), (1, [-200, 1060, 300, 1200])], &con);
+        assert_eq!(got, [([0, 1000, 50, 1060], vec![0, 1])]);
+    }
+
+    /// drt `endToEndHelper`: the space is strict (`dist < space`) and the run must be positive.
+    /// Under ENDTOEND 0.08 the query reaches 0.08, but a non-end neighbour is held to SPACING
+    /// 0.07: 0.07 away is clean, 0.069 fires. With ENDTOEND EXTENSION the query reaches 0.02 past
+    /// the end but the end is not grown for a non-end neighbour, so a wide bar starting exactly
+    /// at the end's side has run 0: clean.
+    #[test]
+    fn the_space_is_strict_and_the_run_positive() {
+        let con = eol_con(Some(EolEndToEnd { space: 80, extension: None }));
+        assert!(eol_markers(&[(0, [0, 0, 50, 1000]), (1, [-200, 1070, 300, 1200])], &con).is_empty());
+        assert_eq!(eol_markers(&[(0, [0, 0, 50, 1000]), (1, [-200, 1069, 300, 1200])], &con).len(), 1);
+        let con = eol_con(Some(EolEndToEnd { space: 80, extension: Some(10) }));
+        assert!(eol_markers(&[(0, [0, 0, 50, 1000]), (1, [50, 1040, 500, 1100])], &con).is_empty());
+        assert_eq!(eol_markers(&[(0, [0, 0, 50, 1000]), (1, [49, 1040, 500, 1100])], &con).len(), 1);
+    }
+
+    /// drt `hasEol_check`, in the reference's order: two fixed edges are skipped (`skip fixed`)
+    /// before anything else is looked at; an end of a fixed shape is reported only when the other
+    /// net has a ROUTE shape where the other edge meets the query (`hasRoute`), here not: the
+    /// other edge runs along a fixed pin and its route wire starts past the query. A fixed end
+    /// takes no route from its own net (`if (!edge->isFixed())`).
+    #[test]
+    fn fixed_ends_need_a_route_on_the_other_side() {
+        use crate::masks_geom::Shape;
+        let con = eol_con(None);
+        let nets = vec!["p".to_string(), "q".to_string()];
+        let run = |shapes: &[Shape]| {
+            let m = LayerModel::build(shapes);
+            capture_trace(|| {
+                let mut out = BTreeSet::new();
+                for e in 0..m.edges.len() {
+                    check_metal_end_of_line_eol(&m, e, &con, 0, &nets, &mut out);
+                }
+                out.len()
+            })
+        };
+        let end = Shape { net: 0, rect: [0, 0, 50, 1000], fixed: true };
+        let (n, lines) = run(&[end, Shape { net: 1, rect: [-200, 1060, 300, 1200], fixed: true }]);
+        assert_eq!(n, 0);
+        assert!(lines.iter().any(|l| l == "VYT EL_PAIR skip fixed"), "{lines:?}");
+        let pin = Shape { net: 1, rect: [0, 1060, 50, 1200], fixed: true };
+        let (n, lines) = run(&[end, pin, Shape { net: 1, rect: [50, 1060, 500, 1100], fixed: false }]);
+        assert_eq!(n, 0);
+        assert!(lines.iter().any(|l| l == "VYT EL_PAIR skip noroute"), "{lines:?}");
+        let (n, _) = run(&[end, pin, Shape { net: 1, rect: [40, 1060, 500, 1100], fixed: false }]);
+        assert_eq!(n, 1, "the route wire reaches into the query");
+        // a route wire of p's own net INSIDE the fixed end does not count: a fixed end never
+        // looks for route on its own side
+        let inner = Shape { net: 0, rect: [0, 900, 50, 1000], fixed: false };
+        let (n, _) = run(&[end, inner, pin, Shape { net: 1, rect: [50, 1060, 500, 1100], fixed: false }]);
+        assert_eq!(n, 0);
+    }
+
+    /// drt `hasEol_helper`: a marker of no area is grown by 1 before the max-rectangle test, so a
+    /// shape sitting on its line blocks it; without that shape the two ends are reported.
+    #[test]
+    fn a_line_marker_is_grown_before_the_blocking_test() {
+        let con = eol_con(Some(EolEndToEnd { space: 80, extension: Some(10) }));
+        let ends = [(0, [0, 0, 50, 1000]), (1, [50, 1040, 100, 2000])];
+        assert_eq!(eol_markers(&ends, &con), [([50, 1000, 50, 1040], vec![0, 1])]);
+        // the same through the layer's shape-rule pass
+        let rules = SameMaskRulesDbu { eol_spacing: vec![con], ..SameMaskRulesDbu::default() };
+        assert!(rules.has_shape_rules());
+        let m = LayerModel::build(&ends.map(|(net, rect)| crate::masks_geom::Shape { net, rect, fixed: false }));
+        let nets = vec!["n0".to_string(), "n1".to_string()];
+        let got: Vec<Rect> = check_shape_rules(&m, false, &rules, &nets).iter().map(|mk| mk.bbox).collect();
+        assert_eq!(got, [[50, 1000, 50, 1040]]);
+        let mut blocked = ends.to_vec();
+        blocked.push((2, [50, 1010, 80, 1030]));
+        assert!(!eol_markers(&blocked, &con).iter().any(|(_, n)| *n == [0, 1]));
     }
 
     #[test]
