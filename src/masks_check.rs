@@ -764,7 +764,8 @@ pub const RULE_EOL_SPACING: &str = "SPACING ENDOFLINE SAMEMASK";
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EolWithin {
     /// As the reference reads it: drt `frLef58SpacingEndOfLineWithinConstraint::getEolWithin`
-    /// returns 0 for a SAMEMASK rule, whatever WITHIN says.
+    /// returns 0 for a SAMEMASK rule, whatever WITHIN says (reported upstream as
+    /// OpenROAD#12182).
     #[default]
     Reference,
     /// As written in the LEF (the LEF/DEF reference text says nothing of WITHIN changing with
@@ -776,7 +777,8 @@ pub enum EolWithin {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EolTwoSides {
     /// As the reference reads it: drt `io.cpp` passes the PARALLELEDGE TWOEDGES flag where
-    /// TWOSIDES belongs, so `MINLENGTH l TWOSIDES` without TWOEDGES is evaluated one-sided.
+    /// TWOSIDES belongs, so `MINLENGTH l TWOSIDES` without TWOEDGES is evaluated one-sided
+    /// (reported upstream as OpenROAD#12181).
     #[default]
     Reference,
     /// As written: TWOSIDES means both sides (the LEF/DEF reference text).
