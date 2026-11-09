@@ -47,6 +47,7 @@ pub mod d2d;
 #[cfg(unix)]
 pub mod diodes;
 pub mod eco;
+pub mod enclosure_edge;
 #[cfg(unix)]
 pub mod gds;
 pub mod masks;
