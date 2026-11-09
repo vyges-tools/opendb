@@ -291,6 +291,7 @@ impl Finding {
             Finding::OddCycle { .. } => "odd_cycle",
             Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_FORBIDDEN => "forbidden_spacing",
             Finding::SameMaskRule { rule, .. } if *rule == crate::joint_corner::RULE_JOINT_CORNER => "joint_corner_spacing",
+            Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_EOL_SPACING => "eol_spacing",
             Finding::SameMaskRule { .. } => "eol_extension_spacing",
         }
     }
@@ -781,6 +782,10 @@ pub struct ColourOptions {
     pub same_mask_rules: BTreeMap<String, SameMaskRules>,
     /// Only check; write no colour.
     pub check_only: bool,
+    /// How a SAMEMASK end-of-line rule's WITHIN and TWOSIDES are read (default: as the
+    /// reference reads them).
+    pub eol_within: crate::masks_check::EolWithin,
+    pub eol_two_sides: crate::masks_check::EolTwoSides,
 }
 
 /// What [`colour_masks`] did.
@@ -832,6 +837,12 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
             let mut rules = opts.same_mask_rules.get(&name).map(|r| SameMaskRulesDbu::from_um(r, dbu));
             // JOINTCORNERSPACING: odb keeps only the raw text, on the layer
             let (jc, jc_nc) = crate::joint_corner::rules_from_properties(&db.layer_string_properties(&name), dbu);
+            let (eol, eol_nc) = crate::masks_check::eol_spacing_rules(db, &name, opts.eol_within, opts.eol_two_sides);
+            if !eol.is_empty() || !eol_nc.is_empty() {
+                let r = rules.get_or_insert_with(SameMaskRulesDbu::default);
+                r.eol_spacing = eol;
+                r.not_checked.extend(eol_nc);
+            }
             if !jc.is_empty() || !jc_nc.is_empty() {
                 let r = rules.get_or_insert_with(SameMaskRulesDbu::default);
                 r.joint_corner = jc;
