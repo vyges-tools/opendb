@@ -14,9 +14,12 @@
 //! * `… OPPOSITE NOCONCAVECORNER w ;` — as above, and: the cut edges orthogonal to an edge that
 //!   meets the overhang (overhang at most `o`), extended by `o` past that edge, must have no
 //!   concave corner of the metal above within `w` ([`check_no_concave_corner`]).
+//! * `… OPPOSITE [NOCONCAVECORNER w] EXCEPTEOL e ;` — "EOL edges with width less than `e` are
+//!   exempted from the rules" (reference Figure 2-54 d: a cut in a metal end narrower than `e`
+//!   with 0.01 below and 0.03 above is OK) ([`faces_eol`]).
 //!
 //! Every other form is read and reported as not checked, naming its first clause
-//! ([`NotChecked`]): `EXCEPTEOL`, `CUTTOBELOWSPACING`, `WRONGDIRECTION`, the parallel-neighbour
+//! ([`NotChecked`]): `CUTTOBELOWSPACING`, `WRONGDIRECTION`, the parallel-neighbour
 //! forms (`WIDTH` / `SPANLENGTH` / `INCLUDECORNER`), `CONVEXCORNERS`, `OPPOSITE` without `ABOVE`
 //! (the reference requires it), a cut class the layer does not define, and anything that does not
 //! parse. A report never reads as clean for a rule nobody looked at.
@@ -63,6 +66,8 @@ pub struct Rule {
     pub overhang: f64,
     /// `NOCONCAVECORNER w`.
     pub no_concave_corner: Option<f64>,
+    /// `EXCEPTEOL eolWidth`.
+    pub except_eol: Option<f64>,
 }
 
 /// A statement read but not checked, with the clause that puts it out of scope.
@@ -73,7 +78,6 @@ pub struct NotChecked {
     pub statement: String,
 }
 
-pub const NC_EXCEPTEOL: &str = "OPPOSITE EXCEPTEOL";
 pub const NC_CUTTOBELOW: &str = "OPPOSITE CUTTOBELOWSPACING";
 pub const NC_WRONGDIRECTION: &str = "OPPOSITE WRONGDIRECTION";
 pub const NC_NOT_ABOVE: &str = "OPPOSITE without ABOVE";
@@ -137,6 +141,7 @@ fn read_statement(t: &[&str]) -> std::result::Result<Rule, &'static str> {
         _ => return Err(NC_MALFORMED),
     }
     let mut no_concave_corner = None;
+    let mut except_eol = None;
     let mut unmodelled = None;
     while i < t.len() {
         match up(i).as_deref() {
@@ -145,8 +150,7 @@ fn read_statement(t: &[&str]) -> std::result::Result<Rule, &'static str> {
                 i += 2;
             }
             Some("EXCEPTEOL") => {
-                num(t.get(i + 1)).ok_or(NC_MALFORMED)?;
-                unmodelled.get_or_insert(NC_EXCEPTEOL);
+                except_eol = Some(num(t.get(i + 1)).ok_or(NC_MALFORMED)?);
                 i += 2;
             }
             Some("CUTTOBELOWSPACING") => {
@@ -172,7 +176,7 @@ fn read_statement(t: &[&str]) -> std::result::Result<Rule, &'static str> {
     if side != Side::Above {
         return Err(NC_NOT_ABOVE);
     }
-    Ok(Rule { cut_class, overhang, no_concave_corner })
+    Ok(Rule { cut_class, overhang, no_concave_corner, except_eol })
 }
 
 // ---- geometry -----------------------------------------------------------------------------------
@@ -326,6 +330,45 @@ pub fn check_no_concave_corner(segments: &[Rect], corners: &[(i32, i32)], within
     corners.iter().copied().filter(|&c| segments.iter().any(|s| point_to_segment2(c, s) <= w2)).collect()
 }
 
+/// `EXCEPTEOL e`: whether the metal boundary beyond a cut edge, at `dist` from it, is an EOL
+/// edge narrower than `e`. The boundary edges looked at face the same way as the cut edge, lie
+/// at `dist` beyond it and overlap it along its length; one of them shorter than `e` with both
+/// corners convex makes the cut edge exempt. An edge on the boundary of `window` (the clip the
+/// metal was cut to) is the clip's, not the metal's, and never counts.
+///
+/// 🔑 Interpretation (no oracle). A violation is exempt when its triggering edge (at its smallest
+/// overhang) OR its opposite edge (at its largest) faces such an end: in the reference figure
+/// both do. `NOCONCAVECORNER` is not exempted (the text and figure exempt OPPOSITE only).
+#[must_use]
+pub fn faces_eol(model: &LayerModel, window: &Rect, cut: &Rect, edge: CutEdge, dist: i32, eol_width: i32) -> bool {
+    // the cut edge's outward direction, the boundary line, and its extent along the edge
+    let (out, line, lo, hi) = match edge {
+        CutEdge::W => ((-1, 0), cut[0] - dist, cut[1], cut[3]),
+        CutEdge::E => ((1, 0), cut[2] + dist, cut[1], cut[3]),
+        CutEdge::S => ((0, -1), cut[1] - dist, cut[0], cut[2]),
+        CutEdge::N => ((0, 1), cut[3] + dist, cut[0], cut[2]),
+    };
+    model.edges.iter().any(|e| {
+        let (dx, dy) = ((e.high.0 - e.low.0).signum(), (e.high.1 - e.low.1).signum());
+        // the interior is on an edge's left, so its outward normal is (dy, -dx)
+        if (dy, -dx) != out {
+            return false;
+        }
+        let (at, a0, a1) = if out.0 == 0 {
+            (e.low.1, e.low.0.min(e.high.0), e.low.0.max(e.high.0))
+        } else {
+            (e.low.0, e.low.1.min(e.high.1), e.low.1.max(e.high.1))
+        };
+        let clip = if out.0 == 0 { at == window[1] || at == window[3] } else { at == window[0] || at == window[2] };
+        at == line
+            && !clip
+            && a0.max(lo) < a1.min(hi)
+            && e.len() < eol_width
+            && turns_left(&model.edges[e.prev], e)
+            && turns_left(e, &model.edges[e.next])
+    })
+}
+
 // ---- rules of a layer in DBU ----------------------------------------------------------------------
 
 /// A checked rule in DBU, with its index among the layer's CHECKED rules, in the order written.
@@ -336,6 +379,8 @@ pub struct RuleDbu {
     pub class: Option<(String, i32, i32)>,
     pub overhang: i32,
     pub within: Option<i32>,
+    /// `EXCEPTEOL eolWidth`.
+    pub except_eol: Option<i32>,
 }
 
 impl RuleDbu {
@@ -402,6 +447,7 @@ pub fn resolve(
             class,
             overhang: dbu(r.overhang, per_um),
             within: r.no_concave_corner.map(|w| dbu(w, per_um)),
+            except_eol: r.except_eol.map(|w| dbu(w, per_um)),
         });
     }
     LayerRules {
@@ -525,7 +571,14 @@ pub fn check_layer(rules: &LayerRules, cuts: &[Cut], metal: &[Rect]) -> (usize, 
     if rules.rules.is_empty() {
         return (0, findings);
     }
-    let reach = rules.rules.iter().map(|r| r.overhang + r.within.unwrap_or(0)).max().unwrap_or(0) + 1;
+    // EXCEPTEOL judges a metal end by its length: the window must hold any end shorter than it
+    let reach = rules
+        .rules
+        .iter()
+        .map(|r| (r.overhang + r.within.unwrap_or(0)).max(r.except_eol.unwrap_or(0)))
+        .max()
+        .unwrap_or(0)
+        + 1;
     let grid = Grid::new(metal, i64::from(reach.max(1)) * 8);
     let mut checked = 0;
     let layer = &rules.cut_layer;
@@ -554,6 +607,11 @@ pub fn check_layer(rules: &LayerRules, cuts: &[Cut], metal: &[Rect]) -> (usize, 
         let corners = if applying.iter().any(|r| r.within.is_some()) { concave_corners(&model) } else { Vec::new() };
         for r in applying {
             for (edge, overhang, opposite, opposite_max) in check_opposite(&ov, r.overhang) {
+                if let Some(e) = r.except_eol {
+                    if faces_eol(&model, &win, &c.rect, edge, overhang, e) || faces_eol(&model, &win, &c.rect, opposite, opposite_max, e) {
+                        continue;
+                    }
+                }
                 findings.push(EeFinding::Opposite {
                     layer: layer.clone(),
                     rule: r.index,
@@ -703,7 +761,7 @@ mod tests {
         LayerRules {
             cut_layer: "V1".into(),
             above_layer: Some("M2".into()),
-            rules: vec![RuleDbu { index: 0, class: None, overhang: o, within: w }],
+            rules: vec![RuleDbu { index: 0, class: None, overhang: o, within: w, except_eol: None }],
             not_checked: vec![],
             statements: 1,
         }
@@ -720,15 +778,18 @@ mod tests {
         let (r, nc) = read_property("ENCLOSUREEDGE CUTCLASS VA ABOVE 0.02 OPPOSITE ;\n ENCLOSUREEDGE CUTCLASS VA ABOVE 0.01 OPPOSITE NOCONCAVECORNER 0.05 ;");
         assert!(nc.is_empty(), "{nc:?}");
         assert_eq!(r, vec![
-            Rule { cut_class: Some("VA".into()), overhang: 0.02, no_concave_corner: None },
-            Rule { cut_class: Some("VA".into()), overhang: 0.01, no_concave_corner: Some(0.05) },
+            Rule { cut_class: Some("VA".into()), overhang: 0.02, no_concave_corner: None, except_eol: None },
+            Rule { cut_class: Some("VA".into()), overhang: 0.01, no_concave_corner: Some(0.05), except_eol: None },
         ]);
         let clause = |s: &str| {
             let (r, nc) = read_property(s);
             assert!(r.is_empty(), "{s}");
             nc[0].clause
         };
-        assert_eq!(clause("ENCLOSUREEDGE ABOVE 0.02 OPPOSITE EXCEPTEOL 0.15 ;"), NC_EXCEPTEOL);
+        let (r, _) = read_property("ENCLOSUREEDGE ABOVE 0.02 OPPOSITE EXCEPTEOL 0.15 ; ENCLOSUREEDGE ABOVE 0.02 OPPOSITE NOCONCAVECORNER 0.05 EXCEPTEOL 0.15 ;");
+        assert_eq!(r.iter().map(|x| (x.except_eol, x.no_concave_corner)).collect::<Vec<_>>(), [(Some(0.15), None), (Some(0.15), Some(0.05))]);
+        assert_eq!(clause("ENCLOSUREEDGE ABOVE 0.02 OPPOSITE EXCEPTEOL ;"), NC_MALFORMED);
+        assert_eq!(clause("ENCLOSUREEDGE ABOVE 0.02 OPPOSITE EXCEPTEOL 0.15 WRONGDIRECTION ;"), NC_WRONGDIRECTION);
         assert_eq!(clause("ENCLOSUREEDGE ABOVE 0.02 OPPOSITE NOCONCAVECORNER 0.05 CUTTOBELOWSPACING 0.07 ABOVEMETAL 0.03 ;"), NC_CUTTOBELOW);
         assert_eq!(clause("ENCLOSUREEDGE ABOVE 0.02 OPPOSITE WRONGDIRECTION ;"), NC_WRONGDIRECTION);
         assert_eq!(clause("ENCLOSUREEDGE BELOW 0.02 OPPOSITE ;"), NC_NOT_ABOVE);
@@ -750,7 +811,7 @@ mod tests {
         let read = || read_property("ENCLOSUREEDGE CUTCLASS va ABOVE 0.02 OPPOSITE ; ENCLOSUREEDGE CUTCLASS VB ABOVE 0.02 OPPOSITE ;");
         let lr = resolve("V1", Some("M2"), read(), &[("VA".into(), 40, 40)], 1000.0);
         assert_eq!(lr.statements, 2);
-        assert_eq!(lr.rules, vec![RuleDbu { index: 0, class: Some(("VA".into(), 40, 40)), overhang: 20, within: None }]);
+        assert_eq!(lr.rules, vec![RuleDbu { index: 0, class: Some(("VA".into(), 40, 40)), overhang: 20, within: None, except_eol: None }]);
         assert_eq!(lr.not_checked.iter().map(|n| n.clause).collect::<Vec<_>>(), [NC_CLASS]);
         let none = resolve("V1", None, read(), &[("VA".into(), 40, 40)], 1000.0);
         assert!(none.rules.is_empty());
@@ -761,7 +822,7 @@ mod tests {
     /// A class applies to a cut of its width and length, either way round, and to nothing else.
     #[test]
     fn a_class_matches_by_size_either_way_round() {
-        let r = RuleDbu { index: 0, class: Some(("VR".into(), 40, 80)), overhang: 20, within: None };
+        let r = RuleDbu { index: 0, class: Some(("VR".into(), 40, 80)), overhang: 20, within: None, except_eol: None };
         assert!(r.applies(&[0, 0, 40, 80]) && r.applies(&[0, 0, 80, 40]));
         assert!(!r.applies(&[0, 0, 40, 40]) && !r.applies(&[0, 0, 80, 80]));
         assert!(RuleDbu { class: None, ..r }.applies(&[0, 0, 1, 1]));
@@ -880,5 +941,70 @@ mod tests {
         let (_, f) = check_layer(&rule(20, None), &[cut], &[[980, 0, 1060, 40], [1000, 40, 1040, 5000]]);
         assert_eq!(kinds(&f), vec!["enclosure_edge_opposite"], "S is 0, N reaches past the window");
         assert!(check_layer(&LayerRules::default(), &[], &[]).1.is_empty());
+    }
+
+    /// EXCEPTEOL (reference Figure 2-54, rule ABOVE 0.02 OPPOSITE EXCEPTEOL 0.15): d) a cut in a
+    /// 0.12 wide metal end, 0.01 below and 0.03 above: the ends are EOL edges, exempt. The same
+    /// cut in a 0.15 wide end (not under 0.15: strict) is a finding, as it is without EXCEPTEOL.
+    #[test]
+    fn except_eol_exempts_metal_ends_narrower_than_it() {
+        let run = |metal: Rect, cut: Rect, e: Option<i32>| {
+            let mut lr = rule(20, None);
+            lr.rules[0].except_eol = e;
+            let (_, f) = check_layer(&lr, &[Cut { net: "a".into(), rect: cut }], &[metal]);
+            kinds(&f)
+        };
+        let d = ([0, 0, 120, 80], [40, 10, 80, 50]);
+        assert!(run(d.0, d.1, Some(150)).is_empty(), "d) both ends are EOL edges");
+        assert_eq!(run(d.0, d.1, None), ["enclosure_edge_opposite"]);
+        let wide = ([0, 0, 150, 80], [55, 10, 95, 50]);
+        assert_eq!(run(wide.0, wide.1, Some(150)), ["enclosure_edge_opposite"], "150 is not under 150");
+        assert!(run(wide.0, wide.1, Some(151)).is_empty());
+        // c) 0.01 on both: nothing to exempt
+        assert!(run([0, 0, 150, 60], [55, 10, 95, 50], Some(150)).is_empty());
+        // a wire end that is not an end: an L's corner (the boundary turns concave) is no EOL
+        let l = [[0, 0, 120, 80], [120, 0, 400, 300]];
+        let mut lr = rule(20, None);
+        lr.rules[0].except_eol = Some(150);
+        let (_, f) = check_layer(&lr, &[Cut { net: "a".into(), rect: [40, 10, 80, 50] }], &l);
+        assert_eq!(kinds(&f), ["enclosure_edge_opposite"], "the top edge ends in a concave corner");
+        // either edge facing an end exempts (interpretation): the trigger S faces a long bottom
+        // edge while the opposite N faces a narrow end, and the mirror image
+        let run2 = |metal: &[Rect]| {
+            let mut lr = rule(20, None);
+            lr.rules[0].except_eol = Some(150);
+            let (_, f) = check_layer(&lr, &[Cut { net: "a".into(), rect: [40, 10, 80, 50] }], metal);
+            kinds(&f)
+        };
+        assert!(run2(&[[0, 0, 500, 40], [0, 0, 120, 80]]).is_empty(), "only the opposite faces an end");
+        assert!(run2(&[[0, 40, 500, 80], [0, 0, 120, 80]]).is_empty(), "only the trigger faces an end");
+        assert_eq!(run2(&[[0, 0, 500, 40], [0, 40, 500, 80]]), ["enclosure_edge_opposite"], "neither: a wide block");
+    }
+
+    /// The clip is never an end: a narrow wire running far past the window is cut there, and that
+    /// cut edge, narrow and convex, must not exempt anything.
+    #[test]
+    fn the_window_edge_is_not_a_metal_end() {
+        let m = LayerModel::build(&[Shape { net: 0, rect: [0, 0, 100, 50], fixed: false }]);
+        let cut = [20, 10, 60, 40];
+        // the E boundary at x = 100 is a narrow convex end; seen through a window ending there it is the clip
+        assert!(faces_eol(&m, &[-1000, -1000, 1000, 1000], &cut, CutEdge::E, 40, 60));
+        assert!(!faces_eol(&m, &[-1000, -1000, 100, 1000], &cut, CutEdge::E, 40, 60));
+        assert!(!faces_eol(&m, &[-1000, -1000, 1000, 1000], &cut, CutEdge::E, 39, 60), "at the measured distance only");
+        assert!(!faces_eol(&m, &[-1000, -1000, 1000, 1000], &cut, CutEdge::E, 40, 50), "50 is not under 50");
+        assert!(!faces_eol(&m, &[-1000, -1000, 1000, 1000], &cut, CutEdge::W, 40, 60), "the W end is at 20");
+        assert!(faces_eol(&m, &[-1000, -1000, 1000, 1000], &cut, CutEdge::W, 20, 60));
+    }
+
+    /// The end must overlap the cut edge's extent along the edge: an end on the line that meets
+    /// the extent at a single point faces nothing.
+    #[test]
+    fn a_metal_end_faces_the_cut_only_where_they_overlap() {
+        let cut = [0, 0, 50, 50];
+        let win = [-1000, -1000, 1000, 1000];
+        let touching = LayerModel::build(&[Shape { net: 0, rect: [0, 50, 100, 90], fixed: false }]);
+        assert!(!faces_eol(&touching, &win, &cut, CutEdge::E, 50, 60), "y 50..90 meets 0..50 at a point");
+        let overlapping = LayerModel::build(&[Shape { net: 0, rect: [0, 49, 100, 89], fixed: false }]);
+        assert!(faces_eol(&overlapping, &win, &cut, CutEdge::E, 50, 60));
     }
 }

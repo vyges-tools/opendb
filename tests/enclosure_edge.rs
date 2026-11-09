@@ -16,7 +16,7 @@
 #![cfg(unix)]
 
 use std::process::Command;
-use vyges_opendb::enclosure_edge::{self, CutEdge, EeFinding, NC_CLASS, NC_EXCEPTEOL};
+use vyges_opendb::enclosure_edge::{self, CutEdge, EeFinding, NC_CLASS, NC_WRONGDIRECTION};
 use vyges_opendb::Db;
 
 fn fixture(f: &str) -> String {
@@ -36,7 +36,7 @@ fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_vyges-opendb"))
 }
 
-/// The rules come from the layer's raw property text: V1 has two checked and one not (EXCEPTEOL),
+/// The rules come from the layer's raw property text: V1 has two checked and one not (WRONGDIRECTION),
 /// V2 names a class it does not define; the class sizes come from odb's cut classes.
 #[test]
 fn rules_are_read_from_the_layer_text() {
@@ -47,7 +47,7 @@ fn rules_are_read_from_the_layer_text() {
     type Got = (Option<(String, i32, i32)>, i32, Option<i32>);
     let got: Vec<Got> = v1.rules.iter().map(|r| (r.class.clone(), r.overhang, r.within)).collect();
     assert_eq!(got, vec![(Some(("VA".into(), 40, 40)), 20, Some(50)), (Some(("VB".into(), 40, 80)), 10, None)]);
-    assert_eq!(v1.not_checked.iter().map(|n| n.clause).collect::<Vec<_>>(), [NC_EXCEPTEOL]);
+    assert_eq!(v1.not_checked.iter().map(|n| n.clause).collect::<Vec<_>>(), [NC_WRONGDIRECTION]);
     let v2 = rules.iter().find(|l| l.cut_layer == "V2").expect("V2 states a rule");
     assert!(v2.rules.is_empty());
     assert_eq!(v2.not_checked.iter().map(|n| n.clause).collect::<Vec<_>>(), [NC_CLASS]);
@@ -117,13 +117,13 @@ fn the_command_reports_by_exit_code() {
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(v["status"], "checked");
     assert_eq!(v["rules_checked"], 2);
-    assert_eq!(v["rules_not_checked"][NC_EXCEPTEOL], 1);
+    assert_eq!(v["rules_not_checked"][NC_WRONGDIRECTION], 1);
     assert_eq!(v["rules_not_checked"][NC_CLASS], 1);
     assert_eq!(v["findings"].as_array().unwrap().len(), 5);
     // odb's own LEF reader echoes an unsupported property's text (ODB-0388); our lines do not
     let ours: Vec<&str> = err.lines().filter(|l| l.contains("check-enclosure-edge:") && !l.contains("finding(s)")).collect();
     assert_eq!(ours.len(), 2, "{err}");
-    assert!(ours.iter().all(|l| !l.contains("0.15") && !l.contains("ENCLOSUREEDGE CUTCLASS")), "{ours:?}");
+    assert!(ours.iter().all(|l| !l.contains("ENCLOSUREEDGE CUTCLASS")), "{ours:?}");
     let (code, _, _) = run(&["--def", &def]);
     assert_eq!(code, Some(0));
     let (code, json, _) = run(&["--fail-on-findings"]);

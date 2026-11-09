@@ -2376,7 +2376,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
 
 const CHECK_ENCLOSURE_EDGE_DESCRIBE: &str = r#"{
   "step": "check-enclosure-edge",
-  "summary": "Pre-screen the LEF58 ENCLOSUREEDGE rules of every cut layer: read the rules from the layer's LEF text (odb keeps it but builds no rule), check the OPPOSITE and OPPOSITE NOCONCAVECORNER forms on every routed and special-wire cut against the merged metal above, and list every other form as not checked with its clause. Reports only; changes nothing.",
+  "summary": "Pre-screen the LEF58 ENCLOSUREEDGE rules of every cut layer: read the rules from the layer's LEF text (odb keeps it but builds no rule), check the OPPOSITE forms (with NOCONCAVECORNER and EXCEPTEOL) on every routed and special-wire cut against the merged metal above, and list every other form as not checked with its clause. Reports only; changes nothing.",
   "unix_only": true,
   "args": [
     { "name": "--input", "kind": "input", "type": "path", "required": false, "description": "design .odb (or give --lef)" },

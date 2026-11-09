@@ -8,7 +8,7 @@ MANUFACTURINGGRID 0.005 ;
 
 # Synthetic stack for the enclosure-edge pre-screen tests. Every name and value is invented.
 # V1 states two checked rules (class VA: OPPOSITE NOCONCAVECORNER, class VB: OPPOSITE) and one
-# form that is not checked (EXCEPTEOL); V2 names a cut class it does not define.
+# form that is not checked (WRONGDIRECTION); V2 names a cut class it does not define.
 
 LAYER M1
   TYPE ROUTING ;
@@ -26,7 +26,7 @@ LAYER V1
   PROPERTY LEF58_ENCLOSUREEDGE "
     ENCLOSUREEDGE CUTCLASS VA ABOVE 0.02 OPPOSITE NOCONCAVECORNER 0.05 ;
     ENCLOSUREEDGE CUTCLASS VB ABOVE 0.01 OPPOSITE ;
-    ENCLOSUREEDGE CUTCLASS VA ABOVE 0.02 OPPOSITE EXCEPTEOL 0.15 ; " ;
+    ENCLOSUREEDGE CUTCLASS VA ABOVE 0.02 OPPOSITE WRONGDIRECTION ; " ;
 END V1
 
 LAYER M2
