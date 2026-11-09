@@ -1,0 +1,40 @@
+VERSION 5.8 ;
+DIVIDERCHAR "/" ;
+BUSBITCHARS "[]" ;
+DESIGN prl ;
+UNITS DISTANCE MICRONS 1000 ;
+DIEAREA ( 0 0 ) ( 2000 1000 ) ;
+
+VIAS 1 ;
+- pgvia
+  + RECT M1 ( -20 -20 ) ( 20 20 )
+  + RECT V1 ( -20 -20 ) ( 20 20 )
+  + RECT M2 ( -20 -20 ) ( 20 20 ) ;
+END VIAS
+
+SPECIALNETS 1 ;
+- vdd
+  + ROUTED M2 40 + SHAPE STRIPE ( 1700 0 ) ( 1700 1000 )
+    NEW M1 0 ( 1700 500 ) pgvia
+  + USE POWER ;
+END SPECIALNETS
+
+NETS 7 ;
+- p1
+  + ROUTED M1 ( 100 100 ) VA12 ;
+- p2
+  + ROUTED M1 ( 230 200 ) VA12 ;
+- q1
+  + ROUTED M1 ( 600 100 ) VA12 ;
+- q2
+  + ROUTED M1 ( 690 190 ) VA12 ;
+- r
+  + ROUTED M1 ( 1000 100 ) VA12
+    NEW M1 ( 1100 100 ) VA12 ;
+- b1
+  + ROUTED M1 ( 1300 100 ) VB12 ;
+- b2
+  + ROUTED M1 ( 1360 100 ) VA12 ;
+END NETS
+
+END DESIGN

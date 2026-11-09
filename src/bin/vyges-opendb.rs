@@ -129,6 +129,13 @@ commands:
                       an exact overhang); every other form listed as not checked with its clause;
                       without a block only the rules are read (report).
 
+  check-prl-two-sides       (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... [--def <f.def>])
+                            [--report <f.json>] [--fail-on-findings]
+                      LEF58 PRLTWOSIDESSPACING rules of the cut layers, read from the layer's own LEF
+                      text: the centre-to-centre spacing of every pair of routed and special-wire
+                      cuts of the named classes, prlSpacing when their PRLs fall in the two ranges,
+                      nonPrlSpacing otherwise; every other form listed as not checked (report).
+
   read-3dblox               --input <f.3dbx> --output <out.odb> [--into <in.odb>]
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
                       database, so it can be linted or queried. Reports anything the
@@ -235,6 +242,7 @@ fn run() -> Result<(), Fail> {
         "color-masks" => color_masks(args),
         "check-enclosure-edge" => check_enclosure_edge(args),
         "check-eol-enclosure" => check_eol_enclosure(args),
+        "check-prl-two-sides" => check_prl_two_sides(args),
         "read-def" => read_def(args),
         "import" => import(args),
         "apply-def-template" => apply_def_template(args),
@@ -305,6 +313,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "color-masks",
     "check-enclosure-edge",
     "check-eol-enclosure",
+    "check-prl-two-sides",
     "read-def",
     "import",
     "apply-def-template",
@@ -2588,6 +2597,109 @@ fn check_eol_enclosure(mut args: impl Iterator<Item = String>) -> Result<(), Fai
     println!("{text}");
     if fail_on_findings && !rep.findings.is_empty() {
         return Err(format!("check-eol-enclosure: {} finding(s)", rep.findings.len()).into());
+    }
+    Ok(())
+}
+
+const CHECK_PRL_TWO_SIDES_DESCRIBE: &str = r#"{
+  "step": "check-prl-two-sides",
+  "summary": "Pre-screen the LEF58 PRLTWOSIDESSPACING rules of every cut layer: read the rules from the layer's LEF text (odb keeps it but builds no rule), check the centre-to-centre spacing of every pair of routed and special-wire cuts of the named classes (prlSpacing when one axis's PRL is in the first range and the other's in the second, nonPrlSpacing otherwise), and list every other form as not checked with its clause. Reports only; changes nothing.",
+  "unix_only": true,
+  "args": [
+    { "name": "--input", "kind": "input", "type": "path", "required": false, "description": "design .odb (or give --lef)" },
+    { "name": "--lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "tech LEF, then cell LEFs, read into a new database" },
+    { "name": "--def", "kind": "input", "type": "path", "required": false, "description": "DEF read after the --lef files; without it only the rules are read" },
+    { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
+    { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when anything is reported" }
+  ]
+}"#;
+
+/// `check-prl-two-sides (--input <f.odb> | --lef <tech.lef>... [--def <f.def>]) [--report <f.json>]
+/// [--fail-on-findings] | --describe`.
+fn check_prl_two_sides(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut def, mut report) = (None, None, None);
+    let mut lefs: Vec<String> = Vec::new();
+    let mut fail_on_findings = false;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--lef" => lefs.push(args.next().ok_or("check-prl-two-sides: --lef needs a path")?),
+            "--def" => def = args.next(),
+            "--report" => report = args.next(),
+            "--fail-on-findings" => fail_on_findings = true,
+            "--describe" => {
+                println!("{CHECK_PRL_TWO_SIDES_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb check-prl-two-sides (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... [--def <f.def>])\n\
+                       \x20                                 [--report <f.json>] [--fail-on-findings]");
+                return Ok(());
+            }
+            other => return Err(format!("check-prl-two-sides: unknown argument: {other}").into()),
+        }
+    }
+    let db = match (input, lefs.is_empty()) {
+        (Some(i), true) if def.is_none() => Db::open(&i)?,
+        (None, false) => {
+            let mut db = Db::new();
+            for l in &lefs {
+                db.read_lef(l)?;
+            }
+            if let Some(d) = &def {
+                db.read_def(d, "default")?;
+            }
+            db
+        }
+        _ => return Err("check-prl-two-sides: give --input <f.odb>, or --lef ... [--def <f.def>]".into()),
+    };
+    let rep = vyges_opendb::prl_two_sides::check_prl_two_sides(&db)?;
+    // Clause and count only: the statement text is the technology's and stays out of the log.
+    for l in &rep.layers {
+        let mut by_clause: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        for nc in &l.rules.not_checked {
+            *by_clause.entry(nc.clause).or_default() += 1;
+        }
+        for (clause, n) in by_clause {
+            diag!("check-prl-two-sides: {}: {n} PRLTWOSIDESSPACING rule(s) not checked: {clause}", l.rules.cut_layer);
+        }
+    }
+    let mut by_kind: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for f in &rep.findings {
+        *by_kind.entry(f.kind()).or_default() += 1;
+    }
+    // 🔑 A pass word never comes from a run that did nothing: each case is its own status.
+    let status = if rep.layers.is_empty() {
+        "no_rules"
+    } else if rep.rules_checked() == 0 {
+        "nothing_checkable"
+    } else if !rep.has_block {
+        "rules_read"
+    } else {
+        "checked"
+    };
+    let json = serde_json::json!({
+        "tool": "vyges-opendb",
+        "command": "check-prl-two-sides",
+        "status": status,
+        "rules_checked": rep.rules_checked(),
+        "rules_not_checked": rep.not_checked_by_clause(),
+        "layers": rep.layers.iter().map(|l| serde_json::json!({
+            "layer": l.rules.cut_layer,
+            "statements": l.rules.statements, "rules_checked": l.rules.rules.len(),
+            "rules_not_checked": l.rules.not_checked.len(),
+            "cuts": l.cuts, "cuts_checked": l.cuts_checked,
+        })).collect::<Vec<_>>(),
+        "findings_by_kind": by_kind,
+        "findings": rep.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),
+    });
+    let text = serde_json::to_string_pretty(&json)?;
+    if let Some(r) = report {
+        std::fs::write(&r, &text)?;
+    }
+    println!("{text}");
+    if fail_on_findings && !rep.findings.is_empty() {
+        return Err(format!("check-prl-two-sides: {} finding(s)", rep.findings.len()).into());
     }
     Ok(())
 }
