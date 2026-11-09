@@ -597,6 +597,17 @@ pub struct V55Table {
     pub table: Option<Vec<Vec<u32>>>,
 }
 
+/// A layer's classic TWOWIDTHS spacing table, as [`Db::layer_two_widths_spacing_table`] reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TwoWidthsSpacingTable {
+    /// Row widths, in LEF order (`getTwoWidthsSpacingTableWidth`).
+    pub widths: Vec<i32>,
+    /// Row parallel run lengths (`getTwoWidthsSpacingTablePRL`); -1 for a row given without one.
+    pub prls: Vec<i32>,
+    /// `spacing[row][col]` (`getTwoWidthsSpacingTableEntry`): rows and columns both by width.
+    pub spacing: Vec<Vec<i32>>,
+}
+
 impl Default for Db {
     fn default() -> Self { Db::new() }
 }
@@ -2906,6 +2917,17 @@ impl Db {
         let (rows, cols) = (v[t + 1] as usize, v[t + 2] as usize);
         let table = (v[t] == 1).then(|| v[t + 3..t + 3 + rows * cols].chunks(cols.max(1)).map(<[u32]>::to_vec).collect());
         Ok(V55Table { widths_and_lengths, table })
+    }
+    /// A layer's classic TWOWIDTHS spacing table, `None` unless `hasTwoWidthsSpacingRules` (rows
+    /// present and a non-empty matrix). The lookup on it is [`Self::layer_find_tw_spacing`].
+    pub fn layer_two_widths_spacing_table(&self, layer: &str) -> Result<Option<TwoWidthsSpacingTable>> {
+        let v = sys::layer_two_widths_spacing_table(self.r(), layer)?;
+        if v.first() != Some(&1) {
+            return Ok(None);
+        }
+        let n = v[1] as usize;
+        let spacing: Vec<Vec<i32>> = v[2 + 2 * n..2 + 2 * n + n * n].chunks(n.max(1)).map(<[i32]>::to_vec).collect();
+        Ok(Some(TwoWidthsSpacingTable { widths: v[2..2 + n].to_vec(), prls: v[2 + n..2 + 2 * n].to_vec(), spacing }))
     }
     /// `dbNet::getFirstDriverTerm`, by name: `I:<inst>/<mterm>` for an instance terminal,
     /// `B:<bterm>` for a block terminal, empty when there is none.
