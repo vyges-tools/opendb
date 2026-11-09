@@ -1,0 +1,49 @@
+VERSION 5.8 ;
+DIVIDERCHAR "/" ;
+BUSBITCHARS "[]" ;
+DESIGN eolenc ;
+UNITS DISTANCE MICRONS 1000 ;
+DIEAREA ( 0 0 ) ( 2000 1000 ) ;
+
+VIAS 1 ;
+- pgvia
+  + RECT M1 ( -20 -20 ) ( 20 20 )
+  + RECT V1 ( -20 -20 ) ( 20 20 )
+  + RECT M2 ( -20 -20 ) ( 20 20 ) ;
+END VIAS
+
+SPECIALNETS 1 ;
+- vdd
+  + ROUTED M2 40 + SHAPE STRIPE ( 1700 0 ) ( 1700 1000 )
+    NEW M1 0 ( 1700 500 ) pgvia
+  + USE POWER ;
+END SPECIALNETS
+
+NETS 7 ;
+- vbok
+  + ROUTED M2 ( 100 0 0 ) ( 100 1000 0 )
+    NEW M1 ( 0 500 0 ) ( 200 500 0 )
+    NEW M1 ( 100 500 ) VB12 ;
+- vbend
+  + ROUTED M2 ( 300 0 0 ) ( 300 550 0 )
+    NEW M1 ( 200 500 0 ) ( 400 500 0 )
+    NEW M1 ( 300 500 ) VB12 ;
+- vbpad
+  + ROUTED M1 ( 500 500 ) VB12P ;
+- vaend
+  + ROUTED M2 ( 700 0 0 ) ( 700 540 0 )
+    NEW M1 ( 600 500 0 ) ( 720 500 0 )
+    NEW M1 ( 700 500 ) VA12 ;
+- vaexact
+  + ROUTED M2 ( 900 0 0 ) ( 900 1000 0 )
+    NEW M1 ( 800 500 0 ) ( 930 500 0 )
+    NEW M1 ( 900 500 ) VA12 ;
+- vawide
+  + ROUTED M2 ( 1100 0 0 ) ( 1100 1000 0 )
+    NEW M1 ( 1000 500 0 ) ( 1100 500 0 )
+    NEW M1 ( 1100 500 ) VAW ;
+- out
+  + ROUTED M1 ( 1300 500 ) VAOUT ;
+END NETS
+
+END DESIGN

@@ -48,6 +48,7 @@ pub mod d2d;
 pub mod diodes;
 pub mod eco;
 pub mod enclosure_edge;
+pub mod eol_enclosure;
 #[cfg(unix)]
 pub mod gds;
 pub mod joint_corner;

@@ -529,13 +529,13 @@ pub struct LayerReport {
 }
 
 /// A uniform-grid index over rectangles, for the metal near a cut.
-struct Grid {
+pub(crate) struct Grid {
     cell: i64,
     bins: HashMap<(i64, i64), Vec<usize>>,
 }
 
 impl Grid {
-    fn new(rects: &[Rect], cell: i64) -> Grid {
+    pub(crate) fn new(rects: &[Rect], cell: i64) -> Grid {
         let mut bins: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
         for (k, r) in rects.iter().enumerate() {
             for cx in (r[0] as i64).div_euclid(cell)..=(r[2] as i64).div_euclid(cell) {
@@ -547,7 +547,7 @@ impl Grid {
         Grid { cell, bins }
     }
 
-    fn query(&self, q: &Rect) -> BTreeSet<usize> {
+    pub(crate) fn query(&self, q: &Rect) -> BTreeSet<usize> {
         let mut out = BTreeSet::new();
         for cx in (q[0] as i64).div_euclid(self.cell)..=(q[2] as i64).div_euclid(self.cell) {
             for cy in (q[1] as i64).div_euclid(self.cell)..=(q[3] as i64).div_euclid(self.cell) {
@@ -682,19 +682,23 @@ pub fn read_rules(db: &Db) -> Result<Vec<LayerRules>> {
         let read = read_property(&texts.join(" ; "));
         let above = db.layer_name_by_number(i64::from(db.layer_get_number(&name)) + 1);
         let above = (!above.is_empty() && db.layer_get_type(&above).ok().as_deref() == Some("ROUTING")).then_some(above);
-        let classes: Vec<(String, i32, i32)> = db
-            .layer_get_tech_layer_cut_class_rules(&name)
-            .into_iter()
-            .enumerate()
-            .map(|(k, n)| {
-                let w = db.cutclassrule_get_width(&name, k);
-                let l = if db.cutclassrule_is_length_valid(&name, k) { db.cutclassrule_get_length(&name, k) } else { w };
-                (n, w, l)
-            })
-            .collect();
-        out.push(resolve(&name, above.as_deref(), read, &classes, per_um));
+        out.push(resolve(&name, above.as_deref(), read, &cut_classes(db, &name), per_um));
     }
     Ok(out)
+}
+
+/// A cut layer's cut classes as `(name, width, length)` in DBU (a class without LENGTH is square).
+#[must_use]
+pub fn cut_classes(db: &Db, cut_layer: &str) -> Vec<(String, i32, i32)> {
+    db.layer_get_tech_layer_cut_class_rules(cut_layer)
+        .into_iter()
+        .enumerate()
+        .map(|(k, n)| {
+            let w = db.cutclassrule_get_width(cut_layer, k);
+            let l = if db.cutclassrule_is_length_valid(cut_layer, k) { db.cutclassrule_get_length(cut_layer, k) } else { w };
+            (n, w, l)
+        })
+        .collect()
 }
 
 /// Stage: the cuts on a layer, from routed wires and special wires, with their nets.
