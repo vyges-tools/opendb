@@ -141,3 +141,26 @@ fn only_modelled_same_mask_rules_are_checked() {
     assert!(rules.is_empty(), "{rules:?}");
     assert_eq!(nc, vec![("SPACING ENDOFLINE SAMEMASK PARALLELEDGE", 1)]);
 }
+
+/// With the reference fixed to the LEF text (OpenROAD#12181: TWOSIDES read as TWOSIDES;
+/// OpenROAD#12182: WITHIN kept for SAMEMASK; patches applied to an explicitly named build at the
+/// pin, never to the reference itself), its trace and markers are ours under the two written
+/// readings: e/f added, g/h dropped.
+#[test]
+fn the_written_readings_match_the_fixed_reference() {
+    let (found, lines) = run(EolWithin::AsWritten, EolTwoSides::AsWritten);
+    let want = reference_trace("ref-eol1-fixed.trace");
+    assert_eq!(lines.len(), want.len(), "line count");
+    for (k, (a, b)) in lines.iter().zip(&want).enumerate() {
+        assert_eq!(a, b, "line {k}");
+    }
+    assert_eq!(found, set(FIXED_MARKERS));
+}
+
+// The fixed reference's report on the fixture, in DBU.
+const FIXED_MARKERS: &[([i32; 4], &[&str])] = &[
+    ([1000, 2025, 1050, 2060], &["a", "b"]),
+    ([2050, 2025, 2050, 2075], &["c", "d"]),
+    ([3050, 2025, 3060, 2035], &["e", "f"]),
+    ([6000, 2025, 6050, 2104], &["k", "l"]),
+];
