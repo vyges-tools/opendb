@@ -17,6 +17,10 @@
 //! * `FORBIDDENSPACING … SAMEMASK` ([`check_forbidden_spc_main`]);
 //! * `EOLEXTENSIONSPACING … SAMEMASK` ([`check_metal_end_of_line_ext`]).
 //!
+//! And, with no reference at all (odb keeps only the raw text, so the rule is read from the
+//! layer's string property): `JOINTCORNERSPACING … SAMEMASK`, as the LEF/DEF 5.8 reference text
+//! defines it ([`crate::joint_corner`]).
+//!
 //! No reference checks the SAMEMASK forms (odb drops them), so "same mask" is applied the way a
 //! mask-split layer is checked: each mask's shapes are a layer of their own, merged per net, and
 //! the reference rule runs on that layer unchanged. Correlated against drt on the forms without
@@ -30,6 +34,7 @@ use crate::masks_geom::{
     axis_distance, generalized_intersect, intersects, set_points, square_distance, turns_left, union_area_in, Dir,
     LayerModel, Rect,
 };
+use crate::joint_corner::{check_joint_corner_spacing, JointCornerDbu};
 use vyges_loom::lef58_samemask::{EolExtensionSpacing, ForbiddenSpacing, SameMaskRules, TwoWidthsTable};
 
 /// A TWOWIDTHS table in DBU, laid out as odb keeps the classic one.
@@ -99,6 +104,9 @@ pub struct SameMaskRulesDbu {
     pub forbidden: Vec<ForbiddenDbu>,
     /// `EOLEXTENSIONSPACING … SAMEMASK` rules.
     pub eol_extension: Vec<EolExtDbu>,
+    /// `JOINTCORNERSPACING … SAMEMASK` rules ([`crate::joint_corner`]; odb keeps them only as
+    /// raw layer text, so they are added from the database, not from this reader).
+    pub joint_corner: Vec<JointCornerDbu>,
     /// Rules stated but not checked here, by kind, with their count.
     pub not_checked: Vec<(&'static str, usize)>,
 }
@@ -125,6 +133,7 @@ impl SameMaskRulesDbu {
             two_widths: r.two_widths.iter().filter_map(|t| TwoWidthsDbu::from_um(t, per_um)).collect(),
             forbidden,
             eol_extension,
+            joint_corner: Vec::new(),
             not_checked,
         }
     }
@@ -138,7 +147,7 @@ impl SameMaskRulesDbu {
     /// True when there is a shape rule (forbidden spacing, EOL extension) to check.
     #[must_use]
     pub fn has_shape_rules(&self) -> bool {
-        !self.forbidden.is_empty() || !self.eol_extension.is_empty()
+        !self.forbidden.is_empty() || !self.eol_extension.is_empty() || !self.joint_corner.is_empty()
     }
 
     /// EOL-extension rules checked without the parts the reference has no model of.
@@ -373,6 +382,10 @@ pub fn check_shape_rules(
         for (ci, con) in rules.eol_extension.iter().enumerate() {
             check_metal_end_of_line_ext(model, e, con, ci, nets, &mut out);
         }
+    }
+    // no reference stage: the LEF/DEF reference's joint corner spacing, after the reference's two
+    for (ci, con) in rules.joint_corner.iter().enumerate() {
+        check_joint_corner_spacing(model, con, ci, &mut out);
     }
     out
 }

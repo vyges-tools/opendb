@@ -50,6 +50,7 @@ pub mod eco;
 pub mod enclosure_edge;
 #[cfg(unix)]
 pub mod gds;
+pub mod joint_corner;
 pub mod masks;
 pub mod masks_check;
 pub mod masks_geom;

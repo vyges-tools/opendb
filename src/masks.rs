@@ -273,7 +273,7 @@ pub enum Finding {
     /// An odd cycle of conflict edges on a two-mask layer: no two-colouring exists.
     OddCycle { layer: String, shapes: Vec<(String, [i32; 4])> },
     /// A shape rule broken among one mask's shapes ([`crate::masks_check`]): `rule` is
-    /// FORBIDDENSPACING or EOLEXTENSIONSPACING SAMEMASK, `index` its place among the layer's rules
+    /// FORBIDDENSPACING, EOLEXTENSIONSPACING or JOINTCORNERSPACING SAMEMASK, `index` its place among the layer's rules
     /// of that kind, `marker` the reference checker's marker box, `nets` its source nets.
     SameMaskRule { layer: String, mask: u8, rule: &'static str, index: usize, marker: [i32; 4], nets: Vec<String> },
 }
@@ -290,6 +290,7 @@ impl Finding {
             Finding::SameMaskSpacing { .. } => "same_mask_spacing",
             Finding::OddCycle { .. } => "odd_cycle",
             Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_FORBIDDEN => "forbidden_spacing",
+            Finding::SameMaskRule { rule, .. } if *rule == crate::joint_corner::RULE_JOINT_CORNER => "joint_corner_spacing",
             Finding::SameMaskRule { .. } => "eol_extension_spacing",
         }
     }
@@ -828,7 +829,15 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
         let rules = if opts.same_mask_spacing.contains_key(&name) {
             None
         } else {
-            opts.same_mask_rules.get(&name).map(|r| SameMaskRulesDbu::from_um(r, dbu))
+            let mut rules = opts.same_mask_rules.get(&name).map(|r| SameMaskRulesDbu::from_um(r, dbu));
+            // JOINTCORNERSPACING: odb keeps only the raw text, on the layer
+            let (jc, jc_nc) = crate::joint_corner::rules_from_properties(&db.layer_string_properties(&name), dbu);
+            if !jc.is_empty() || !jc_nc.is_empty() {
+                let r = rules.get_or_insert_with(SameMaskRulesDbu::default);
+                r.joint_corner = jc;
+                r.not_checked.extend(jc_nc);
+            }
+            rules
         };
         let (spacing, spacing_source) = match (opts.same_mask_spacing.get(&name), lef58) {
             (Some(&s), _) => (s, SpacingSource::Option),
