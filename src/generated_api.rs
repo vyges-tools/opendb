@@ -212,6 +212,7 @@ impl Db {
     pub fn master_get_origin_y(&self, master: &str) -> i32 { sys::master_get_origin_y(self.r(), master) }
     pub fn master_get_width(&self, master: &str) -> u32 { sys::master_get_width(self.r(), master) }
     pub fn master_get_height(&self, master: &str) -> u32 { sys::master_get_height(self.r(), master) }
+    pub fn master_get_area(&self, master: &str) -> i64 { sys::master_get_area(self.r(), master) }
     pub fn master_is_filler(&self, master: &str) -> bool { sys::master_is_filler(self.r(), master) }
     pub fn master_is_block(&self, master: &str) -> bool { sys::master_is_block(self.r(), master) }
     pub fn master_is_core(&self, master: &str) -> bool { sys::master_is_core(self.r(), master) }
@@ -287,6 +288,7 @@ impl Db {
     pub fn num_layer_get_tech_layer_max_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_max_spacing_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_width_table_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_width_table_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_min_cut_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_min_cut_rules(self.r(), layer) }
+    pub fn num_layer_get_tech_layer_area_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_area_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_wrong_dir_spacing_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_wrong_dir_spacing_rules(self.r(), layer) }
     pub fn num_layer_get_tech_layer_two_wires_forbidden_spc_rules(&self, layer: &str) -> usize { sys::num_layer_get_tech_layer_two_wires_forbidden_spc_rules(self.r(), layer) }
     pub fn layer_is_rect_only(&self, layer: &str) -> bool { sys::layer_is_rect_only(self.r(), layer) }
@@ -790,6 +792,7 @@ impl Db {
     pub fn cutspacingrule_get_two_cuts(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_two_cuts(self.r(), layer, idx) }
     pub fn cutspacingrule_get_prl(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_prl(self.r(), layer, idx) }
     pub fn cutspacingrule_get_par_length(&self, layer: &str, idx: usize) -> u32 { sys::cutspacingrule_get_par_length(self.r(), layer, idx) }
+    pub fn cutspacingrule_get_cut_area(&self, layer: &str, idx: usize) -> i64 { sys::cutspacingrule_get_cut_area(self.r(), layer, idx) }
     pub fn cutspacingrule_is_center_to_center(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_center_to_center(self.r(), layer, idx) }
     pub fn cutspacingrule_is_same_net(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_net(self.r(), layer, idx) }
     pub fn cutspacingrule_is_same_metal(&self, layer: &str, idx: usize) -> bool { sys::cutspacingrule_is_same_metal(self.r(), layer, idx) }
@@ -999,6 +1002,7 @@ impl Db {
     pub fn mincutrule_get_within_cut_dist(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_within_cut_dist(self.r(), layer, idx) }
     pub fn mincutrule_get_length(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_length(self.r(), layer, idx) }
     pub fn mincutrule_get_length_within_dist(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_length_within_dist(self.r(), layer, idx) }
+    pub fn mincutrule_get_area(&self, layer: &str, idx: usize) -> i64 { sys::mincutrule_get_area(self.r(), layer, idx) }
     pub fn mincutrule_get_area_within_dist(&self, layer: &str, idx: usize) -> i32 { sys::mincutrule_get_area_within_dist(self.r(), layer, idx) }
     pub fn mincutrule_is_per_cut_class(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_per_cut_class(self.r(), layer, idx) }
     pub fn mincutrule_is_within_cut_dist_valid(&self, layer: &str, idx: usize) -> bool { sys::mincutrule_is_within_cut_dist_valid(self.r(), layer, idx) }
@@ -1037,6 +1041,20 @@ impl Db {
     pub fn wrongdirspacingrule_get_prl_length(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_prl_length(self.r(), layer, idx) }
     pub fn wrongdirspacingrule_is_noneol_valid(&self, layer: &str, idx: usize) -> bool { sys::wrongdirspacingrule_is_noneol_valid(self.r(), layer, idx) }
     pub fn wrongdirspacingrule_is_length_valid(&self, layer: &str, idx: usize) -> bool { sys::wrongdirspacingrule_is_length_valid(self.r(), layer, idx) }
+    pub fn arearule_get_area(&self, layer: &str, idx: usize) -> i64 { sys::arearule_get_area(self.r(), layer, idx) }
+    pub fn arearule_get_except_min_width(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_min_width(self.r(), layer, idx) }
+    pub fn arearule_get_except_edge_length(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_edge_length(self.r(), layer, idx) }
+    pub fn arearule_get_except_edge_lengths_first(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_edge_lengths_first(self.r(), layer, idx) }
+    pub fn arearule_get_except_edge_lengths_second(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_edge_lengths_second(self.r(), layer, idx) }
+    pub fn arearule_get_except_min_size_first(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_min_size_first(self.r(), layer, idx) }
+    pub fn arearule_get_except_min_size_second(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_min_size_second(self.r(), layer, idx) }
+    pub fn arearule_get_except_step_first(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_step_first(self.r(), layer, idx) }
+    pub fn arearule_get_except_step_second(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_except_step_second(self.r(), layer, idx) }
+    pub fn arearule_get_mask(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_mask(self.r(), layer, idx) }
+    pub fn arearule_get_rect_width(&self, layer: &str, idx: usize) -> i32 { sys::arearule_get_rect_width(self.r(), layer, idx) }
+    pub fn arearule_is_except_rectangle(&self, layer: &str, idx: usize) -> bool { sys::arearule_is_except_rectangle(self.r(), layer, idx) }
+    pub fn arearule_get_overlap(&self, layer: &str, idx: usize) -> u32 { sys::arearule_get_overlap(self.r(), layer, idx) }
+    pub fn arearule_get_trim_layer(&self, layer: &str, idx: usize) -> String { sys::arearule_get_trim_layer(self.r(), layer, idx) }
     pub fn layerantenna_is_valid(&self, layer: &str) -> bool { sys::layerantenna_is_valid(self.r(), layer) }
     pub fn layerantenna_has_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_area_factor(self.r(), layer) }
     pub fn layerantenna_has_side_area_factor(&self, layer: &str) -> bool { sys::layerantenna_has_side_area_factor(self.r(), layer) }

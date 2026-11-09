@@ -530,6 +530,14 @@ impl Db {
     pub fn wrongdirspacingrule_set_prl_length(&mut self, layer: &str, idx: usize, prl_length: i32) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_prl_length(self.r(), layer, idx, prl_length)?) }
     pub fn wrongdirspacingrule_set_noneol_valid(&mut self, layer: &str, idx: usize, noneol_valid: bool) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_noneol_valid(self.r(), layer, idx, noneol_valid)?) }
     pub fn wrongdirspacingrule_set_length_valid(&mut self, layer: &str, idx: usize, length_valid: bool) -> crate::Result<()> { Ok(sys::wrongdirspacingrule_set_length_valid(self.r(), layer, idx, length_valid)?) }
+    pub fn arearule_set_area(&mut self, layer: &str, idx: usize, area: i64) -> crate::Result<()> { Ok(sys::arearule_set_area(self.r(), layer, idx, area)?) }
+    pub fn arearule_set_except_min_width(&mut self, layer: &str, idx: usize, except_min_width: i32) -> crate::Result<()> { Ok(sys::arearule_set_except_min_width(self.r(), layer, idx, except_min_width)?) }
+    pub fn arearule_set_except_edge_length(&mut self, layer: &str, idx: usize, except_edge_length: i32) -> crate::Result<()> { Ok(sys::arearule_set_except_edge_length(self.r(), layer, idx, except_edge_length)?) }
+    pub fn arearule_set_mask(&mut self, layer: &str, idx: usize, mask: i32) -> crate::Result<()> { Ok(sys::arearule_set_mask(self.r(), layer, idx, mask)?) }
+    pub fn arearule_set_rect_width(&mut self, layer: &str, idx: usize, rect_width: i32) -> crate::Result<()> { Ok(sys::arearule_set_rect_width(self.r(), layer, idx, rect_width)?) }
+    pub fn arearule_set_except_rectangle(&mut self, layer: &str, idx: usize, except_rectangle: bool) -> crate::Result<()> { Ok(sys::arearule_set_except_rectangle(self.r(), layer, idx, except_rectangle)?) }
+    pub fn arearule_set_overlap(&mut self, layer: &str, idx: usize, overlap: u32) -> crate::Result<()> { Ok(sys::arearule_set_overlap(self.r(), layer, idx, overlap)?) }
+    pub fn arearule_set_trim_layer(&mut self, layer: &str, idx: usize, trim_layer: &str) -> crate::Result<()> { Ok(sys::arearule_set_trim_layer(self.r(), layer, idx, trim_layer)?) }
     pub fn layerantenna_set_gate_plus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_gate_plus_diff_factor(self.r(), layer, factor)?) }
     pub fn layerantenna_set_area_minus_diff_factor(&mut self, layer: &str, factor: f64) -> crate::Result<()> { Ok(sys::layerantenna_set_area_minus_diff_factor(self.r(), layer, factor)?) }
     pub fn layerantenna_set_area_factor(&mut self, layer: &str, factor: f64, diffuse: bool) -> crate::Result<()> { Ok(sys::layerantenna_set_area_factor(self.r(), layer, factor, diffuse)?) }
