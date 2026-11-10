@@ -1,7 +1,5 @@
 # vyges-opendb
 
-**[Download Loom](https://vyges.com/products/vyges-cli/#install)** · install the free [Vyges CLI](https://vyges.com/products/vyges-cli/), then `vyges install loom`
-
 A safe, ergonomic Rust API over OpenROAD's OpenDB (`libodb`), built on the low-level
 [`vyges-opendb-lib`](https://github.com/vyges-tools/opendb-lib) FFI — no Tcl, no SWIG, no
 OpenROAD engines. Runs on linux/x86_64, linux/arm64, and macOS/Apple Silicon.
