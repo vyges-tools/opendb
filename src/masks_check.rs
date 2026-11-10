@@ -760,28 +760,35 @@ fn check_metal_end_of_line_ext_helper(
 /// The rule name in markers and findings.
 pub const RULE_EOL_SPACING: &str = "SPACING ENDOFLINE SAMEMASK";
 
-/// How the WITHIN of a SAMEMASK end-of-line rule is read.
+/// How the WITHIN of a SAMEMASK end-of-line rule is read. The default is [`EolWithin::AsWritten`]:
+/// a divergence from the reference by decision (drt divergence register D8; the foundry kit's
+/// SAMEMASK end-of-line rules state the lateral window on purpose). [`EolWithin::Reference`]
+/// stays for correlation against the unpatched reference.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EolWithin {
     /// As the reference reads it: drt `frLef58SpacingEndOfLineWithinConstraint::getEolWithin`
     /// returns 0 for a SAMEMASK rule, whatever WITHIN says (reported upstream as
-    /// OpenROAD#12182).
-    #[default]
+    /// OpenROAD#12182). For correlation against the unpatched reference only.
     Reference,
     /// As written in the LEF (the LEF/DEF reference text says nothing of WITHIN changing with
-    /// SAMEMASK).
+    /// SAMEMASK); the reference patched with vyges-openroad-patches upstream-fix 0002 reads it so.
+    /// The default.
+    #[default]
     AsWritten,
 }
 
-/// How `MINLENGTH l TWOSIDES` (or MAXLENGTH) of an end-of-line rule is read.
+/// How `MINLENGTH l TWOSIDES` (or MAXLENGTH) of an end-of-line rule is read. The default is
+/// [`EolTwoSides::AsWritten`], a divergence from the reference by decision (drt divergence
+/// register D8); [`EolTwoSides::Reference`] stays for correlation against the unpatched reference.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EolTwoSides {
     /// As the reference reads it: drt `io.cpp` passes the PARALLELEDGE TWOEDGES flag where
     /// TWOSIDES belongs, so `MINLENGTH l TWOSIDES` without TWOEDGES is evaluated one-sided
-    /// (reported upstream as OpenROAD#12181).
-    #[default]
+    /// (reported upstream as OpenROAD#12181). For correlation against the unpatched reference only.
     Reference,
-    /// As written: TWOSIDES means both sides (the LEF/DEF reference text).
+    /// As written: TWOSIDES means both sides (the LEF/DEF reference text); the reference patched
+    /// with vyges-openroad-patches upstream-fix 0001 reads it so. The default.
+    #[default]
     AsWritten,
 }
 

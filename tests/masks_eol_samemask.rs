@@ -8,7 +8,9 @@
 //! one thread), patched with `fprintf` trace lines (`VYT EL_*`, `VYT ML_EDGE`), was run on
 //! `tests/fixtures/masks/eol_samemask.{lef,def}`; `traces/ref-eol1.trace` is its sorted trace.
 //! Ours runs with the reference's two readings ([`EolWithin::Reference`],
-//! [`EolTwoSides::Reference`]) and must print the same lines.
+//! [`EolTwoSides::Reference`]) and must print the same lines. The DEFAULT readings are the written
+//! ones ([`EolWithin::AsWritten`], [`EolTwoSides::AsWritten`]: a divergence by decision, drt
+//! divergence register D8), checked against the reference patched with upstream-fix 0001 + 0002.
 //!
 //! The design (M2 vertical, wires 0.05 wide, every value invented): a/b end to end 35 apart;
 //! c/d end to end with no common run until the 0.01 EXTENSION grows both; e's end beside the
@@ -113,6 +115,19 @@ const REF_MARKERS: &[([i32; 4], &[&str])] = &[
 ];
 const WITHIN_ADDS: &[([i32; 4], &[&str])] = &[([3050, 2025, 3060, 2035], &["e", "f"])];
 const TWO_SIDES_DROPS: &[([i32; 4], &[&str])] = &[([4000, 2025, 4050, 2050], &["g", "h"])];
+
+/// The default readings are the written ones (a divergence from the reference by decision: the
+/// kit's SAMEMASK end-of-line rules state WITHIN on purpose, and TWOSIDES means both sides); the
+/// reference's readings stay selectable, for correlation only.
+#[test]
+fn the_default_readings_are_the_written_ones() {
+    assert_eq!(EolWithin::default(), EolWithin::AsWritten);
+    assert_eq!(EolTwoSides::default(), EolTwoSides::AsWritten);
+    let (default, _) = run(EolWithin::default(), EolTwoSides::default());
+    let (written, _) = run(EolWithin::AsWritten, EolTwoSides::AsWritten);
+    assert_eq!(default, written);
+    assert_eq!(default, set(FIXED_MARKERS));
+}
 
 /// The colour step reads the rule from the database for every mask of M2 (it is a same-mask rule,
 /// so it is checked on each mask's shapes alone).

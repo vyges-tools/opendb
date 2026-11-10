@@ -782,8 +782,9 @@ pub struct ColourOptions {
     pub same_mask_rules: BTreeMap<String, SameMaskRules>,
     /// Only check; write no colour.
     pub check_only: bool,
-    /// How a SAMEMASK end-of-line rule's WITHIN and TWOSIDES are read (default: as the
-    /// reference reads them).
+    /// How a SAMEMASK end-of-line rule's WITHIN and TWOSIDES are read (default: as written, a
+    /// divergence from the reference by decision, OpenROAD#12182 and #12181; the reference's
+    /// readings stay selectable for correlation).
     pub eol_within: crate::masks_check::EolWithin,
     pub eol_two_sides: crate::masks_check::EolTwoSides,
 }
