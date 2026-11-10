@@ -2017,6 +2017,18 @@ impl Db {
     pub fn layer_min_enclosed_areas(&self, layer: &str) -> Vec<i64> {
         sys::layer_min_enclosed_areas(self.r(), layer)
     }
+    /// LEF58_MINIMUMCUT rule `idx` of `layer`, its per-cut-class counts (`MINIMUMCUT CUTCLASS c n
+    /// …`) as (class, count) in the database's map order (by class name). Empty for a rule
+    /// written without CUTCLASS, or one not found.
+    pub fn mincutrule_cut_class_cuts(&self, layer: &str, idx: usize) -> Vec<(String, i32)> {
+        sys::mincutrule_cut_class_cuts(self.r(), layer, idx)
+            .into_iter()
+            .filter_map(|s| {
+                let (c, n) = s.split_once('\t')?;
+                Some((c.to_string(), n.parse().ok()?))
+            })
+            .collect()
+    }
     /// A master's LEF class string. Empty when the master is unknown.
     pub fn master_get_type(&self, master: &str) -> Result<String> {
         Ok(sys::master_get_type(self.r(), master)?)
