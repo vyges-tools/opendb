@@ -1035,6 +1035,7 @@ impl Db {
     pub fn twowiresforbiddenrule_is_max_exact_span_length(&self, layer: &str, idx: usize) -> bool { sys::twowiresforbiddenrule_is_max_exact_span_length(self.r(), layer, idx) }
     pub fn widthtablerule_is_wrong_direction(&self, layer: &str, idx: usize) -> bool { sys::widthtablerule_is_wrong_direction(self.r(), layer, idx) }
     pub fn widthtablerule_is_orthogonal(&self, layer: &str, idx: usize) -> bool { sys::widthtablerule_is_orthogonal(self.r(), layer, idx) }
+    pub fn widthtablerule_get_width_table(&self, layer: &str, idx: usize) -> Vec<i32> { sys::widthtablerule_get_width_table(self.r(), layer, idx) }
     pub fn wrongdirspacingrule_get_wrongdir_space(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_wrongdir_space(self.r(), layer, idx) }
     pub fn wrongdirspacingrule_get_noneol_width(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_noneol_width(self.r(), layer, idx) }
     pub fn wrongdirspacingrule_get_length(&self, layer: &str, idx: usize) -> i32 { sys::wrongdirspacingrule_get_length(self.r(), layer, idx) }
