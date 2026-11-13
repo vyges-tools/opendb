@@ -185,9 +185,11 @@ commands:
                       Import a DEF into the design (libodb v1 LEF/DEF I/O).
 
   import                    --lef <tech.lef> [--lef <lib.lef>]... [--def <f.def>]
-                            [--verilog <f.v>] --output <out.odb>
+                            [--verilog <f.v> [--top <module>] [--module-cache-mb N]]
+                            --output <out.odb>
                       Build a database from LEF + DEF or a structural Verilog netlist,
-                      starting from nothing. The FIRST --lef creates the tech.
+                      starting from nothing. The FIRST --lef creates the tech. A netlist of
+                      several modules is linked into a flat design (read_verilog + link_design).
 
   apply-def-template        --input <in.odb> --template <f.def> --output <out.odb>
                       Apply a template DEF's floorplan (Odb.ApplyDEFTemplate).
@@ -2940,9 +2942,16 @@ const IMPORT_DESCRIBE: &str = r#"{
 fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let (mut lefs, mut def, mut output) = (Vec::new(), None, None);
     let mut verilog: Option<String> = None;
+    let mut top: Option<String> = None;
+    let mut cache_mb: Option<usize> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--lef" => lefs.push(args.next().ok_or("import: --lef needs a FILE")?),
+            "--top" => top = Some(args.next().ok_or("import: --top needs a MODULE")?),
+            "--module-cache-mb" => {
+                let v = args.next().ok_or("import: --module-cache-mb needs a number")?;
+                cache_mb = Some(v.parse().map_err(|_| format!("import: --module-cache-mb {v}: not a number"))?);
+            }
             "--def" => def = args.next(),
             "--verilog" => verilog = args.next(),
             "--output" | "-o" => output = args.next(),
@@ -2952,9 +2961,12 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb import --lef <tech.lef> [--lef <more.lef> ...] \
-                           [--def <f.def>] [--verilog <f.v>] --output <out.odb>\n\
+                           [--def <f.def>] [--verilog <f.v> [--top <module>] [--module-cache-mb N]] --output <out.odb>\n\
                            \n  The FIRST --lef creates the tech; give the technology LEF first.\n\
-                           \n  --def and --verilog are alternative ways to bring in the design.");
+                           \n  --def and --verilog are alternative ways to bring in the design.\n\
+                           \n  A netlist defining more than one module is linked hierarchically into a flat design,\n\
+                           \n  as read_verilog + link_design <top> does; --top names the top (default: the one\n\
+                           \n  module no other instantiates).");
                 return Ok(());
             }
             other => return Err(format!("import: unknown argument: {other}").into()),
@@ -2973,8 +2985,29 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         db.read_def(def, "default")?;
     }
     if let Some(v) = &verilog {
-        let n = build_from_netlist(&mut db, v)?;
-        diag!("import: {n} instances built from {v}");
+        // 🔑 One module: the flat path, unchanged. More than one: the hierarchical link.
+        if vyges_opendb::verilog_link::module_names(v)?.len() > 1 || top.is_some() {
+            let mut opts = vyges_opendb::verilog_link::LinkOptions { top: top.clone(), ..Default::default() };
+            if let Some(mb) = cache_mb {
+                opts.cache_bytes = mb << 20;
+            }
+            let mut sink = vyges_opendb::verilog_link::DbSink { db: &mut db };
+            // Parse errors already name the file; errors from the database do not.
+            let r = vyges_opendb::verilog_link::link_file(v, &opts, &mut sink).map_err(|e| {
+                if e.starts_with(v.as_str()) { format!("import: {e}") } else { format!("import: {v}: {e}") }
+            })?;
+            for (code, msg) in &r.warnings {
+                diag!("[WARNING {code}] {msg}");
+            }
+            diag!(
+                "import: linked {v} at top {}: {} instances ({} module instances flattened), {} nets, {} ports, {} pins; \
+                 {} module bodies parsed, {} from cache",
+                r.top, r.insts, r.module_instances, r.nets, r.bterms, r.iterms, r.bodies_parsed, r.bodies_cached
+            );
+        } else {
+            let n = build_from_netlist(&mut db, v)?;
+            diag!("import: {n} instances built from {v}");
+        }
     }
     db.write(&output)?;
     diag!(
