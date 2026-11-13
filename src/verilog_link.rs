@@ -116,6 +116,10 @@ pub trait Sink {
     /// `dbModITerm::create(modinst, name, <its master's port name>)`; the module instance is
     /// `modinst` of `parent` (`""` = top).
     fn mod_iterm(&mut self, parent: &str, modinst: &str, name: &str) -> Result<(), String>;
+    /// `module->getModNet(name)`, else `dbModNet::create(module, name)` (`constructModNet`).
+    fn mod_net(&mut self, module: &str, name: &str) -> Result<(), String>;
+    /// `<terminal>->connect(modnet)` for module net `net` of `module`.
+    fn mod_net_connect(&mut self, module: &str, net: &str, term: Term<'_>) -> Result<(), String>;
     /// `dbNet::create`, then `setSigType` when not a signal net.
     fn net(&mut self, name: &str, sig: SigType) -> Result<(), String>;
     /// `dbBTerm::create(net, name)`, then `setIoType`.
@@ -140,6 +144,19 @@ pub enum Owner<'a> {
     ModInst(&'a str, &'a str),
 }
 
+/// A terminal joined to a module net.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Term<'a> {
+    /// A leaf instance's pin: (flat instance name, pin).
+    ITerm(&'a str, &'a str),
+    /// A top-level port.
+    BTerm(&'a str),
+    /// A pin of a module instance of the net's module: (its local name, pin).
+    ModITerm(&'a str, &'a str),
+    /// A port of the net's module.
+    ModBTerm(&'a str),
+}
+
 /// What a link did — counts, and the reference's warnings it would have printed.
 #[derive(Debug, Default, Clone)]
 #[must_use]
@@ -153,6 +170,9 @@ pub struct LinkReport {
     pub iterms: usize,
     /// Modules created in the database (one per module instance, uniquely named).
     pub modules: usize,
+    /// Module nets created (`-hier`), and terminal connections made to them.
+    pub mod_nets: usize,
+    pub mod_net_connects: usize,
     /// Module bodies parsed in the build walk (a body is re-parsed per instance unless cached).
     pub bodies_parsed: usize,
     /// Module bodies taken from the cache instead.
@@ -172,8 +192,8 @@ pub struct LinkOptions {
     /// Leave out the `src` / `src_file_id` / `src_file_line` instance properties (the
     /// reference's `link_design -omit_filename_prop`).
     pub omit_filename_prop: bool,
-    /// Keep the hierarchy (the reference's `link_design -hier`): module ports and module-instance
-    /// pins as well. Module nets are not built yet (phase B2), nor is the hierarchy flag set.
+    /// Keep the hierarchy (the reference's `link_design -hier`): module ports, module-instance pins
+    /// and module nets as well. The database's hierarchy flag is not set (phase B3).
     pub hierarchy: bool,
 }
 
@@ -1344,6 +1364,9 @@ struct LocalNet {
     term: bool,
     zero: bool,
     one: bool,
+    /// `-hier` only: its terms (port bits of its instance, interned) in `ConcreteNet::terms_`
+    /// list order — head insertion, and a merge moves the merged net's list over one by one.
+    terms: Vec<u32>,
 }
 
 /// One instance's frame: its binding table (`VerilogBindingTbl`) and nets.
@@ -1423,6 +1446,82 @@ struct Linker<'s, S: Sink> {
     src_file_ids: HashMap<String, i32>,
     omit_filename_prop: bool,
     hierarchy: bool,
+    /// `-hier`: interned names and the module-net calls, recorded on the walk.
+    strs: Interner,
+    ops: Vec<ModOp>,
+}
+
+/// Interned strings (module, net, instance, pin and port names of the module-net calls).
+#[derive(Default)]
+struct Interner {
+    all: Vec<String>,
+    ids: HashMap<String, u32>,
+}
+
+impl Interner {
+    fn id(&mut self, s: &str) -> u32 {
+        if let Some(&i) = self.ids.get(s) {
+            return i;
+        }
+        let i = self.all.len() as u32;
+        self.all.push(s.to_string());
+        self.ids.insert(s.to_string(), i);
+        i
+    }
+    fn get(&self, i: u32) -> &str {
+        &self.all[i as usize]
+    }
+}
+
+#[derive(Clone, Copy)]
+enum OpKind {
+    Net,
+    ITerm,
+    BTerm,
+    ModITerm,
+    ModBTerm,
+}
+
+/// One module-net call: find-or-create `net` in `module`, or join a terminal (`a`, `b`) to it.
+#[derive(Clone, Copy)]
+struct ModOp {
+    kind: OpKind,
+    module: u32,
+    net: u32,
+    a: u32,
+    b: u32,
+}
+
+/// A pin on a local net, as `constructModNet` resolves it.
+#[derive(Clone, Copy)]
+enum PinRef {
+    Leaf { inst: u32, pin: u32 },
+    Child { local: u32, bit: u32 },
+}
+
+#[derive(Default)]
+struct NetView {
+    /// (path name, pin), sorted by path name.
+    pins: Vec<(String, PinRef)>,
+}
+
+/// One level's nets for the module-net calls.
+struct FrameView {
+    nets: HashMap<u32, NetView>,
+    /// (local name, module of the file) per module child.
+    module_children: Vec<(String, usize)>,
+}
+
+/// The parent side of a module instance being entered (`-hier`).
+struct Up<'a> {
+    frame: &'a Frame,
+    view: &'a FrameView,
+    /// The parent's module (`""` = top).
+    module: &'a str,
+    /// The instance's local name.
+    local: &'a str,
+    /// (port bit, parent local net) per connected bit.
+    ports: &'a [(String, u32)],
 }
 
 /// A library master's pins, grouped as the timing network groups them: `A[0]` .. `A[7]` are bus
@@ -1493,7 +1592,7 @@ impl<S: Sink> Linker<'_, S> {
         }
         let id = f.nets.len() as u32;
         let g = self.new_g();
-        f.nets.push(LocalNet { name: name.to_string(), g, up: id, term: false, zero: name == ZERO, one: name == ONE });
+        f.nets.push(LocalNet { name: name.to_string(), g, up: id, term: false, zero: name == ZERO, one: name == ONE, terms: Vec::new() });
         f.by_name.insert(name.to_string(), id);
         id
     }
@@ -1508,6 +1607,15 @@ impl<S: Sink> Linker<'_, S> {
         f.nets[a as usize].up = b;
         if f.nets[a as usize].term {
             f.nets[b as usize].term = true;
+        }
+        // `ConcreteNet::mergeInto`: each term of the merged net, in its list order, is added at
+        // the HEAD of the survivor's list — the moved block arrives reversed, in front.
+        if !f.nets[a as usize].terms.is_empty() {
+            let moved = std::mem::take(&mut f.nets[a as usize].terms);
+            let dst = &mut f.nets[b as usize].terms;
+            let mut v: Vec<u32> = moved.into_iter().rev().collect();
+            v.append(dst);
+            *dst = v;
         }
         let (ga, gb) = (f.nets[a as usize].g, f.nets[b as usize].g);
         self.union(ga, gb);
@@ -1615,7 +1723,7 @@ impl<S: Sink> Linker<'_, S> {
     /// One instance of module `idx` at `path` (empty for the top): its nets, then its children in
     /// name order (R1), recursing into module children. `bound`: (port bit, parent net node) per
     /// port bit its parent connected.
-    fn instance(&mut self, idx: usize, path: &str, bound: &[(String, u32)], module: &str) -> Result<(), String> {
+    fn instance(&mut self, idx: usize, path: &str, bound: &[(String, u32)], module: &str, up: Option<Up<'_>>) -> Result<(), String> {
         let m = self.module(idx)?;
         let mut f = Frame { nets: Vec::new(), by_name: HashMap::new() };
         let top = path.is_empty();
@@ -1629,6 +1737,10 @@ impl<S: Sink> Linker<'_, S> {
                     if seen.insert(bit.clone()) {
                         let id = self.ensure(&mut f, &bit);
                         f.nets[id as usize].term = true;
+                        if self.hierarchy {
+                            let t = self.strs.id(&bit);
+                            f.nets[id as usize].terms.insert(0, t);
+                        }
                         let g = f.nets[id as usize].g;
                         self.top_pins.push(TopPin { g, name: bit, io: p.dir.io() });
                     }
@@ -1639,6 +1751,10 @@ impl<S: Sink> Linker<'_, S> {
             for (bit, pg) in bound {
                 let id = self.ensure(&mut f, bit);
                 f.nets[id as usize].term = true;
+                if self.hierarchy {
+                    let t = self.strs.id(bit);
+                    f.nets[id as usize].terms.insert(0, t);
+                }
                 let g = f.nets[id as usize].g;
                 self.union(g, *pg);
             }
@@ -1697,6 +1813,12 @@ impl<S: Sink> Linker<'_, S> {
 
         // `makeChildInsts`: the children in byte order of name (R1), depth first.
         children.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+        // `-hier`: this level's nets as `constructModNet` sees them, then this instance's own
+        // `makeModNetsForSubmodule` (its pairs come in creation order: pre-order, as here).
+        let view = if self.hierarchy { Some(self.frame_view(&f, &children, path)) } else { None };
+        if let (Some(up), Some(view)) = (&up, &view) {
+            self.mod_nets_for_submodule(up, idx, module, &f, view)?;
+        }
         for c in children {
             let cpath = if top { c.name.clone() } else { format!("{path}/{}", c.name) };
             match c.kind {
@@ -1721,7 +1843,7 @@ impl<S: Sink> Linker<'_, S> {
                         self.pins.push(PinRec { g, leaf, pin });
                     }
                 }
-                ChildKind::Module { module: child, ports } => {
+                ChildKind::Module { module: child, ports: child_ports } => {
                     self.report.module_instances += 1;
                     // `makeDbModule` (always, `-hier` or not): a uniquely named module per
                     // instance, `original_name` when renamed, the module instance in its parent,
@@ -1741,8 +1863,9 @@ impl<S: Sink> Linker<'_, S> {
                         self.mod_bterms(child, &name)?;
                         self.mod_iterms(child, module, &c.name)?;
                     }
-                    let bound: Vec<(String, u32)> = ports.into_iter().map(|(bit, id)| (bit, f.nets[id as usize].g)).collect();
-                    self.instance(child, &cpath, &bound, &name)?;
+                    let bound: Vec<(String, u32)> = child_ports.iter().map(|(bit, id)| (bit.clone(), f.nets[*id as usize].g)).collect();
+                    let up = view.as_ref().map(|v| Up { frame: &f, view: v, module, local: &c.name, ports: &child_ports });
+                    self.instance(child, &cpath, &bound, &name, up)?;
                 }
             }
         }
@@ -1923,10 +2046,154 @@ impl<S: Sink> Linker<'_, S> {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// `setDoNotTouch` on the marked leaves, last (an instance that is dont_touch accepts no new
+    /// connection).
+    fn dont_touch(&mut self) -> Result<(), String> {
         for &leaf in &self.dont_touch {
             let leaf = leaf as usize;
             let s = if leaf == 0 { 0 } else { self.leaf_ends[leaf - 1] };
             self.sink.dont_touch(&self.leaf_names[s..self.leaf_ends[leaf]])?;
+        }
+        Ok(())
+    }
+
+    /// One level's nets as `constructModNet` reads them (`-hier`): per surviving net with a pin or
+    /// a term, its pins keyed by path name (an ordered map: byte order) and its terms in list order.
+    fn frame_view(&mut self, f: &Frame, children: &[Child], path: &str) -> FrameView {
+        let mut nets: HashMap<u32, NetView> = HashMap::new();
+        for c in children {
+            let local = self.strs.id(&c.name);
+            match &c.kind {
+                ChildKind::Leaf { pins, .. } => {
+                    let full = if path.is_empty() { c.name.clone() } else { format!("{path}/{}", c.name) };
+                    let inst = self.strs.id(&full);
+                    for (pin, id) in pins {
+                        let key = format!("{}/{pin}", c.name);
+                        let pin = self.strs.id(pin);
+                        nets.entry(f.root(*id)).or_default().pins.push((key, PinRef::Leaf { inst, pin }));
+                    }
+                }
+                ChildKind::Module { ports, .. } => {
+                    for (bit, id) in ports {
+                        let key = format!("{}/{bit}", c.name);
+                        let bit = self.strs.id(bit);
+                        nets.entry(f.root(*id)).or_default().pins.push((key, PinRef::Child { local, bit }));
+                    }
+                }
+            }
+        }
+        for v in nets.values_mut() {
+            v.pins.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+        }
+        let module_children = children
+            .iter()
+            .filter_map(|c| match c.kind {
+                ChildKind::Module { module, .. } => Some((c.name.clone(), module)),
+                ChildKind::Leaf { .. } => None,
+            })
+            .collect();
+        FrameView { nets, module_children }
+    }
+
+    /// `makeModNetsForSubmodule` for the module instance being entered (`-hier`): per pin of the
+    /// instance with a net, in pin (port bit) order, the parent's module net of it, the pin joined
+    /// to it, and at the top the ports on that net too; then per port of its module, in list
+    /// order, the inside net of that name as a module net of the child, the port joined to it.
+    fn mod_nets_for_submodule(&mut self, up: &Up<'_>, cell: usize, child_module: &str, f: &Frame, view: &FrameView) -> Result<(), String> {
+        let parent = self.strs.id(up.module);
+        let child = self.strs.id(child_module);
+        let local = self.strs.id(up.local);
+        let ports = self.module_ports(cell)?;
+        // A bound bit's net in the parent (a bit bound twice keeps its last binding, as the
+        // instance's pin array does).
+        let mut bound: HashMap<&str, u32> = HashMap::new();
+        for (bit, id) in up.ports {
+            bound.insert(bit.as_str(), up.frame.root(*id));
+        }
+        // `staToDb(child_module, pin)` looks for a module instance OF THE CHILD named like this
+        // instance (and its pin of this name) before it looks for the child's port: when one
+        // exists, nothing is joined above.
+        let shadow: HashSet<String> = match view.module_children.iter().find(|(n, _)| n == up.local) {
+            Some(&(_, m)) => self.module_ports(m)?.iter().flat_map(|p| p.bits()).collect(),
+            None => HashSet::new(),
+        };
+        for p in ports.iter() {
+            for bit in p.bits() {
+                let Some(&r) = bound.get(bit.as_str()) else { continue };
+                let net = self.construct_mod_net(parent, up.frame, up.view, r);
+                if !shadow.contains(&bit) {
+                    let b = self.strs.id(&bit);
+                    self.ops.push(ModOp { kind: OpKind::ModITerm, module: parent, net, a: local, b });
+                }
+                if up.module.is_empty() {
+                    for &t in &up.frame.nets[r as usize].terms {
+                        self.ops.push(ModOp { kind: OpKind::BTerm, module: parent, net, a: t, b: 0 });
+                    }
+                }
+            }
+        }
+        for p in ports.iter() {
+            let mut names = vec![p.name.clone()];
+            if p.bus.is_some() {
+                names.extend(p.bits());
+            }
+            for n in names {
+                let Some(&id) = f.by_name.get(&n) else { continue };
+                let r = f.root(id);
+                let net = self.construct_mod_net(child, f, view, r);
+                let a = self.strs.id(&n);
+                self.ops.push(ModOp { kind: OpKind::ModBTerm, module: child, net, a, b: 0 });
+            }
+        }
+        Ok(())
+    }
+
+    /// `constructModNet(net, module)`: the module net named as the net (made if absent), then its
+    /// pins in path-name order — a leaf's iterm, a module instance's pin — then its terms in list
+    /// order, each a port of the module (none at the top). Returns the module net's name.
+    fn construct_mod_net(&mut self, module: u32, f: &Frame, view: &FrameView, r: u32) -> u32 {
+        let net = self.strs.id(&f.nets[r as usize].name);
+        self.ops.push(ModOp { kind: OpKind::Net, module, net, a: 0, b: 0 });
+        if let Some(v) = view.nets.get(&r) {
+            for (_, p) in &v.pins {
+                let op = match *p {
+                    PinRef::Leaf { inst, pin } => ModOp { kind: OpKind::ITerm, module, net, a: inst, b: pin },
+                    PinRef::Child { local, bit } => ModOp { kind: OpKind::ModITerm, module, net, a: local, b: bit },
+                };
+                self.ops.push(op);
+            }
+        }
+        if !self.strs.get(module).is_empty() {
+            for &t in &f.nets[r as usize].terms {
+                self.ops.push(ModOp { kind: OpKind::ModBTerm, module, net, a: t, b: 0 });
+            }
+        }
+        net
+    }
+
+    /// The module-net calls recorded on the walk, made once every flat net exists.
+    fn replay_mod_nets(&mut self) -> Result<(), String> {
+        let ops = std::mem::take(&mut self.ops);
+        let mut made: HashSet<(u32, u32)> = HashSet::new();
+        for o in &ops {
+            let (m, n) = (self.strs.get(o.module), self.strs.get(o.net));
+            match o.kind {
+                OpKind::Net => {
+                    if made.insert((o.module, o.net)) {
+                        self.report.mod_nets += 1;
+                    }
+                    self.sink.mod_net(m, n)?;
+                    continue;
+                }
+                OpKind::ITerm => self.sink.mod_net_connect(m, n, Term::ITerm(self.strs.get(o.a), self.strs.get(o.b)))?,
+                OpKind::BTerm => self.sink.mod_net_connect(m, n, Term::BTerm(self.strs.get(o.a)))?,
+                OpKind::ModITerm => self.sink.mod_net_connect(m, n, Term::ModITerm(self.strs.get(o.a), self.strs.get(o.b)))?,
+                OpKind::ModBTerm => self.sink.mod_net_connect(m, n, Term::ModBTerm(self.strs.get(o.a)))?,
+            }
+            self.report.mod_net_connects += 1;
         }
         Ok(())
     }
@@ -2082,7 +2349,11 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
         src_file_ids: HashMap::new(),
         omit_filename_prop: opts.omit_filename_prop,
         hierarchy: opts.hierarchy,
+        strs: Interner::default(),
+        ops: Vec::new(),
     };
+    // Interned id 0 is the top module's name, `""`.
+    lk.strs.id("");
     lk.sink.block(&top)?;
     // `recordBusPortsOrder`: a bool property per top bus port, true when declared msb first (R14).
     let topm = lk.module(top_idx)?;
@@ -2095,8 +2366,11 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
     // Every module's own warnings (as the reference prints them at read time).
     lk.report.warnings.extend(topm.warnings.iter().cloned());
     drop(topm);
-    lk.instance(top_idx, "", &[], "")?;
+    lk.instance(top_idx, "", &[], "", None)?;
     lk.nets()?;
+    // `makeModNetsForSubmodules` (`-hier`), after every flat net and before dont_touch.
+    lk.replay_mod_nets()?;
+    lk.dont_touch()?;
     // `processUnusedCells`: a module of the file with `implements_operator` that no module of
     // the database is named after (and not a black box) is linked into a CHILD BLOCK of its own.
     // Not built yet: refused rather than left out.
@@ -2189,6 +2463,18 @@ impl Sink for DbSink<'_> {
     fn mod_iterm(&mut self, parent: &str, modinst: &str, name: &str) -> Result<(), String> {
         self.db.mod_iterm_create(parent, modinst, name).map_err(e)
     }
+    fn mod_net(&mut self, module: &str, name: &str) -> Result<(), String> {
+        self.db.mod_net_find_or_create(module, name).map(|_| ()).map_err(e)
+    }
+    fn mod_net_connect(&mut self, module: &str, net: &str, term: Term<'_>) -> Result<(), String> {
+        let r = match term {
+            Term::ITerm(i, p) => self.db.mod_net_connect(module, net, "iterm", i, p),
+            Term::BTerm(b) => self.db.mod_net_connect(module, net, "bterm", b, ""),
+            Term::ModITerm(i, p) => self.db.mod_net_connect(module, net, "moditerm", i, p),
+            Term::ModBTerm(b) => self.db.mod_net_connect(module, net, "modbterm", b, ""),
+        };
+        r.map_err(|x| format!("module net {net} of {module:?}: {x}"))
+    }
     fn net(&mut self, name: &str, sig: SigType) -> Result<(), String> {
         self.db.create_net(name).map_err(|x| format!("net {name}: {x}"))?;
         if sig == SigType::Signal {
@@ -2254,6 +2540,9 @@ mod tests {
         sprops: Vec<String>,
         /// Module ports, bus ports, module-instance pins, in call order.
         hier: Vec<String>,
+        /// Module nets made and terminals joined to them, in call order.
+        modnets: Vec<String>,
+        made: HashSet<String>,
     }
 
     fn owner_str(o: Owner<'_>) -> String {
@@ -2329,6 +2618,22 @@ mod tests {
         }
         fn mod_iterm(&mut self, parent: &str, modinst: &str, name: &str) -> Result<(), String> {
             self.hier.push(format!("{parent}>{modinst} iterm {name}"));
+            Ok(())
+        }
+        fn mod_net(&mut self, module: &str, name: &str) -> Result<(), String> {
+            if self.made.insert(format!("{module}:{name}")) {
+                self.modnets.push(format!("created {module}:{name}"));
+            }
+            Ok(())
+        }
+        fn mod_net_connect(&mut self, module: &str, net: &str, term: Term<'_>) -> Result<(), String> {
+            let t = match term {
+                Term::ITerm(i, p) => format!("iterm {i}/{p}"),
+                Term::BTerm(b) => format!("bterm {b}"),
+                Term::ModITerm(i, p) => format!("moditerm {i}/{p}"),
+                Term::ModBTerm(b) => format!("modbterm {b}"),
+            };
+            self.modnets.push(format!("{module}:{net} {t}"));
             Ok(())
         }
         fn net(&mut self, name: &str, sig: SigType) -> Result<(), String> {
@@ -2905,5 +3210,121 @@ endmodule
             ]
         );
         assert!(link(src).hier.is_empty());
+    }
+
+    /// Probe 6 (phases B1/B2), cells renamed to the recording library.
+    const PROBE6: &str = r"
+module leaf2 (a, b, d, y, q);
+  input a; input [1:0] b; input [0:2] d; output y; output [3:2] q;
+  INV i0 (.A(a), .Y(y));
+  NAND2 n0 (.A(b[1]), .B(d[0]), .Y(q[3]));
+  BUF f0 (.A(b[0]), .Y(q[2]));
+endmodule
+module mid (clk, din, dout, thru_i, thru_o, io);
+  input clk; input [1:0] din; output [1:0] dout; input thru_i; output thru_o; inout io;
+  wire w;
+  leaf2 u (.a(clk), .b(din), .d({w, 1'b1, din[0]}), .y(w), .q(dout));
+  assign thru_o = thru_i;
+endmodule
+module top (clk, din, dout, t_i, t_o, io, unused);
+  input clk; input [1:0] din; output [1:0] dout; input t_i; output t_o; inout io; input unused;
+  wire mt;
+  mid m1 (.clk(clk), .din(din), .dout(dout), .thru_i(t_i), .thru_o(mt), .io(io));
+  mid m0 (.clk(clk), .din(din), .dout(), .thru_i(mt), .thru_o(t_o), .io());
+endmodule
+";
+
+    /// B2 `makeModNetsForSubmodules`, the reference's call sequence on probe 6 (its
+    /// `dbReadVerilog 2` trace) for the first module instance `m0`: per pin of `m0` with a net,
+    /// in port-bit order (unconnected `dout`, `io` skipped), `constructModNet` of the parent's net
+    /// — made once, then its pins in path-name order (`m0/…` before `m1/…`), then its terms (none
+    /// at the top) — then the pin's own module-instance pin joined, and at the top the ports on
+    /// that local net. Then per port of `mid` in list order (bus roots find no net), the inside
+    /// net: `thru_o = thru_i` merged, so both ports find `thru_i`, whose terms list `thru_o`
+    /// first (moved to the head on the merge).
+    #[test]
+    fn b2_mod_nets_in_the_reference_call_order() {
+        let r = link_opts(PROBE6, &LinkOptions { hierarchy: true, ..Default::default() });
+        let want = [
+            "created :clk", ":clk moditerm m0/clk", ":clk moditerm m1/clk", ":clk moditerm m0/clk", ":clk bterm clk",
+            "created :din[1]", ":din[1] moditerm m0/din[1]", ":din[1] moditerm m1/din[1]", ":din[1] moditerm m0/din[1]", ":din[1] bterm din[1]",
+            "created :din[0]", ":din[0] moditerm m0/din[0]", ":din[0] moditerm m1/din[0]", ":din[0] moditerm m0/din[0]", ":din[0] bterm din[0]",
+            "created :mt", ":mt moditerm m0/thru_i", ":mt moditerm m1/thru_o", ":mt moditerm m0/thru_i",
+            "created :t_o", ":t_o moditerm m0/thru_o", ":t_o moditerm m0/thru_o", ":t_o bterm t_o",
+            "created mid:clk", "mid:clk moditerm u/a", "mid:clk modbterm clk", "mid:clk modbterm clk",
+            "created mid:din[1]", "mid:din[1] moditerm u/b[1]", "mid:din[1] modbterm din[1]", "mid:din[1] modbterm din[1]",
+            "created mid:din[0]", "mid:din[0] moditerm u/b[0]", "mid:din[0] moditerm u/d[2]", "mid:din[0] modbterm din[0]", "mid:din[0] modbterm din[0]",
+            "created mid:dout[1]", "mid:dout[1] moditerm u/q[3]", "mid:dout[1] modbterm dout[1]",
+            "created mid:dout[0]", "mid:dout[0] moditerm u/q[2]", "mid:dout[0] modbterm dout[0]",
+            "created mid:thru_i", "mid:thru_i modbterm thru_o", "mid:thru_i modbterm thru_i", "mid:thru_i modbterm thru_i",
+            "mid:thru_i modbterm thru_o", "mid:thru_i modbterm thru_i", "mid:thru_i modbterm thru_o",
+            // m0/u: its pins against `mid`'s nets (reused), the constant `one_` and `w` made here.
+            "mid:clk moditerm u/a", "mid:clk modbterm clk", "mid:clk moditerm u/a",
+        ];
+        assert_eq!(&r.modnets[..want.len()], want);
+        // Then into leaf2 (module `leaf2` for m0/u): a leaf iterm on its port net, the port joined.
+        let i = r.modnets.iter().position(|l| l == "created leaf2:a").expect("leaf2:a made");
+        assert_eq!(&r.modnets[i..i + 4], ["created leaf2:a", "leaf2:a iterm m0/u/i0/A", "leaf2:a modbterm a", "leaf2:a modbterm a"]);
+        assert!(r.modnets.contains(&"created mid:one_".to_string()));
+        // No module nets without -hier.
+        assert!(link(PROBE6).modnets.is_empty());
+    }
+
+    /// Probe 7 (`hier-import-probes/hier7.v`, cells renamed to this test's library).
+    const PROBE7: &str = r"
+module inner (a, y);
+  input a; output y;
+  INV i (.A(a), .Y(y));
+endmodule
+module mid (a, y);
+  input a; output y;
+  inner u (.a(a), .y(y));
+endmodule
+module ord (z, a, o);
+  input z; input a; output o;
+  NAND2 g (.A(z), .B(a), .Y(o));
+endmodule
+module top (n, o1, o2, o3);
+  input n; output o1; output o2; output o3;
+  mid u (.a(n), .y(o1));
+  ord a1 (.z(n), .a(n), .o(o2));
+  INV b0 (.A(n), .Y(o3));
+endmodule
+";
+
+    /// B2, the reference's `dbReadVerilog 2` trace on probe 7. (1) `constructModNet` joins a net's
+    /// pins in PATH-NAME byte order (`std::map`): `a1/a, a1/z, b0/A, u/a`, not `ord`'s port order
+    /// (`z` before `a`) nor leaf-after-module. (2) For top's `u` (module `mid`, which holds its own
+    /// `u`), sta's `staToDb(mid, pin)` finds `mid`'s module instance `u` and its pin first, so `u`'s
+    /// pins are NOT joined to the parent's net: only the top port is. `mid`'s own `u` (module
+    /// `inner`, no child named `u`) is joined as usual.
+    #[test]
+    fn b2_pins_in_path_name_order_and_a_shadowed_pin_is_not_joined() {
+        let r = link_opts(PROBE7, &LinkOptions { hierarchy: true, ..Default::default() });
+        let n = [":n moditerm a1/a", ":n moditerm a1/z", ":n iterm b0/A", ":n moditerm u/a"];
+        let mut want: Vec<String> = vec!["created :n".into()];
+        // a1, pin z then pin a (port order), each after the net's pins.
+        want.extend(n.iter().map(|s| s.to_string()));
+        want.extend([":n moditerm a1/z", ":n bterm n"].map(String::from));
+        want.extend(n.iter().map(|s| s.to_string()));
+        want.extend([":n moditerm a1/a", ":n bterm n"].map(String::from));
+        want.extend(["created :o2", ":o2 moditerm a1/o", ":o2 moditerm a1/o", ":o2 bterm o2"].map(String::from));
+        for (p, pin) in [("z", "A"), ("a", "B"), ("o", "Y")] {
+            want.extend([format!("created ord:{p}"), format!("ord:{p} iterm a1/g/{pin}"), format!("ord:{p} modbterm {p}"), format!("ord:{p} modbterm {p}")]);
+        }
+        // u: shadowed, so no `moditerm u/a` / `u/y` after the net's pins.
+        want.extend(n.iter().map(|s| s.to_string()));
+        want.extend([":n bterm n", "created :o1", ":o1 moditerm u/y", ":o1 bterm o1"].map(String::from));
+        for p in ["a", "y"] {
+            want.extend([format!("created mid:{p}"), format!("mid:{p} moditerm u/{p}"), format!("mid:{p} modbterm {p}"), format!("mid:{p} modbterm {p}")]);
+        }
+        // mid's u (module inner): joined above.
+        for p in ["a", "y"] {
+            want.extend([format!("mid:{p} moditerm u/{p}"), format!("mid:{p} modbterm {p}"), format!("mid:{p} moditerm u/{p}")]);
+        }
+        for (p, pin) in [("a", "A"), ("y", "Y")] {
+            want.extend([format!("created inner:{p}"), format!("inner:{p} iterm u/u/i/{pin}"), format!("inner:{p} modbterm {p}"), format!("inner:{p} modbterm {p}")]);
+        }
+        assert_eq!(r.modnets, want);
     }
 }

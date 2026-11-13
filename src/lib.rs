@@ -3580,10 +3580,21 @@ impl Db {
         Ok(sys::create_int_property(self.r(), kind, owner, name, value)?)
     }
     /// The module view and the properties as lines (modules, module instances, block and
-    /// instance properties, child blocks; with `ports`, module ports and module-instance pins) —
+    /// instance properties, child blocks; with `ports`, module ports and module-instance pins;
+    /// with `nets`, module nets and their members) —
     /// the hierarchical-import gate's dump format.
-    pub fn dump_modules(&self, ports: bool) -> Result<Vec<String>> {
-        Ok(sys::dump_modules(self.r(), ports)?)
+    pub fn dump_modules(&self, ports: bool, nets: bool) -> Result<Vec<String>> {
+        Ok(sys::dump_modules(self.r(), ports, nets)?)
+    }
+    /// `module->getModNet(name)`, else `dbModNet::create(module, name)`; `true` when made.
+    pub fn mod_net_find_or_create(&mut self, module: &str, name: &str) -> Result<bool> {
+        Ok(sys::mod_net_find_or_create(self.r(), module, name)?)
+    }
+    /// `<terminal>->connect(modnet)` for module net `net` of `module` (`""` = top): `kind`
+    /// `"iterm"` (`a` instance, `b` pin), `"bterm"` (`a` port), `"moditerm"` (`a` module instance
+    /// of `module`, `b` its pin) or `"modbterm"` (`a` port of `module`).
+    pub fn mod_net_connect(&mut self, module: &str, net: &str, kind: &str, a: &str, b: &str) -> Result<()> {
+        Ok(sys::mod_net_connect(self.r(), module, net, kind, a, b)?)
     }
     /// `dbModBTerm::create(module, name)`, then `setIoType(io)` (`"INPUT"`, `"OUTPUT"`, `"INOUT"`).
     pub fn mod_bterm_create(&mut self, module: &str, name: &str, io: &str) -> Result<()> {

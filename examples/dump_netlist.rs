@@ -12,20 +12,22 @@
 //! BTERM <name> <io type> net=<net>
 //! ```
 //!
-//! `cargo run --release --example dump_netlist -- <f.odb> [--dont-touch] [--modules [--ports]]`;
+//! `cargo run --release --example dump_netlist -- <f.odb> [--dont-touch] [--modules [--ports] [--mod-nets]]`;
 //! `--dont-touch` adds ` dnt=0|1` to each instance line; `--modules` appends the module view and
 //! the properties (`Db::dump_modules`: `== MODULES`, `== MODINSTS`, `== PROPS`, `== CHILD_BLOCKS`);
-//! `--ports` adds each module's ports and each module instance's pins to it.
+//! `--ports` adds each module's ports and each module instance's pins to it; `--mod-nets` each
+//! module's nets with their members.
 
 use vyges_opendb::Db;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let path = args.next().ok_or("usage: dump_netlist <f.odb> [--dont-touch] [--modules [--ports]]")?;
+    let path = args.next().ok_or("usage: dump_netlist <f.odb> [--dont-touch] [--modules [--ports] [--mod-nets]]")?;
     let rest: Vec<String> = args.collect();
     let dnt = rest.iter().any(|a| a == "--dont-touch");
     let modules = rest.iter().any(|a| a == "--modules");
     let ports = rest.iter().any(|a| a == "--ports");
+    let mod_nets = rest.iter().any(|a| a == "--mod-nets");
     let db = Db::open(&path)?;
     let mut out = std::io::BufWriter::new(std::io::stdout().lock());
     use std::io::Write;
@@ -48,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         writeln!(out, "BTERM {b} {} net={}", db.bterm_get_io_type(&b), db.bterm_net(&b))?;
     }
     if modules {
-        for l in db.dump_modules(ports)? {
+        for l in db.dump_modules(ports, mod_nets)? {
             writeln!(out, "{l}")?;
         }
     }
