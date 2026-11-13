@@ -3410,6 +3410,14 @@ impl Db {
     pub fn remove_buffer(&mut self, inst: &str, in_pin: &str, out_pin: &str) -> Result<String> {
         Ok(sys::remove_buffer(self.r(), inst, in_pin, out_pin)?)
     }
+    /// The reference's `eliminate_dead_logic` (`Resizer::eliminateDeadLogic(true)`) on a flat block:
+    /// every leaf that drives nothing reaching a top port, a non-CORE master, or a dont-touch object
+    /// is destroyed, then every net left with no terminal (not special, not dont-touch). Returns
+    /// (instances removed, nets removed). Errors on a hierarchical block (not modelled).
+    pub fn eliminate_dead_logic(&mut self) -> Result<(usize, usize)> {
+        let r = sys::eliminate_dead_logic(self.r(), true)?;
+        Ok((r[0] as usize, r[1] as usize))
+    }
     /// The database half of `Resizer::swapPins`: `inst`'s pins `pin1` and `pin2` trade nets (pin1
     /// moved first, each to the other's flat net then module net). `false` (nothing done) when
     /// either has no net.

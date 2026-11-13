@@ -91,6 +91,9 @@ commands:
   remove-obstructions       --input <in.odb> --output <out.odb>
                       Remove all obstructions.
 
+  eliminate-dead-logic      --input <in.odb> --output <out.odb>
+                      Remove logic that reaches no output port (the reference's eliminate_dead_logic).
+
   write-verilog-header      --input <f.odb> [--output <f.v>]
                       Emit a Verilog module header (ports + directions).
 
@@ -225,6 +228,7 @@ fn run() -> Result<(), Fail> {
         "set-power-connections" => set_power_connections(args),
         "add-obstructions" => add_obstructions(args),
         "remove-obstructions" => remove_obstructions(args),
+        "eliminate-dead-logic" => eliminate_dead_logic(args),
         "write-verilog-header" => write_verilog_header(args),
         "write-verilog" => write_verilog(args),
         "report-wire-length" => report_wire_length(args),
@@ -296,6 +300,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "set-power-connections",
     "add-obstructions",
     "remove-obstructions",
+    "eliminate-dead-logic",
     "write-verilog-header",
     "write-verilog",
     "report-wire-length",
@@ -1036,6 +1041,45 @@ fn remove_obstructions(mut args: impl Iterator<Item = String>) -> Result<(), Fai
     let n = eco::remove_obstructions(&mut db);
     db.write(&output)?;
     diag!("remove-obstructions: removed {n} obstruction(s), {input} -> {output}");
+    Ok(())
+}
+
+const ELIMINATE_DEAD_LOGIC_DESCRIBE: &str = r#"{
+  "step": "eliminate-dead-logic",
+  "summary": "Remove every standard cell whose output reaches no top-level output port, macro, pad or dont-touch object, then the nets left with no terminal; as the reference's eliminate_dead_logic (run after synthesis, before floorplanning). Flat blocks only.",
+  "args": [
+    { "name": "--input",  "kind": "input",  "type": "path", "required": true, "description": "input .odb design" },
+    { "name": "--output", "kind": "output", "type": "path", "required": true, "description": "output .odb design" }
+  ],
+  "output": "the design without its dead logic; counts on stderr"
+}"#;
+
+/// `eliminate-dead-logic --input <in.odb> --output <out.odb> | --describe`.
+fn eliminate_dead_logic(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut output) = (None, None);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--output" | "-o" => output = args.next(),
+            "--describe" => {
+                println!("{ELIMINATE_DEAD_LOGIC_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb eliminate-dead-logic --input <in.odb> --output <out.odb>");
+                return Ok(());
+            }
+            other => return Err(format!("eliminate-dead-logic: unknown argument: {other}").into()),
+        }
+    }
+    let input = input.ok_or("eliminate-dead-logic: --input <in.odb> required")?;
+    let output = output.ok_or("eliminate-dead-logic: --output <out.odb> required")?;
+    let mut db = Db::open(&input)?;
+    let (insts, nets) = db.eliminate_dead_logic()?;
+    db.write(&output)?;
+    // The reference's own report line, word for word.
+    diag!("Removed {insts} unused instances and {nets} unused nets.");
+    diag!("eliminate-dead-logic: {input} -> {output}");
     Ok(())
 }
 
