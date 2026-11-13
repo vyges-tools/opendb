@@ -2945,6 +2945,7 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let mut top: Option<String> = None;
     let mut cache_mb: Option<usize> = None;
     let mut omit_filename_prop = false;
+    let mut hierarchy = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--lef" => lefs.push(args.next().ok_or("import: --lef needs a FILE")?),
@@ -2954,6 +2955,7 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 cache_mb = Some(v.parse().map_err(|_| format!("import: --module-cache-mb {v}: not a number"))?);
             }
             "--omit-filename-prop" => omit_filename_prop = true,
+            "--hier" => hierarchy = true,
             "--def" => def = args.next(),
             "--verilog" => verilog = args.next(),
             "--output" | "-o" => output = args.next(),
@@ -2963,14 +2965,16 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb import --lef <tech.lef> [--lef <more.lef> ...] \
-                           [--def <f.def>] [--verilog <f.v> [--top <module>] [--module-cache-mb N] [--omit-filename-prop]] --output <out.odb>\n\
+                           [--def <f.def>] [--verilog <f.v> [--top <module>] [--module-cache-mb N] [--omit-filename-prop] [--hier]] --output <out.odb>\n\
                            \n  The FIRST --lef creates the tech; give the technology LEF first.\n\
                            \n  --def and --verilog are alternative ways to bring in the design.\n\
                            \n  A netlist defining more than one module is linked hierarchically into a flat design,\n\
                            \n  as read_verilog + link_design <top> does; --top names the top (default: the one\n\
                            \n  module no other instantiates). Each module instance gets its own uniquely named module\n\
                            \n  and module instance, each leaf is owned by its module, and a Yosys src attribute becomes\n\
-                           \n  src / src_file_id / src_file_line instance properties (--omit-filename-prop: none).");
+                           \n  src / src_file_id / src_file_line instance properties (--omit-filename-prop: none).\n\
+                           \n  --hier (link_design -hier) also makes module ports and module-instance pins; module\n\
+                           \n  nets and the hierarchy flag are not built yet.");
                 return Ok(());
             }
             other => return Err(format!("import: unknown argument: {other}").into()),
@@ -2990,8 +2994,8 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     }
     if let Some(v) = &verilog {
         // 🔑 One module: the flat path, unchanged. More than one: the hierarchical link.
-        if vyges_opendb::verilog_link::module_names(v)?.len() > 1 || top.is_some() {
-            let mut opts = vyges_opendb::verilog_link::LinkOptions { top: top.clone(), omit_filename_prop, ..Default::default() };
+        if vyges_opendb::verilog_link::module_names(v)?.len() > 1 || top.is_some() || hierarchy || omit_filename_prop {
+            let mut opts = vyges_opendb::verilog_link::LinkOptions { top: top.clone(), omit_filename_prop, hierarchy, ..Default::default() };
             if let Some(mb) = cache_mb {
                 opts.cache_bytes = mb << 20;
             }

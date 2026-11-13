@@ -3580,9 +3580,31 @@ impl Db {
         Ok(sys::create_int_property(self.r(), kind, owner, name, value)?)
     }
     /// The module view and the properties as lines (modules, module instances, block and
-    /// instance properties, child blocks) — the hierarchical-import gate's dump format.
-    pub fn dump_modules(&self) -> Result<Vec<String>> {
-        Ok(sys::dump_modules(self.r())?)
+    /// instance properties, child blocks; with `ports`, module ports and module-instance pins) —
+    /// the hierarchical-import gate's dump format.
+    pub fn dump_modules(&self, ports: bool) -> Result<Vec<String>> {
+        Ok(sys::dump_modules(self.r(), ports)?)
+    }
+    /// `dbModBTerm::create(module, name)`, then `setIoType(io)` (`"INPUT"`, `"OUTPUT"`, `"INOUT"`).
+    pub fn mod_bterm_create(&mut self, module: &str, name: &str, io: &str) -> Result<()> {
+        Ok(sys::mod_bterm_create(self.r(), module, name, io)?)
+    }
+    /// `dbBusPort::create(module, root, from, to)`, then `root->setBusPort`.
+    pub fn bus_port_create(&mut self, module: &str, root: &str, from: i32, to: i32) -> Result<()> {
+        Ok(sys::bus_port_create(self.r(), module, root, from, to)?)
+    }
+    /// The bus port of `root`: `setMembers(member)`, or `setLast(member)` when `last`.
+    pub fn bus_port_set_member(&mut self, module: &str, root: &str, member: &str, last: bool) -> Result<()> {
+        Ok(sys::bus_port_set_member(self.r(), module, root, member, last)?)
+    }
+    /// `module->getModBTerms().reverse()`.
+    pub fn module_reverse_mod_bterms(&mut self, module: &str) -> Result<()> {
+        Ok(sys::module_reverse_mod_bterms(self.r(), module)?)
+    }
+    /// `dbModITerm::create(modinst, name, its master's port name)`; the module instance is
+    /// `modinst` of module `parent` (`""` = top).
+    pub fn mod_iterm_create(&mut self, parent: &str, modinst: &str, name: &str) -> Result<()> {
+        Ok(sys::mod_iterm_create(self.r(), parent, modinst, name)?)
     }
     /// `dbNet::canMergeNet`: neither net is dont_touch, nor any instance on `removed`.
     pub fn net_can_merge(&self, survivor: &str, removed: &str) -> Result<bool> {

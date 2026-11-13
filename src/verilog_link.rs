@@ -105,6 +105,17 @@ pub trait Sink {
     fn string_property(&mut self, owner: Owner<'_>, key: &str, value: &str) -> Result<(), String>;
     /// `dbIntProperty::create(owner, key, value)`.
     fn int_property(&mut self, owner: Owner<'_>, key: &str, value: i32) -> Result<(), String>;
+    /// `dbModBTerm::create(module, name)`, then `setIoType(io)` (`-hier` only).
+    fn mod_bterm(&mut self, module: &str, name: &str, io: IoType) -> Result<(), String>;
+    /// `dbBusPort::create(module, root, from, to)`, then `root->setBusPort`.
+    fn bus_port(&mut self, module: &str, root: &str, from: i64, to: i64) -> Result<(), String>;
+    /// `setMembers(member)` (first bit) or `setLast(member)` (last bit) on `root`'s bus port.
+    fn bus_port_member(&mut self, module: &str, root: &str, member: &str, last: bool) -> Result<(), String>;
+    /// `module->getModBTerms().reverse()`.
+    fn mod_bterms_done(&mut self, module: &str) -> Result<(), String>;
+    /// `dbModITerm::create(modinst, name, <its master's port name>)`; the module instance is
+    /// `modinst` of `parent` (`""` = top).
+    fn mod_iterm(&mut self, parent: &str, modinst: &str, name: &str) -> Result<(), String>;
     /// `dbNet::create`, then `setSigType` when not a signal net.
     fn net(&mut self, name: &str, sig: SigType) -> Result<(), String>;
     /// `dbBTerm::create(net, name)`, then `setIoType`.
@@ -161,11 +172,14 @@ pub struct LinkOptions {
     /// Leave out the `src` / `src_file_id` / `src_file_line` instance properties (the
     /// reference's `link_design -omit_filename_prop`).
     pub omit_filename_prop: bool,
+    /// Keep the hierarchy (the reference's `link_design -hier`): module ports and module-instance
+    /// pins as well. Module nets are not built yet (phase B2), nor is the hierarchy flag set.
+    pub hierarchy: bool,
 }
 
 impl Default for LinkOptions {
     fn default() -> Self {
-        LinkOptions { top: None, cache_bytes: 256 << 20, omit_filename_prop: false }
+        LinkOptions { top: None, cache_bytes: 256 << 20, omit_filename_prop: false, hierarchy: false }
     }
 }
 
@@ -1408,6 +1422,7 @@ struct Linker<'s, S: Sink> {
     /// `Verilog2db::src_file_id_`: file name -> id, in order of first use.
     src_file_ids: HashMap<String, i32>,
     omit_filename_prop: bool,
+    hierarchy: bool,
 }
 
 /// A library master's pins, grouped as the timing network groups them: `A[0]` .. `A[7]` are bus
@@ -1722,12 +1737,54 @@ impl<S: Sink> Linker<'_, S> {
                     if let Some(op) = self.implements_operator[child].clone() {
                         self.sink.string_property(Owner::ModInst(module, &c.name), "implements_operator", &op)?;
                     }
+                    if self.hierarchy {
+                        self.mod_bterms(child, &name)?;
+                        self.mod_iterms(child, module, &c.name)?;
+                    }
                     let bound: Vec<(String, u32)> = ports.into_iter().map(|(bit, id)| (bit, f.nets[id as usize].g)).collect();
                     self.instance(child, &cpath, &bound, &name)?;
                 }
             }
         }
         self.sink.module_done(module)
+    }
+
+    /// `makeModBTerms` (`-hier`): per port of the cell in port order, a scalar is one module port;
+    /// a bus is a root port, its `dbBusPort(from, to)`, then one port per bit from `from` towards
+    /// `to` (the first set as the bus's members, the last as its last). Then the module's port
+    /// list is REVERSED (odb inserts at the head, so this puts it back in creation order).
+    fn mod_bterms(&mut self, cell: usize, module: &str) -> Result<(), String> {
+        let ports = self.module_ports(cell)?;
+        for p in ports.iter() {
+            let io = p.dir.io();
+            self.sink.mod_bterm(module, &p.name, io)?;
+            if let Some((from, to)) = p.bus {
+                self.sink.bus_port(module, &p.name, from, to)?;
+                let bits = p.bits();
+                for (i, b) in bits.iter().enumerate() {
+                    self.sink.mod_bterm(module, b, io)?;
+                    if i == 0 {
+                        self.sink.bus_port_member(module, &p.name, b, false)?;
+                    }
+                    if i + 1 == bits.len() {
+                        self.sink.bus_port_member(module, &p.name, b, true)?;
+                    }
+                }
+            }
+        }
+        self.sink.mod_bterms_done(module)
+    }
+
+    /// `makeModITerms` (`-hier`): one module-instance pin per module port that is not a bus
+    /// root, in the port list's (creation) order: scalars and bus bits.
+    fn mod_iterms(&mut self, cell: usize, parent: &str, modinst: &str) -> Result<(), String> {
+        let ports = self.module_ports(cell)?;
+        for p in ports.iter() {
+            for b in p.bits() {
+                self.sink.mod_iterm(parent, modinst, &b)?;
+            }
+        }
+        Ok(())
     }
 
     /// `storeLineInfo`: string property `src` on the instance; when the value reads as
@@ -2024,6 +2081,7 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
         implements_operator,
         src_file_ids: HashMap::new(),
         omit_filename_prop: opts.omit_filename_prop,
+        hierarchy: opts.hierarchy,
     };
     lk.sink.block(&top)?;
     // `recordBusPortsOrder`: a bool property per top bus port, true when declared msb first (R14).
@@ -2115,6 +2173,22 @@ impl Sink for DbSink<'_> {
         };
         r.map_err(e)
     }
+    fn mod_bterm(&mut self, module: &str, name: &str, io: IoType) -> Result<(), String> {
+        self.db.mod_bterm_create(module, name, io.as_str()).map_err(e)
+    }
+    fn bus_port(&mut self, module: &str, root: &str, from: i64, to: i64) -> Result<(), String> {
+        let r = |x: i64| i32::try_from(x).map_err(|_| format!("bus port {root} index {x} out of range"));
+        self.db.bus_port_create(module, root, r(from)?, r(to)?).map_err(e)
+    }
+    fn bus_port_member(&mut self, module: &str, root: &str, member: &str, last: bool) -> Result<(), String> {
+        self.db.bus_port_set_member(module, root, member, last).map_err(e)
+    }
+    fn mod_bterms_done(&mut self, module: &str) -> Result<(), String> {
+        self.db.module_reverse_mod_bterms(module).map_err(e)
+    }
+    fn mod_iterm(&mut self, parent: &str, modinst: &str, name: &str) -> Result<(), String> {
+        self.db.mod_iterm_create(parent, modinst, name).map_err(e)
+    }
     fn net(&mut self, name: &str, sig: SigType) -> Result<(), String> {
         self.db.create_net(name).map_err(|x| format!("net {name}: {x}"))?;
         if sig == SigType::Signal {
@@ -2178,6 +2252,8 @@ mod tests {
         done: Vec<String>,
         /// `<owner> <key>=<value>` per property, in creation order.
         sprops: Vec<String>,
+        /// Module ports, bus ports, module-instance pins, in call order.
+        hier: Vec<String>,
     }
 
     fn owner_str(o: Owner<'_>) -> String {
@@ -2233,6 +2309,26 @@ mod tests {
         }
         fn int_property(&mut self, owner: Owner<'_>, key: &str, value: i32) -> Result<(), String> {
             self.sprops.push(format!("{} {key}={value}", owner_str(owner)));
+            Ok(())
+        }
+        fn mod_bterm(&mut self, module: &str, name: &str, io: IoType) -> Result<(), String> {
+            self.hier.push(format!("{module} bterm {name} {}", io.as_str()));
+            Ok(())
+        }
+        fn bus_port(&mut self, module: &str, root: &str, from: i64, to: i64) -> Result<(), String> {
+            self.hier.push(format!("{module} bus {root} {from}:{to}"));
+            Ok(())
+        }
+        fn bus_port_member(&mut self, module: &str, root: &str, member: &str, last: bool) -> Result<(), String> {
+            self.hier.push(format!("{module} {} {root} {member}", if last { "last" } else { "members" }));
+            Ok(())
+        }
+        fn mod_bterms_done(&mut self, module: &str) -> Result<(), String> {
+            self.hier.push(format!("{module} reverse"));
+            Ok(())
+        }
+        fn mod_iterm(&mut self, parent: &str, modinst: &str, name: &str) -> Result<(), String> {
+            self.hier.push(format!("{parent}>{modinst} iterm {name}"));
             Ok(())
         }
         fn net(&mut self, name: &str, sig: SigType) -> Result<(), String> {
@@ -2750,5 +2846,64 @@ endmodule
         let r = link(src);
         assert_eq!(r.modules, ["sub", "sub_q_1"]);
         assert!(r.sprops.iter().all(|p| !p.contains("src")), "{:?}", r.sprops);
+    }
+
+    /// B1 `makeModBTerms` / `makeModITerms` (`-hier` only): per port in port order a scalar, or a
+    /// bus root + `dbBusPort(from, to)` + its bits from `from` towards `to` (`d[0:2]` ascends,
+    /// `q[3:2]` descends) with members/last on the first/last bit; the list reversed after the
+    /// module's ports; then one module-instance pin per non-root port, in that order. Nothing of
+    /// it without `-hier`.
+    #[test]
+    fn b1_module_ports_and_pins() {
+        let src = r"
+module leaf2 (a, b, d, y, q, io);
+  input a; input [1:0] b; input [0:2] d; output y; output [3:2] q; inout io;
+  INV i0 (.A(a), .Y(y));
+endmodule
+module top (a, y);
+  input a; output y;
+  leaf2 u (.a(a), .y(y));
+endmodule
+";
+        let r = link_opts(src, &LinkOptions { hierarchy: true, ..Default::default() });
+        assert_eq!(
+            r.hier,
+            [
+                "leaf2 bterm a INPUT",
+                "leaf2 bterm b INPUT",
+                "leaf2 bus b 1:0",
+                "leaf2 bterm b[1] INPUT",
+                "leaf2 members b b[1]",
+                "leaf2 bterm b[0] INPUT",
+                "leaf2 last b b[0]",
+                "leaf2 bterm d INPUT",
+                "leaf2 bus d 0:2",
+                "leaf2 bterm d[0] INPUT",
+                "leaf2 members d d[0]",
+                "leaf2 bterm d[1] INPUT",
+                "leaf2 bterm d[2] INPUT",
+                "leaf2 last d d[2]",
+                "leaf2 bterm y OUTPUT",
+                "leaf2 bterm q OUTPUT",
+                "leaf2 bus q 3:2",
+                "leaf2 bterm q[3] OUTPUT",
+                "leaf2 members q q[3]",
+                "leaf2 bterm q[2] OUTPUT",
+                "leaf2 last q q[2]",
+                "leaf2 bterm io INOUT",
+                "leaf2 reverse",
+                ">u iterm a",
+                ">u iterm b[1]",
+                ">u iterm b[0]",
+                ">u iterm d[0]",
+                ">u iterm d[1]",
+                ">u iterm d[2]",
+                ">u iterm y",
+                ">u iterm q[3]",
+                ">u iterm q[2]",
+                ">u iterm io",
+            ]
+        );
+        assert!(link(src).hier.is_empty());
     }
 }
