@@ -38,7 +38,7 @@ cxx = "1"
 # The shared scene/SVG/PNG renderer, so the 3D drawing is not a second copy of the one in
 # vyges-gds-view. Pure Rust — it brings no C toolchain along with it.
 vyges-layout = { git = "https://github.com/vyges-tools/layout", branch = "main" }
-# 🔑 The shared data plane, for its structural Verilog reader. loom does NOT depend on opendb,
+# 🔑 The shared data plane, for its LEF reader and LEF58 same-mask rules. loom does NOT depend on opendb,
 # so this introduces no cycle — and the reverse would put libodb under the data plane, which is
 # what keeps loom building offline everywhere.
 vyges-loom = { git = "https://github.com/vyges-tools/loom.git", branch = "main" }

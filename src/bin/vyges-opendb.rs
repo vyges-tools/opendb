@@ -2968,10 +2968,10 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                            [--def <f.def>] [--verilog <f.v> [--top <module>] [--module-cache-mb N] [--omit-filename-prop] [--hier]] --output <out.odb>\n\
                            \n  The FIRST --lef creates the tech; give the technology LEF first.\n\
                            \n  --def and --verilog are alternative ways to bring in the design.\n\
-                           \n  A netlist defining more than one module is linked hierarchically into a flat design,\n\
-                           \n  as read_verilog + link_design <top> does; --top names the top (default: the one\n\
-                           \n  module no other instantiates). Each module instance gets its own uniquely named module\n\
-                           \n  and module instance, each leaf is owned by its module, and a Yosys src attribute becomes\n\
+                           \n  The netlist is linked hierarchically into a flat design, as read_verilog +\n\
+                           \n  link_design <top> does; --top names the top (default: the one module no other\n\
+                           \n  instantiates; for a one-module file, that module). Each module instance gets its\n\
+                           \n  own uniquely named module and module instance, each leaf is owned by its module, and a Yosys src attribute becomes\n\
                            \n  src / src_file_id / src_file_line instance properties (--omit-filename-prop: none).\n\
                            \n  --hier (link_design -hier) also makes module ports and module-instance pins; module\n\
                            \n  nets and the hierarchy flag are not built yet.");
@@ -2993,29 +2993,27 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         db.read_def(def, "default")?;
     }
     if let Some(v) = &verilog {
-        // 🔑 One module: the flat path, unchanged. More than one: the hierarchical link.
-        if vyges_opendb::verilog_link::module_names(v)?.len() > 1 || top.is_some() || hierarchy || omit_filename_prop {
-            let mut opts = vyges_opendb::verilog_link::LinkOptions { top: top.clone(), omit_filename_prop, hierarchy, ..Default::default() };
-            if let Some(mb) = cache_mb {
-                opts.cache_bytes = mb << 20;
-            }
-            let mut sink = vyges_opendb::verilog_link::DbSink { db: &mut db };
-            // Parse errors already name the file; errors from the database do not.
-            let r = vyges_opendb::verilog_link::link_file(v, &opts, &mut sink).map_err(|e| {
-                if e.starts_with(v.as_str()) { format!("import: {e}") } else { format!("import: {v}: {e}") }
-            })?;
-            for (code, msg) in &r.warnings {
-                diag!("[WARNING {code}] {msg}");
-            }
-            diag!(
-                "import: linked {v} at top {}: {} instances ({} module instances flattened, {} modules), {} nets, {} ports, {} pins; \
-                 {} module bodies parsed, {} from cache",
-                r.top, r.insts, r.module_instances, r.modules, r.nets, r.bterms, r.iterms, r.bodies_parsed, r.bodies_cached
-            );
-        } else {
-            let n = build_from_netlist(&mut db, v)?;
-            diag!("import: {n} instances built from {v}");
+        // 🔑 Every netlist goes through the link, as `read_verilog` + `link_design` does; with one
+        // module the top is that module. The old flat path for single-module files was retired
+        // 2026-11-13: it differed from the reference on 17 of 19 single-module cases (instance
+        // order, constant nets), the link on none.
+        let mut opts = vyges_opendb::verilog_link::LinkOptions { top: top.clone(), omit_filename_prop, hierarchy, ..Default::default() };
+        if let Some(mb) = cache_mb {
+            opts.cache_bytes = mb << 20;
         }
+        let mut sink = vyges_opendb::verilog_link::DbSink { db: &mut db };
+        // Parse errors already name the file; errors from the database do not.
+        let r = vyges_opendb::verilog_link::link_file(v, &opts, &mut sink).map_err(|e| {
+            if e.starts_with(v.as_str()) { format!("import: {e}") } else { format!("import: {v}: {e}") }
+        })?;
+        for (code, msg) in &r.warnings {
+            diag!("[WARNING {code}] {msg}");
+        }
+        diag!(
+            "import: linked {v} at top {}: {} instances ({} module instances flattened, {} modules), {} nets, {} ports, {} pins; \
+             {} module bodies parsed, {} from cache",
+            r.top, r.insts, r.module_instances, r.modules, r.nets, r.bterms, r.iterms, r.bodies_parsed, r.bodies_cached
+        );
     }
     db.write(&output)?;
     diag!(
@@ -3025,176 +3023,6 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         verilog.as_ref().map(|v| format!(" + {v}")).unwrap_or_default()
     );
     Ok(())
-}
-
-/// Build a flat design from a structural Verilog netlist — `Verilog2db`, transcribed.
-///
-/// 🔑 **The call sequence is upstream's, and it is behaviour rather than detail**
-/// (`dbSta/src/dbReadVerilog.cc`):
-///
-/// 1. `makeBlock` (:238) — a chip if none, `dbBlock::create`, then **`setDefUnits`** from the
-///    LEF's units and **`setBusDelimiters('[' , ']')`**. ⚠️ `setDefUnits` is NOT the database
-///    scale: `dbu_per_micron` comes from the tech at block creation (`dbBlock.cpp:2953`), and
-///    `def_units_` is the DEF OUTPUT units, default 100 — so omitting it writes a DEF saying 100
-///    where sky130 should say 1000.
-/// 2. `makeChildInsts` (:552) — `dbInst::create(block, master, name)` per instance, the master
-///    resolved in the LEF libs. ⛔ A missing master is an ERROR upstream (ORD-2013), not a skip.
-/// 3. `makeDbNets` (:700) — nets, then the pins on each.
-///
-/// ⛔ **Two orderings inside step 3 that only reading the source gets right:**
-///   * a **block terminal is created from the NET**, not from the port declaration list, and only
-///     when the block has none of that name — then `setIoType`;
-///   * a net's pins are **SORTED** before they are connected, which upstream comments as being
-///     "for regression stability". Insertion order would otherwise follow parse order.
-///
-/// ⚠️ **`assign` aliases are two names for ONE net.** OpenSTA resolves them before any `dbNet`
-/// exists, so upstream never sees two. Dropping them "breaks connectivity rather than merely
-/// thinning it" — loom's own reader says so — because the aliased port ends up with no driver.
-fn build_from_netlist(db: &mut Db, path: &str) -> Result<usize, Fail> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("import: {path}: {e}"))?;
-    let nl = vyges_loom::netlist::parse(&text).map_err(|e| format!("import: {path}: {e:?}"))?;
-    // ⚠️ This reads STRUCTURAL netlists. Handed RTL the reader recovers fragments rather than
-    // failing — measured at 2 instances from a module with 4,558 connections — so the count it
-    // keeps for exactly this purpose is checked instead of ignored.
-    if nl.behavioural > 0 {
-        return Err(format!(
-            "import: {path} has {} behavioural construct(s); this builds from a STRUCTURAL netlist",
-            nl.behavioural
-        )
-        .into());
-    }
-
-    // ⛔ **An ESCAPED identifier keeps its escaping in the DATABASE, though not in loom's name.**
-    // The netlist writes `wire \claimed[0] ;` — the brackets are literal, not a bus index — and
-    // OpenROAD stores that net as `claimed\[0\]`. loom deliberately canonicalises to `claimed[0]`
-    // so the name matches the SPEF and DEF spellings a timer looks up; keeping the backslash there
-    // once cost 767 of 14,238 nets and 4,527 coupling references, dropped silently.
-    //
-    // ⟹ The escaping is re-applied HERE, on the way into the database, from the set loom records.
-    // Without it an escaped identifier and a real bus bit of the same spelling become one net.
-    let esc = |n: &str| -> String {
-        if !nl.escaped_names.contains(n) {
-            return n.to_string();
-        }
-        let mut out = String::with_capacity(n.len() + 4);
-        for c in n.chars() {
-            // ⛔ **Brackets ONLY — measured.** A dot is NOT escaped: OpenROAD stores
-            // `u_adapter.req_addr_q\[0\]`, with the hierarchy separator plain. Escaping it too
-            // differed on 1,536 DEF lines for `fft_ctrl_tlul`. The brackets are escaped because
-            // they collide with the bus delimiters; the dot collides with nothing.
-            if matches!(c, '[' | ']') {
-                out.push('\\');
-            }
-            out.push(c);
-        }
-        out
-    };
-
-    // ---- 1. the block ----------------------------------------------------------------------
-    db.create_chip(&nl.module, "", "DIE")?;
-    db.create_chip_block(&nl.module, &nl.module)?;
-    let units = db.tech_get_lef_units();
-    if units > 0 {
-        db.block_set_def_units(units)?;
-    }
-    db.set_bus_delimiters('[', ']')?;
-
-    // ---- `assign a = b` — union-find so a chain (a=b, b=c) collapses to one net -------------
-    let mut parent: std::collections::HashMap<String, String> = Default::default();
-    fn find(p: &std::collections::HashMap<String, String>, x: &str) -> String {
-        let mut cur = x.to_string();
-        while let Some(nxt) = p.get(&cur) {
-            if *nxt == cur {
-                break;
-            }
-            cur = nxt.clone();
-        }
-        cur
-    }
-    let ports: std::collections::HashSet<String> =
-        nl.inputs.iter().chain(&nl.outputs).chain(&nl.inouts).cloned().collect();
-    for (l, r) in &nl.aliases {
-        let (a, b) = (find(&parent, l), find(&parent, r));
-        if a != b {
-            // ⛔ **The INTERNAL name survives, not the port's — measured, and the opposite of the
-            // obvious guess.** For `assign tl_o[0] = net492;` upstream's DEF reads
-            // `- tl_o[0] + NET net492`: the port becomes a TERMINAL on the internal net rather than
-            // renaming it. That follows from `makeDbNets` creating the bterm from the net it is
-            // walking. Keeping the port name instead differed on 452 DEF lines here.
-            let (keep, drop) = if ports.contains(&a) {
-                (b, a)
-            } else if ports.contains(&b) {
-                (a, b)
-            } else {
-                // Neither is a port: either survives, but the choice must be DETERMINISTIC or the
-                // same netlist builds two different databases on two runs.
-                let (x, y) = if a < b { (a, b) } else { (b, a) };
-                (x, y)
-            };
-            parent.insert(drop, keep);
-        }
-    }
-
-    // ---- 2. instances, before nets, as upstream does ----------------------------------------
-    for inst in &nl.insts {
-        db.create_inst(&inst.cell, &esc(&inst.name)).map_err(|e| {
-            format!("import: instance {} master {} not found: {e}", inst.name, inst.cell)
-        })?;
-    }
-
-    // ---- 3. nets, their pins, and the terminals ---------------------------------------------
-    let mut pins: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
-    for inst in &nl.insts {
-        for (pin, net) in &inst.conns {
-            if pin.is_empty() {
-                // Positional: which pin a position means lives in the LEF, not the netlist.
-                return Err(format!(
-                    "import: {} has a positional connection; this path needs named pins",
-                    inst.name
-                )
-                .into());
-            }
-            pins.entry(esc(&find(&parent, net)))
-                .or_default()
-                .push((esc(&inst.name), pin.clone()));
-        }
-    }
-
-    // 🔑 **A terminal keeps the PORT's name, on the NET's object** — `dbBTerm::create(db_net,
-    // port_name)` (`dbReadVerilog.cc:756`). The two are different whenever an `assign` aliased the
-    // port to an internal net: the DEF then reads `- tl_o[0] + NET net492`. Naming the terminal
-    // after the net instead produced 443 wrong DEF lines here.
-    // port name -> (the net it sits on, its direction)
-    let mut io: std::collections::BTreeMap<String, (String, &str)> = Default::default();
-    for (list, dir) in [(&nl.inputs, "INPUT"), (&nl.outputs, "OUTPUT"), (&nl.inouts, "INOUT")] {
-        for p in list {
-            io.insert(esc(p), (esc(&find(&parent, p)), dir));
-        }
-    }
-
-    let every: std::collections::BTreeSet<String> = pins
-        .keys()
-        .cloned()
-        .chain(io.values().map(|(n, _)| n.clone()))
-        .collect();
-    for net in &every {
-        db.create_net(net)?;
-        if let Some(list) = pins.get(net) {
-            // ⛔ Sorted, as `makeDbNets` sorts its pins "for regression stability".
-            let mut list = list.clone();
-            list.sort();
-            for (inst, pin) in list {
-                db.connect(&inst, &pin, net)?;
-            }
-        }
-    }
-
-    // ⚠️ Terminals AFTER every net exists, since each is created on the net it belongs to.
-    for (port, (net, dir)) in &io {
-        db.create_bterm(net, port)?;
-        db.bterm_set_io_type(port, dir)?;
-    }
-    Ok(nl.insts.len())
 }
 
 const APPLY_DEF_TEMPLATE_DESCRIBE: &str = r#"{
