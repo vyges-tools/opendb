@@ -12,15 +12,18 @@
 //! BTERM <name> <io type> net=<net>
 //! ```
 //!
-//! `cargo run --release --example dump_netlist -- <f.odb> [--dont-touch]`; `--dont-touch` adds
-//! ` dnt=0|1` to each instance line.
+//! `cargo run --release --example dump_netlist -- <f.odb> [--dont-touch] [--modules]`;
+//! `--dont-touch` adds ` dnt=0|1` to each instance line; `--modules` appends the module view and
+//! the properties (`Db::dump_modules`: `== MODULES`, `== MODINSTS`, `== PROPS`, `== CHILD_BLOCKS`).
 
 use vyges_opendb::Db;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let path = args.next().ok_or("usage: dump_netlist <f.odb> [--dont-touch]")?;
-    let dnt = args.next().as_deref() == Some("--dont-touch");
+    let path = args.next().ok_or("usage: dump_netlist <f.odb> [--dont-touch] [--modules]")?;
+    let rest: Vec<String> = args.collect();
+    let dnt = rest.iter().any(|a| a == "--dont-touch");
+    let modules = rest.iter().any(|a| a == "--modules");
     let db = Db::open(&path)?;
     let mut out = std::io::BufWriter::new(std::io::stdout().lock());
     use std::io::Write;
@@ -41,6 +44,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writeln!(out, "== BTERMS")?;
     for b in db.bterm_names() {
         writeln!(out, "BTERM {b} {} net={}", db.bterm_get_io_type(&b), db.bterm_net(&b))?;
+    }
+    if modules {
+        for l in db.dump_modules()? {
+            writeln!(out, "{l}")?;
+        }
     }
     Ok(())
 }

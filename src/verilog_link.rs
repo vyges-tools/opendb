@@ -25,6 +25,15 @@
 //! R6 pin order, R7 constants, R8 unconnected top ports, R9 unreferenced wires, R10 terminal
 //! order, R11 supply nets, R12 macro bus pins member by member, R13 `dont_touch`, R14 bus port
 //! order properties.
+//!
+//! The module view the reference builds even when flattening (`makeDbModule`, phase B0), each with
+//! its test: a uniquely named module and a module instance per hierarchical instance, in the same
+//! depth-first order (`b0_modules_uniquely_named_in_creation_order`, `b0_unique_name_counter`,
+//! `b0_top_name_taken_and_empty_src`); each leaf owned by its module and each module's lists put
+//! back in creation order after its children (`b0_leaves_owned_by_their_module`); the `src`,
+//! `src_file_id`, `src_file_line` and `implements_operator` properties
+//! (`b0_src_and_operator_properties`, `b0_line_info_regex`); an unused `implements_operator`
+//! module, a child block in the reference, refused (`b0_unused_operator_module_refused`).
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -82,8 +91,20 @@ pub trait Sink {
     fn block(&mut self, top: &str) -> Result<(), String>;
     /// The pin names of a library master, in its own order; `None` when there is no such master.
     fn master_pins(&mut self, master: &str) -> Option<Vec<String>>;
-    /// `dbInst::create`.
-    fn inst(&mut self, master: &str, name: &str) -> Result<(), String>;
+    /// `dbModule::create(block, name)` — `name` already made unique by the link
+    /// ([`unique_module_name`]).
+    fn module(&mut self, name: &str) -> Result<(), String>;
+    /// `dbModInst::create(parent, module, name)`; `parent` is `""` for the top module.
+    fn mod_inst(&mut self, parent: &str, module: &str, name: &str) -> Result<(), String>;
+    /// `dbInst::create(block, master, name, false, module)`; `module` is `""` for the top module.
+    fn inst(&mut self, master: &str, name: &str, module: &str) -> Result<(), String>;
+    /// The end of `makeChildInsts` for `module` (`""` = top): its child and instance lists put
+    /// back in creation order when odb holds them reversed.
+    fn module_done(&mut self, module: &str) -> Result<(), String>;
+    /// `dbStringProperty::create(owner, key, value)`.
+    fn string_property(&mut self, owner: Owner<'_>, key: &str, value: &str) -> Result<(), String>;
+    /// `dbIntProperty::create(owner, key, value)`.
+    fn int_property(&mut self, owner: Owner<'_>, key: &str, value: i32) -> Result<(), String>;
     /// `dbNet::create`, then `setSigType` when not a signal net.
     fn net(&mut self, name: &str, sig: SigType) -> Result<(), String>;
     /// `dbBTerm::create(net, name)`, then `setIoType`.
@@ -94,6 +115,18 @@ pub trait Sink {
     fn dont_touch(&mut self, inst: &str) -> Result<(), String>;
     /// `dbBoolProperty::create(block, "bus_msb_first <port> <top>", msb_first)`.
     fn bus_order(&mut self, key: &str, msb_first: bool) -> Result<(), String>;
+}
+
+/// The object a property is created on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Owner<'a> {
+    Block,
+    /// A leaf instance by its flat name.
+    Inst(&'a str),
+    /// A module by its (unique) name.
+    Module(&'a str),
+    /// A module instance: its parent module (`""` = top) and its local name.
+    ModInst(&'a str, &'a str),
 }
 
 /// What a link did — counts, and the reference's warnings it would have printed.
@@ -107,6 +140,8 @@ pub struct LinkReport {
     pub nets: usize,
     pub bterms: usize,
     pub iterms: usize,
+    /// Modules created in the database (one per module instance, uniquely named).
+    pub modules: usize,
     /// Module bodies parsed in the build walk (a body is re-parsed per instance unless cached).
     pub bodies_parsed: usize,
     /// Module bodies taken from the cache instead.
@@ -123,11 +158,14 @@ pub struct LinkOptions {
     /// Bytes of parsed module bodies kept for reuse by later instances of the same module
     /// (0 re-parses every instance).
     pub cache_bytes: usize,
+    /// Leave out the `src` / `src_file_id` / `src_file_line` instance properties (the
+    /// reference's `link_design -omit_filename_prop`).
+    pub omit_filename_prop: bool,
 }
 
 impl Default for LinkOptions {
     fn default() -> Self {
-        LinkOptions { top: None, cache_bytes: 256 << 20 }
+        LinkOptions { top: None, cache_bytes: 256 << 20, omit_filename_prop: false }
     }
 }
 
@@ -511,6 +549,8 @@ struct Inst {
     name: String,
     pins: Pins,
     dont_touch: Option<String>,
+    /// The `src` attribute (the last one wins, as `setProperty` overwrites).
+    src: Option<String>,
     line: u32,
 }
 
@@ -540,6 +580,9 @@ struct Module {
     /// A `wand` / `wor` declaration (the reference fails the whole read, error 171).
     unsupported: Option<(String, u32)>,
     warnings: Vec<(u32, String)>,
+    /// The module's own `implements_operator` attribute (on the cell, not an instance; the last
+    /// one wins).
+    implements_operator: Option<String>,
 }
 
 /// A cell port after `makeCellPorts`: a scalar or a bus with its declared range.
@@ -724,7 +767,8 @@ impl<'a> Parser<'a> {
 
     /// The whole module, from `module` to `endmodule`.
     fn module(&mut self) -> Result<Module, String> {
-        let _ = self.attrs()?;
+        let attrs = self.attrs()?;
+        let implements_operator = attrs.iter().rev().find(|(k, _)| k == "implements_operator").map(|(_, v)| v.clone());
         let t = self.bump()?;
         if t.t != T::Kw(Kw::Module) {
             return self.err(t, "expected 'module'");
@@ -738,6 +782,7 @@ impl<'a> Parser<'a> {
             stmts: Vec::new(),
             unsupported: None,
             warnings: Vec::new(),
+            implements_operator,
         };
         let mut ansi: Vec<usize> = Vec::new();
         if self.is(b'(')? {
@@ -936,7 +981,8 @@ impl<'a> Parser<'a> {
                     }
                     inst_names.insert(name.clone());
                     let dont_touch = attrs.iter().rev().find(|(k, _)| k == "dont_touch").map(|(_, v)| v.clone());
-                    m.stmts.push(Stmt::Inst(Inst { cell, name, pins, dont_touch, line: t.line }));
+                    let src = attrs.iter().rev().find(|(k, _)| k == "src").map(|(_, v)| v.clone());
+                    m.stmts.push(Stmt::Inst(Inst { cell, name, pins, dont_touch, src, line: t.line }));
                 }
                 T::Eof => return self.err(t, "missing endmodule"),
                 _ => return self.err(t, "unexpected token in a module body"),
@@ -1164,6 +1210,9 @@ fn index_modules(path: &str) -> Result<Vec<ModuleEntry>, String> {
     let mut lineno: u32 = 0;
     let mut in_comment = false;
     let mut open: Option<(u64, u32)> = None;
+    // The first `(*` of the attributes before a `module`: they belong to the module (its
+    // `implements_operator`), so its range starts there.
+    let mut attrs_at: Option<(u64, u32)> = None;
     let mut want_name = false;
     let mut out: Vec<ModuleEntry> = Vec::new();
     loop {
@@ -1201,6 +1250,9 @@ fn index_modules(path: &str) -> Result<Vec<ModuleEntry>, String> {
                 p += 2;
                 continue;
             }
+            if c == b'(' && b.get(p + 1) == Some(&b'*') && open.is_none() && attrs_at.is_none() {
+                attrs_at = Some((off + p as u64, lineno));
+            }
             if c == b'"' {
                 p += 1;
                 while p < b.len() && b[p] != b'"' {
@@ -1237,7 +1289,7 @@ fn index_modules(path: &str) -> Result<Vec<ModuleEntry>, String> {
                     if open.is_some() {
                         return Err(format!("{path}: line {lineno}: 'module' inside a module"));
                     }
-                    open = Some((off + s as u64, lineno));
+                    open = Some(attrs_at.take().unwrap_or((off + s as u64, lineno)));
                     want_name = true;
                 } else if w == b"endmodule" {
                     let Some(_) = open.take() else {
@@ -1291,6 +1343,7 @@ struct Child {
     name: String,
     kind: ChildKind,
     dont_touch: bool,
+    src: Option<String>,
 }
 
 enum ChildKind {
@@ -1346,6 +1399,15 @@ struct Linker<'s, S: Sink> {
     dont_touch: Vec<u32>,
     report: LinkReport,
     buf: Vec<u8>,
+    /// Every module name in the database (the top's included), and the `_N` counters of
+    /// [`unique_module_name`] (`_dbBlock::module_name_id_map_`).
+    module_names: HashSet<String>,
+    module_name_ids: HashMap<String, u32>,
+    /// `implements_operator` per module of the file.
+    implements_operator: Vec<Option<String>>,
+    /// `Verilog2db::src_file_id_`: file name -> id, in order of first use.
+    src_file_ids: HashMap<String, i32>,
+    omit_filename_prop: bool,
 }
 
 /// A library master's pins, grouped as the timing network groups them: `A[0]` .. `A[7]` are bus
@@ -1538,7 +1600,7 @@ impl<S: Sink> Linker<'_, S> {
     /// One instance of module `idx` at `path` (empty for the top): its nets, then its children in
     /// name order (R1), recursing into module children. `bound`: (port bit, parent net node) per
     /// port bit its parent connected.
-    fn instance(&mut self, idx: usize, path: &str, bound: &[(String, u32)]) -> Result<(), String> {
+    fn instance(&mut self, idx: usize, path: &str, bound: &[(String, u32)], module: &str) -> Result<(), String> {
         let m = self.module(idx)?;
         let mut f = Frame { nets: Vec::new(), by_name: HashMap::new() };
         let top = path.is_empty();
@@ -1624,7 +1686,13 @@ impl<S: Sink> Linker<'_, S> {
             let cpath = if top { c.name.clone() } else { format!("{path}/{}", c.name) };
             match c.kind {
                 ChildKind::Leaf { master, pins } => {
-                    self.sink.inst(&master, &cpath)?;
+                    self.sink.inst(&master, &cpath, module)?;
+                    // Yosys's `src` attribute (`storeLineInfo`), unless `-omit_filename_prop`.
+                    if !self.omit_filename_prop {
+                        if let Some(src) = &c.src {
+                            self.store_line_info(src, &cpath)?;
+                        }
+                    }
                     let leaf = self.leaf_ends.len() as u32;
                     self.leaf_names.push_str(&cpath);
                     self.leaf_ends.push(self.leaf_names.len());
@@ -1638,14 +1706,53 @@ impl<S: Sink> Linker<'_, S> {
                         self.pins.push(PinRec { g, leaf, pin });
                     }
                 }
-                ChildKind::Module { module, ports } => {
+                ChildKind::Module { module: child, ports } => {
                     self.report.module_instances += 1;
+                    // `makeDbModule` (always, `-hier` or not): a uniquely named module per
+                    // instance, `original_name` when renamed, the module instance in its parent,
+                    // and the cell's `implements_operator` on it.
+                    let cell = self.modules[child].name.clone();
+                    let name = unique_module_name(&cell, &c.name, &mut self.module_names, &mut self.module_name_ids);
+                    self.sink.module(&name)?;
+                    self.report.modules += 1;
+                    if name != cell {
+                        self.sink.string_property(Owner::Module(&name), "original_name", &cell)?;
+                    }
+                    self.sink.mod_inst(module, &name, &c.name)?;
+                    if let Some(op) = self.implements_operator[child].clone() {
+                        self.sink.string_property(Owner::ModInst(module, &c.name), "implements_operator", &op)?;
+                    }
                     let bound: Vec<(String, u32)> = ports.into_iter().map(|(bit, id)| (bit, f.nets[id as usize].g)).collect();
-                    self.instance(module, &cpath, &bound)?;
+                    self.instance(child, &cpath, &bound, &name)?;
                 }
             }
         }
-        Ok(())
+        self.sink.module_done(module)
+    }
+
+    /// `storeLineInfo`: string property `src` on the instance; when the value reads as
+    /// `<file>:<line>.<col>-<line>.<col>`, int properties `src_file_id` (the file's id, a block
+    /// string property `src_file_<id>` made on its first use) and `src_file_line`.
+    fn store_line_info(&mut self, attr: &str, inst: &str) -> Result<(), String> {
+        if attr.is_empty() {
+            return Ok(());
+        }
+        self.sink.string_property(Owner::Inst(inst), "src", attr)?;
+        let Some((file, line)) = line_info(attr) else {
+            return Ok(());
+        };
+        let line: i32 = line.parse().map_err(|_| format!("instance {inst}: src line number {line} out of range"))?;
+        let id = match self.src_file_ids.get(file) {
+            Some(&id) => id,
+            None => {
+                let id = self.src_file_ids.len() as i32;
+                self.src_file_ids.insert(file.to_string(), id);
+                self.sink.string_property(Owner::Block, &format!("src_file_{id}"), file)?;
+                id
+            }
+        };
+        self.sink.int_property(Owner::Inst(inst), "src_file_id", id)?;
+        self.sink.int_property(Owner::Inst(inst), "src_file_line", line)
     }
 
     /// `mergeAssignNet`: bit by bit, the left net into the right (R5).
@@ -1676,7 +1783,7 @@ impl<S: Sink> Linker<'_, S> {
             let ports = self.module_ports(idx)?;
             let bits: Vec<(String, Vec<String>)> = ports.iter().map(|p| (p.name.clone(), p.bits())).collect();
             let bound = self.bind_pins(f, m, inst, &bits, path);
-            return Ok(Child { name: inst.name.clone(), kind: ChildKind::Module { module: idx, ports: bound }, dont_touch });
+            return Ok(Child { name: inst.name.clone(), kind: ChildKind::Module { module: idx, ports: bound }, dont_touch, src: None });
         }
         let Some(cell) = self.leaf(&inst.cell) else {
             let full = if path.is_empty() { inst.name.clone() } else { format!("{path}/{}", inst.name) };
@@ -1695,7 +1802,7 @@ impl<S: Sink> Linker<'_, S> {
             }
         }
         let pins = self.bind_pins(f, m, inst, &ports, path);
-        Ok(Child { name: inst.name.clone(), kind: ChildKind::Leaf { master: inst.cell.clone(), pins }, dont_touch })
+        Ok(Child { name: inst.name.clone(), kind: ChildKind::Leaf { master: inst.cell.clone(), pins }, dont_touch, src: inst.src.clone() })
     }
 
     /// `makeDbNets` after the walk: each net at its first naming alias, its terminals then its
@@ -1768,6 +1875,46 @@ impl<S: Sink> Linker<'_, S> {
     }
 }
 
+/// `dbModule::makeUniqueDbModule(cell, inst, block)`: the cell's own name when free; else
+/// `<cell>_<inst>`, then `<cell>_<inst>_<N>` with a counter per base name (`module_name_id_map_`)
+/// that starts at 1 and is bumped on every try, until a free name. `inst` is the instance's LOCAL
+/// name. A name is taken by any module created before — a renamed one included — so a real
+/// module named `sub_x` met after `sub` was renamed `sub_x` becomes `sub_x_x`.
+fn unique_module_name(cell: &str, inst: &str, taken: &mut HashSet<String>, ids: &mut HashMap<String, u32>) -> String {
+    if taken.insert(cell.to_string()) {
+        return cell.to_string();
+    }
+    let base = format!("{cell}_{inst}");
+    loop {
+        let id = ids.entry(base.clone()).or_insert(0);
+        let full = if *id > 0 { format!("{base}_{id}") } else { base.clone() };
+        *id += 1;
+        if taken.insert(full.clone()) {
+            return full;
+        }
+    }
+}
+
+/// `Verilog2db::kLineInfoRe` = `^(.*):(\d+)\.\d+-\d+\.\d+$` (ECMAScript, `.` not a line
+/// terminator): (file, line). The greedy `(.*)` ends at the LAST `:` — no earlier one can match,
+/// as the tail admits no `:` — so `a.v:1.2-3.4|b.v:5.6-7.8` is file `a.v:1.2-3.4|b.v`, line 5.
+fn line_info(attr: &str) -> Option<(&str, &str)> {
+    let colon = attr.rfind(':')?;
+    let (file, tail) = (&attr[..colon], &attr[colon + 1..]);
+    if file.contains(['\n', '\r']) {
+        return None;
+    }
+    let digits = |x: &str| !x.is_empty() && x.bytes().all(|c| c.is_ascii_digit());
+    let (l1, rest) = tail.split_once('-')?;
+    let (a, b) = l1.split_once('.')?;
+    let (c, d) = rest.split_once('.')?;
+    if digits(a) && digits(b) && digits(c) && digits(d) {
+        Some((file, a))
+    } else {
+        None
+    }
+}
+
 /// `dont_touch` attribute value: true/yes or a non-zero integer sets it, false/no or zero does
 /// not; anything else is warning 2059 and ignored.
 fn dont_touch_value(v: &str, report: &mut LinkReport, path: &str, inst: &str) -> bool {
@@ -1807,6 +1954,9 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
     let mut instance_count = vec![0u32; modules.len()];
     let mut buf = Vec::new();
     let mut used: HashSet<String> = HashSet::new();
+    let mut implements_operator = Vec::with_capacity(modules.len());
+    // A port direction other than unknown, per module (`dbVerilogNetwork::isBlackBox` is false).
+    let mut not_black_box = Vec::with_capacity(modules.len());
     for e in &modules {
         buf.resize((e.end - e.start) as usize, 0);
         file.read_exact_at(&mut buf, e.start).map_err(|x| format!("{path}: {x}"))?;
@@ -1814,6 +1964,8 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
         if let Some((kind, line)) = &m.unsupported {
             return Err(format!("{path}: line {line}: unsupported net type '{kind}'"));
         }
+        implements_operator.push(m.implements_operator.clone());
+        not_black_box.push(m.ports().0.iter().any(|p| p.dir != Dir::Unknown));
         for st in &m.stmts {
             if let Stmt::Inst(i) = st {
                 if let Some(&k) = module_by_name.get(&i.cell) {
@@ -1866,6 +2018,12 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
         report: LinkReport { top: top.clone(), modules_in_file: modules.len(), ..Default::default() },
         buf: Vec::new(),
         modules,
+        // The block's top module bears the top's name.
+        module_names: HashSet::from([top.clone()]),
+        module_name_ids: HashMap::new(),
+        implements_operator,
+        src_file_ids: HashMap::new(),
+        omit_filename_prop: opts.omit_filename_prop,
     };
     lk.sink.block(&top)?;
     // `recordBusPortsOrder`: a bool property per top bus port, true when declared msb first (R14).
@@ -1879,8 +2037,20 @@ pub fn link_file<S: Sink>(path: &str, opts: &LinkOptions, sink: &mut S) -> Resul
     // Every module's own warnings (as the reference prints them at read time).
     lk.report.warnings.extend(topm.warnings.iter().cloned());
     drop(topm);
-    lk.instance(top_idx, "", &[])?;
+    lk.instance(top_idx, "", &[], "")?;
     lk.nets()?;
+    // `processUnusedCells`: a module of the file with `implements_operator` that no module of
+    // the database is named after (and not a black box) is linked into a CHILD BLOCK of its own.
+    // Not built yet: refused rather than left out.
+    for (i, m) in lk.modules.iter().enumerate() {
+        let live = lk.module_by_name.get(&m.name) == Some(&i);
+        if live && lk.implements_operator[i].is_some() && not_black_box[i] && !lk.module_names.contains(&m.name) {
+            return Err(format!(
+                "module {} (implements_operator) is not used under {top}; the reference links such a module into a child block, which is not supported yet",
+                m.name
+            ));
+        }
+    }
     Ok(lk.report)
 }
 
@@ -1915,8 +2085,35 @@ impl Sink for DbSink<'_> {
         }
         Some(self.db.master_get_m_terms(master))
     }
-    fn inst(&mut self, master: &str, name: &str) -> Result<(), String> {
-        self.db.create_inst(master, name).map_err(|x| format!("instance {name} of {master}: {x}"))
+    fn module(&mut self, name: &str) -> Result<(), String> {
+        self.db.module_create(name).map_err(|x| format!("module {name}: {x}"))
+    }
+    fn mod_inst(&mut self, parent: &str, module: &str, name: &str) -> Result<(), String> {
+        self.db.mod_inst_create(parent, module, name).map_err(|x| format!("module instance {name} of {module}: {x}"))
+    }
+    fn inst(&mut self, master: &str, name: &str, module: &str) -> Result<(), String> {
+        self.db.create_inst_in_module(master, name, module).map_err(|x| format!("instance {name} of {master}: {x}"))
+    }
+    fn module_done(&mut self, module: &str) -> Result<(), String> {
+        self.db.module_unreverse_lists(module).map_err(e)
+    }
+    fn string_property(&mut self, owner: Owner<'_>, key: &str, value: &str) -> Result<(), String> {
+        let r = match owner {
+            Owner::Block => self.db.create_string_property("block", "", key, value),
+            Owner::Inst(i) => self.db.create_string_property("inst", i, key, value),
+            Owner::Module(m) => self.db.create_string_property("module", m, key, value),
+            Owner::ModInst(parent, name) => self.db.create_mod_inst_string_property(parent, name, key, value),
+        };
+        r.map_err(e)
+    }
+    fn int_property(&mut self, owner: Owner<'_>, key: &str, value: i32) -> Result<(), String> {
+        let r = match owner {
+            Owner::Block => self.db.create_int_property("block", "", key, value),
+            Owner::Inst(i) => self.db.create_int_property("inst", i, key, value),
+            Owner::Module(m) => self.db.create_int_property("module", m, key, value),
+            Owner::ModInst(..) => return Err(format!("int property {key} on a module instance: not used by the link")),
+        };
+        r.map_err(e)
     }
     fn net(&mut self, name: &str, sig: SigType) -> Result<(), String> {
         self.db.create_net(name).map_err(|x| format!("net {name}: {x}"))?;
@@ -1973,6 +2170,23 @@ mod tests {
         bterms: Vec<(String, IoType, String)>,
         dont_touch: Vec<String>,
         props: Vec<(String, bool)>,
+        /// (instance, owning module) per instance.
+        owner: Vec<(String, String)>,
+        modules: Vec<String>,
+        /// (parent, module, name) per module instance.
+        mod_insts: Vec<(String, String, String)>,
+        done: Vec<String>,
+        /// `<owner> <key>=<value>` per property, in creation order.
+        sprops: Vec<String>,
+    }
+
+    fn owner_str(o: Owner<'_>) -> String {
+        match o {
+            Owner::Block => "block".to_string(),
+            Owner::Inst(i) => format!("inst:{i}"),
+            Owner::Module(m) => format!("module:{m}"),
+            Owner::ModInst(p, n) => format!("modinst:{p}:{n}"),
+        }
     }
 
     fn lib_pins(m: &str) -> Option<Vec<String>> {
@@ -1995,8 +2209,30 @@ mod tests {
         fn master_pins(&mut self, master: &str) -> Option<Vec<String>> {
             lib_pins(master)
         }
-        fn inst(&mut self, master: &str, name: &str) -> Result<(), String> {
+        fn module(&mut self, name: &str) -> Result<(), String> {
+            assert!(!self.modules.iter().any(|m| m == name), "module {name} created twice");
+            self.modules.push(name.to_string());
+            Ok(())
+        }
+        fn mod_inst(&mut self, parent: &str, module: &str, name: &str) -> Result<(), String> {
+            self.mod_insts.push((parent.to_string(), module.to_string(), name.to_string()));
+            Ok(())
+        }
+        fn inst(&mut self, master: &str, name: &str, module: &str) -> Result<(), String> {
             self.insts.push(format!("{name} {master}"));
+            self.owner.push((name.to_string(), module.to_string()));
+            Ok(())
+        }
+        fn module_done(&mut self, module: &str) -> Result<(), String> {
+            self.done.push(module.to_string());
+            Ok(())
+        }
+        fn string_property(&mut self, owner: Owner<'_>, key: &str, value: &str) -> Result<(), String> {
+            self.sprops.push(format!("{} {key}={value}", owner_str(owner)));
+            Ok(())
+        }
+        fn int_property(&mut self, owner: Owner<'_>, key: &str, value: i32) -> Result<(), String> {
+            self.sprops.push(format!("{} {key}={value}", owner_str(owner)));
             Ok(())
         }
         fn net(&mut self, name: &str, sig: SigType) -> Result<(), String> {
@@ -2345,9 +2581,174 @@ endmodule
     /// The body cache changes nothing but the parse count.
     #[test]
     fn cache_changes_only_the_parse_count() {
-        let a = link_opts(PROBE1, &LinkOptions { top: None, cache_bytes: 0 });
-        let b = link_opts(PROBE1, &LinkOptions { top: None, cache_bytes: 1 << 20 });
+        let a = link_opts(PROBE1, &LinkOptions { top: None, cache_bytes: 0, ..Default::default() });
+        let b = link_opts(PROBE1, &LinkOptions { top: None, cache_bytes: 1 << 20, ..Default::default() });
         assert_eq!(a.insts, b.insts);
         assert_eq!(format!("{:?}", a.nets), format!("{:?}", b.nets));
+    }
+
+    /// Probe 5 (phase B0), cells renamed to the recording library.
+    const PROBE5: &str = r#"
+(* implements_operator = "add" *)
+module sub (a, y);
+  input a; output y;
+  (* src = "rtl/sub.v:7.3-9.5" *)
+  INV i0 (.A(a), .Y(y));
+  (* src = "rtl/other.v:12.1-12.40" *)
+  BUF b1 (.A(a), .Y());
+  (* src = "not-a-location" *)
+  BUF b0 (.A(a), .Y());
+endmodule
+module sub_x (a, y);
+  input a; output y;
+  (* src = "rtl/sub.v:30.2-31.9|rtl/b.v:4.1-4.2" *)
+  INV k (.A(a), .Y(y));
+endmodule
+module wrap (a, y);
+  input a; output y;
+  wire w;
+  sub x (.a(a), .y(w));
+  BUF zb (.A(w), .Y(y));
+  INV ab (.A(w), .Y());
+endmodule
+module top (a, y1, y2, y3, y4);
+  input a; output y1, y2, y3, y4;
+  wrap p2 (.a(a), .y(y2));
+  wrap p1 (.a(a), .y(y1));
+  sub_x x (.a(a), .y(y3));
+  sub q (.a(a), .y(y4));
+  (* src = "rtl/top.v:3.3-3.9" *)
+  INV t (.A(a), .Y());
+endmodule
+"#;
+
+    /// B0 `makeUniqueDbModule`, in `makeDbModule`'s depth-first R1 order: `p1` takes `wrap`,
+    /// `p1/x` takes `sub`, `p2` is `wrap_p2`, `p2/x` is `sub_x` — taken BEFORE the real module
+    /// `sub_x` is met, which then becomes `sub_x_x`. Renamed modules carry `original_name`.
+    #[test]
+    fn b0_modules_uniquely_named_in_creation_order() {
+        let r = link(PROBE5);
+        assert_eq!(r.modules, ["wrap", "sub", "wrap_p2", "sub_x", "sub_q", "sub_x_x"]);
+        let orig: Vec<&String> = r.sprops.iter().filter(|p| p.contains("original_name")).collect();
+        assert_eq!(
+            orig,
+            [
+                "module:wrap_p2 original_name=wrap",
+                "module:sub_x original_name=sub",
+                "module:sub_q original_name=sub",
+                "module:sub_x_x original_name=sub_x"
+            ]
+        );
+        let mi: Vec<String> = r.mod_insts.iter().map(|(p, m, n)| format!("{p}>{n}:{m}")).collect();
+        assert_eq!(mi, [">p1:wrap", "wrap>x:sub", ">p2:wrap_p2", "wrap_p2>x:sub_x", ">q:sub_q", ">x:sub_x_x"]);
+    }
+
+    /// `_N` counter of `makeUniqueDbModule`: per base name `<cell>_<inst>`, starting at 1 once the
+    /// base itself is taken.
+    #[test]
+    fn b0_unique_name_counter() {
+        let mut taken = HashSet::from(["top".to_string()]);
+        let mut ids = HashMap::new();
+        let got: Vec<String> = ["x", "x", "x", "y"].iter().map(|i| unique_module_name("sub", i, &mut taken, &mut ids)).collect();
+        assert_eq!(got, ["sub", "sub_x", "sub_x_1", "sub_y"]);
+        // A real module named like a counter result is skipped over, the counter still bumped.
+        taken.insert("sub_y_1".to_string());
+        assert_eq!(unique_module_name("sub", "y", &mut taken, &mut ids), "sub_y_2");
+        // The top's own name is taken from the start.
+        assert_eq!(unique_module_name("top", "u", &mut taken, &mut ids), "top_u");
+    }
+
+    /// B0 ownership: each leaf is created IN its module (`dbInst::create(..., module)`), the top
+    /// module as `""`; each module's lists are finished after its children (post-order), the top
+    /// last.
+    #[test]
+    fn b0_leaves_owned_by_their_module() {
+        let r = link(PROBE5);
+        let own: Vec<String> = r.owner.iter().map(|(i, m)| format!("{i}@{m}")).collect();
+        assert_eq!(
+            own,
+            [
+                "p1/ab@wrap", "p1/x/b0@sub", "p1/x/b1@sub", "p1/x/i0@sub", "p1/zb@wrap", "p2/ab@wrap_p2", "p2/x/b0@sub_x",
+                "p2/x/b1@sub_x", "p2/x/i0@sub_x", "p2/zb@wrap_p2", "q/b0@sub_q", "q/b1@sub_q", "q/i0@sub_q", "t@", "x/k@sub_x_x"
+            ]
+        );
+        assert_eq!(r.done, ["sub", "wrap", "sub_x", "wrap_p2", "sub_q", "sub_x_x", ""]);
+    }
+
+    /// B0 `storeLineInfo`: `src` always; `src_file_id` / `src_file_line` only when the value
+    /// reads as a location, file ids in order of FIRST USE with a block `src_file_<id>`; the
+    /// greedy file part keeps everything up to the last `:`. `implements_operator` (a MODULE
+    /// attribute) lands on each of its module instances.
+    #[test]
+    fn b0_src_and_operator_properties() {
+        let r = link(PROBE5);
+        let p1: Vec<&String> = r.sprops.iter().filter(|p| p.starts_with("inst:p1/") || p.starts_with("block") || p.contains("implements")).collect();
+        assert_eq!(
+            &p1[..8],
+            [
+                "modinst:wrap:x implements_operator=add",
+                "inst:p1/x/b0 src=not-a-location",
+                "inst:p1/x/b1 src=rtl/other.v:12.1-12.40",
+                "block src_file_0=rtl/other.v",
+                "inst:p1/x/b1 src_file_id=0",
+                "inst:p1/x/b1 src_file_line=12",
+                "inst:p1/x/i0 src=rtl/sub.v:7.3-9.5",
+                "block src_file_1=rtl/sub.v",
+            ]
+        );
+        assert!(r.sprops.contains(&"block src_file_3=rtl/sub.v:30.2-31.9|rtl/b.v".to_string()));
+        assert!(r.sprops.contains(&"inst:x/k src_file_line=4".to_string()));
+        assert!(r.sprops.contains(&"modinst::q implements_operator=add".to_string()));
+        assert_eq!(r.sprops.iter().filter(|p| p.contains("implements_operator")).count(), 3);
+        // `-omit_filename_prop`: none of the three.
+        let o = link_opts(PROBE5, &LinkOptions { omit_filename_prop: true, ..Default::default() });
+        assert!(!o.sprops.iter().any(|p| p.contains("src")), "{:?}", o.sprops);
+    }
+
+    #[test]
+    fn b0_line_info_regex() {
+        assert_eq!(line_info("a.v:12.3-14.5"), Some(("a.v", "12")));
+        assert_eq!(line_info("a.v:1.2-3.4|b.v:5.6-7.8"), Some(("a.v:1.2-3.4|b.v", "5")));
+        assert_eq!(line_info(":1.2-3.4"), Some(("", "1")));
+        for bad in ["a.v:12.3-14", "a.v:12-14.5", "a.v", "a.v:1.2-3.4x", "a.v:1.2.3-4.5", "a\nb.v:1.2-3.4", "a.v:1.2-3.4-5"] {
+            assert_eq!(line_info(bad), None, "{bad:?}");
+        }
+    }
+
+    /// `processUnusedCells`: an `implements_operator` module no database module is named after
+    /// becomes a child block in the reference — refused here until built.
+    #[test]
+    fn b0_unused_operator_module_refused() {
+        let src = format!("{PROBE5}\n(* implements_operator = \"mul\" *)\nmodule unused_op (a, y);\n  input a; output y;\n  INV u (.A(a), .Y(y));\nendmodule\n");
+        let mut rec = Rec::default();
+        let path = tmp(&src);
+        let r = link_file(path.to_str().unwrap(), &LinkOptions { top: Some("top".into()), ..Default::default() }, &mut rec);
+        let _ = std::fs::remove_file(&path);
+        assert!(r.expect_err("refused").contains("unused_op"));
+        // Unused WITHOUT the attribute: no child block, accepted.
+        let src = format!("{PROBE5}\nmodule unused_plain (a, y);\n  input a; output y;\n  INV u (.A(a), .Y(y));\nendmodule\n");
+        let _ = link_opts(&src, &LinkOptions { top: Some("top".into()), ..Default::default() });
+    }
+
+    /// The top's own module bears the top's name from the start: a child module whose
+    /// `<cell>_<inst>` spells the top's name takes the `_1` after it. An EMPTY `src` makes no
+    /// property (`storeLineInfo` returns on an empty attribute).
+    #[test]
+    fn b0_top_name_taken_and_empty_src() {
+        let src = r#"
+module sub (a, y);
+  input a; output y;
+  (* src = "" *)
+  INV i (.A(a), .Y(y));
+endmodule
+module sub_q (a, y1, y2);
+  input a; output y1, y2;
+  sub p (.a(a), .y(y1));
+  sub q (.a(a), .y(y2));
+endmodule
+"#;
+        let r = link(src);
+        assert_eq!(r.modules, ["sub", "sub_q_1"]);
+        assert!(r.sprops.iter().all(|p| !p.contains("src")), "{:?}", r.sprops);
     }
 }

@@ -3549,6 +3549,41 @@ impl Db {
     pub fn dump_hierarchy(&self) -> Result<Vec<String>> {
         Ok(sys::dump_hierarchy(self.r())?)
     }
+    /// `dbModule::create(block, name)`; an error when the name is taken.
+    pub fn module_create(&mut self, name: &str) -> Result<()> {
+        Ok(sys::module_create(self.r(), name)?)
+    }
+    /// `dbModInst::create(parent, module, name)`; `""` is the top module.
+    pub fn mod_inst_create(&mut self, parent: &str, module: &str, name: &str) -> Result<()> {
+        Ok(sys::mod_inst_create(self.r(), parent, module, name)?)
+    }
+    /// `dbInst::create(block, master, name, false, module)`; `""` is the top module.
+    pub fn create_inst_in_module(&mut self, master: &str, name: &str, module: &str) -> Result<()> {
+        Ok(sys::create_inst_in_module(self.r(), master, name, module)?)
+    }
+    /// A module's child and instance lists put back in creation order when odb holds them
+    /// reversed (the end of `Verilog2db::makeChildInsts`).
+    pub fn module_unreverse_lists(&mut self, module: &str) -> Result<()> {
+        Ok(sys::module_unreverse_lists(self.r(), module)?)
+    }
+    /// `dbStringProperty::create` on a `"block"`, `"inst"` or `"module"` owner;
+    /// an error when the owner already has it.
+    pub fn create_string_property(&mut self, kind: &str, owner: &str, name: &str, value: &str) -> Result<()> {
+        Ok(sys::create_string_property(self.r(), kind, owner, name, value)?)
+    }
+    /// `dbStringProperty::create` on the module instance `name` of module `parent` (`""` = top).
+    pub fn create_mod_inst_string_property(&mut self, parent: &str, name: &str, key: &str, value: &str) -> Result<()> {
+        Ok(sys::create_mod_inst_string_property(self.r(), parent, name, key, value)?)
+    }
+    /// `dbIntProperty::create`, owners as [`create_string_property`](Self::create_string_property).
+    pub fn create_int_property(&mut self, kind: &str, owner: &str, name: &str, value: i32) -> Result<()> {
+        Ok(sys::create_int_property(self.r(), kind, owner, name, value)?)
+    }
+    /// The module view and the properties as lines (modules, module instances, block and
+    /// instance properties, child blocks) — the hierarchical-import gate's dump format.
+    pub fn dump_modules(&self) -> Result<Vec<String>> {
+        Ok(sys::dump_modules(self.r())?)
+    }
     /// `dbNet::canMergeNet`: neither net is dont_touch, nor any instance on `removed`.
     pub fn net_can_merge(&self, survivor: &str, removed: &str) -> Result<bool> {
         Ok(sys::net_can_merge(self.r(), survivor, removed)?)
