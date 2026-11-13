@@ -65,6 +65,8 @@ pub mod oasis;
 pub mod report;
 pub mod verilog;
 #[cfg(unix)]
+pub mod verilog_link;
+#[cfg(unix)]
 pub mod view3d;
 
 /// Errors from the OpenDB layer or path handling.
