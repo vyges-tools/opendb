@@ -87,3 +87,12 @@ fn a_check_that_can_fail_does_fail() {
     assert!(db.inst_names().iter().any(|i| i == "ff_dead"));
     assert!(db.net_names().iter().any(|n| n == "l1"));
 }
+
+// Reference rule (read_verilog + link_design, `Verilog2db::makeBlock`): the chip is created
+// unnamed (`dbChip::create(db, tech)`, name defaults to empty); only the block takes the top's name.
+#[test]
+fn the_chip_is_unnamed_and_the_block_takes_the_top() {
+    let db = Db::open(imported("chip-name").to_str().unwrap()).unwrap();
+    assert_eq!(db.chip_get_name(""), "");
+    assert_eq!(db.block_name(), "top");
+}

@@ -2401,10 +2401,13 @@ fn e(x: crate::Error) -> String {
 
 impl Sink for DbSink<'_> {
     /// `makeBlock`: a chip if none, the block, the DEF units from the LEF and `[` `]` bus
-    /// delimiters — the same calls as the flat import.
+    /// delimiters.
+    /// 🔑 Reference rule: `makeBlock` creates the chip with `dbChip::create(db, tech)`, whose name
+    /// defaults to empty; only the BLOCK takes the top's name. A chip named after the top was
+    /// the one byte-level difference between our handoff and the reference's.
     fn block(&mut self, top: &str) -> Result<(), String> {
-        self.db.create_chip(top, "", "DIE").map_err(e)?;
-        self.db.create_chip_block(top, top).map_err(e)?;
+        self.db.create_chip("", "", "DIE").map_err(e)?;
+        self.db.create_chip_block("", top).map_err(e)?;
         let units = self.db.tech_get_lef_units();
         if units > 0 {
             self.db.block_set_def_units(units).map_err(e)?;

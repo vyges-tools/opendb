@@ -2973,8 +2973,8 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                            \n  instantiates; for a one-module file, that module). Each module instance gets its\n\
                            \n  own uniquely named module and module instance, each leaf is owned by its module, and a Yosys src attribute becomes\n\
                            \n  src / src_file_id / src_file_line instance properties (--omit-filename-prop: none).\n\
-                           \n  --hier (link_design -hier) also makes module ports and module-instance pins; module\n\
-                           \n  nets and the hierarchy flag are not built yet.");
+                           \n  --hier (link_design -hier) also makes module ports, module-instance pins and\n\
+                           \n  module nets; the hierarchy flag is not set yet.");
                 return Ok(());
             }
             other => return Err(format!("import: unknown argument: {other}").into()),
