@@ -139,6 +139,14 @@ commands:
                       cuts of the named classes, prlSpacing when their PRLs fall in the two ranges,
                       nonPrlSpacing otherwise; every other form listed as not checked (report).
 
+  check-mask-balance        (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... --def <f.def>)
+                            --balance-window <um> --balance-step <um> --balance-range <lo>,<hi>
+                            [--report <f.json>] [--fail-on-findings]
+                      Mask-1 share of the metal on every multi-mask routing layer, per window of the
+                      die (design of every mask, uncoloured design and cell metal, fill of every
+                      mask; merged per category): each window outside the closed range is reported.
+                      No defaults: window, step and range are required (report).
+
   read-3dblox               --input <f.3dbx> --output <out.odb> [--into <in.odb>]
                       Read a 3Dblox assembly (the 2.5D/3D interchange format) into a
                       database, so it can be linted or queried. Reports anything the
@@ -247,6 +255,7 @@ fn run() -> Result<(), Fail> {
         "check-enclosure-edge" => check_enclosure_edge(args),
         "check-eol-enclosure" => check_eol_enclosure(args),
         "check-prl-two-sides" => check_prl_two_sides(args),
+        "check-mask-balance" => check_mask_balance(args),
         "read-def" => read_def(args),
         "import" => import(args),
         "apply-def-template" => apply_def_template(args),
@@ -319,6 +328,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "check-enclosure-edge",
     "check-eol-enclosure",
     "check-prl-two-sides",
+    "check-mask-balance",
     "read-def",
     "import",
     "apply-def-template",
@@ -2744,6 +2754,129 @@ fn check_prl_two_sides(mut args: impl Iterator<Item = String>) -> Result<(), Fai
     println!("{text}");
     if fail_on_findings && !rep.findings.is_empty() {
         return Err(format!("check-prl-two-sides: {} finding(s)", rep.findings.len()).into());
+    }
+    Ok(())
+}
+
+const CHECK_MASK_BALANCE_DESCRIBE: &str = r#"{
+  "step": "check-mask-balance",
+  "summary": "Pre-screen per-window mask balance on every multi-mask routing layer: over windows of the die (side --balance-window, stepped --balance-step, clipped at the die edge), the mask-1 share = mask-1 area / all metal area (every mask, uncoloured design and cell metal, fill of every mask; each category merged), reported for every window outside the closed --balance-range. Reports only; changes nothing. No reference tool checks this rule.",
+  "unix_only": true,
+  "args": [
+    { "name": "--input", "kind": "input", "type": "path", "required": false, "description": "design .odb (or give --lef and --def)" },
+    { "name": "--lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "tech LEF, then cell LEFs, read into a new database" },
+    { "name": "--def", "kind": "input", "type": "path", "required": false, "description": "DEF read after the --lef files (required with --lef)" },
+    { "name": "--balance-window", "kind": "param", "type": "float", "required": true, "description": "window side, microns" },
+    { "name": "--balance-step", "kind": "param", "type": "float", "required": true, "description": "window step, microns (no larger than the window)" },
+    { "name": "--balance-range", "kind": "param", "type": "string", "required": true, "description": "allowed mask-1 share as lo,hi (closed, 0 <= lo <= hi <= 1)" },
+    { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
+    { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when a window is outside the range" }
+  ]
+}"#;
+
+/// `check-mask-balance (--input <f.odb> | --lef <tech.lef>... --def <f.def>) --balance-window <um>
+/// --balance-step <um> --balance-range <lo>,<hi> [--report <f.json>] [--fail-on-findings] | --describe`.
+fn check_mask_balance(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    let (mut input, mut def, mut report) = (None, None, None);
+    let (mut window, mut step, mut range) = (None, None, None);
+    let mut lefs: Vec<String> = Vec::new();
+    let mut fail_on_findings = false;
+    let um = |flag: &str, v: Option<String>| -> Result<f64, Fail> {
+        let v = v.ok_or(format!("check-mask-balance: {flag} needs a value in microns"))?;
+        v.parse::<f64>().map_err(|_| format!("check-mask-balance: {flag}: not a number: {v}").into())
+    };
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--input" | "-i" => input = args.next(),
+            "--lef" => lefs.push(args.next().ok_or("check-mask-balance: --lef needs a path")?),
+            "--def" => def = args.next(),
+            "--report" => report = args.next(),
+            "--balance-window" => window = Some(um("--balance-window", args.next())?),
+            "--balance-step" => step = Some(um("--balance-step", args.next())?),
+            "--balance-range" => {
+                let v = args.next().ok_or("check-mask-balance: --balance-range needs lo,hi")?;
+                let parts: Vec<&str> = v.split(',').collect();
+                let [lo, hi] = parts[..] else {
+                    return Err(format!("check-mask-balance: --balance-range: expected lo,hi, got {v}").into());
+                };
+                match (lo.trim().parse::<f64>(), hi.trim().parse::<f64>()) {
+                    (Ok(lo), Ok(hi)) => range = Some((lo, hi)),
+                    _ => return Err(format!("check-mask-balance: --balance-range: not numbers: {v}").into()),
+                }
+            }
+            "--fail-on-findings" => fail_on_findings = true,
+            "--describe" => {
+                println!("{CHECK_MASK_BALANCE_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb check-mask-balance (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... --def <f.def>)\n\
+                       \x20                                 --balance-window <um> --balance-step <um> --balance-range <lo>,<hi>\n\
+                       \x20                                 [--report <f.json>] [--fail-on-findings]");
+                return Ok(());
+            }
+            other => return Err(format!("check-mask-balance: unknown argument: {other}").into()),
+        }
+    }
+    // No defaults: the window, step and range are the rule's, and no value is assumed.
+    let (Some(window), Some(step), Some((lo, hi))) = (window, step, range) else {
+        return Err("check-mask-balance: give --balance-window, --balance-step and --balance-range".into());
+    };
+    let db = match (input, lefs.is_empty(), def) {
+        (Some(i), true, None) => Db::open(&i)?,
+        (None, false, Some(d)) => {
+            let mut db = Db::new();
+            for l in &lefs {
+                db.read_lef(l)?;
+            }
+            db.read_def(&d, "default")?;
+            db
+        }
+        _ => return Err("check-mask-balance: give --input <f.odb>, or --lef ... --def <f.def>".into()),
+    };
+    let dbu = f64::from(db.dbu_per_micron());
+    let to_dbu = |v: f64| (v * dbu).round();
+    let (w, s) = (to_dbu(window), to_dbu(step));
+    if !(1.0..=f64::from(i32::MAX)).contains(&w) || !(1.0..=f64::from(i32::MAX)).contains(&s) {
+        return Err(format!("check-mask-balance: window {window} um and step {step} um must be at least 1 DBU").into());
+    }
+    let opts = vyges_opendb::masks_balance::BalanceOptions::new(w as i32, s as i32, lo, hi)
+        .map_err(|e| format!("check-mask-balance: {e}"))?;
+    let rep = vyges_opendb::masks_balance::check_mask_balance(&db, &opts)?;
+    // 🔑 A pass word never comes from a run that did nothing: each case is its own status.
+    let status = if rep.layers.is_empty() {
+        "no_multi_mask_layers"
+    } else if rep.windows_checked() == 0 {
+        "nothing_checkable"
+    } else {
+        "checked"
+    };
+    let json = serde_json::json!({
+        "tool": "vyges-opendb",
+        "command": "check-mask-balance",
+        "status": status,
+        "window_dbu": opts.window,
+        "step_dbu": opts.step,
+        "range": [opts.lo, opts.hi],
+        "die": rep.die,
+        "windows_checked": rep.windows_checked(),
+        "windows_outside": rep.findings.len(),
+        "layers": rep.layers.iter().map(|l| serde_json::json!({
+            "layer": l.layer, "masks": l.num_masks,
+            "design_shapes": l.design_shapes, "fill_shapes": l.fill_shapes,
+            "windows": l.windows, "windows_checked": l.windows_checked,
+            "windows_empty": l.windows_empty, "windows_outside": l.windows_outside,
+            "min_share": l.min_share, "max_share": l.max_share,
+        })).collect::<Vec<_>>(),
+        "findings": rep.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),
+    });
+    let text = serde_json::to_string_pretty(&json)?;
+    if let Some(r) = report {
+        std::fs::write(&r, &text)?;
+    }
+    println!("{text}");
+    if fail_on_findings && !rep.findings.is_empty() {
+        return Err(format!("check-mask-balance: {} window(s) outside the range", rep.findings.len()).into());
     }
     Ok(())
 }

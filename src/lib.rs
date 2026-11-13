@@ -55,6 +55,7 @@ pub mod joint_corner;
 pub mod masks;
 pub mod masks_check;
 pub mod masks_geom;
+pub mod masks_balance;
 pub mod prl_two_sides;
 #[cfg(unix)]
 pub mod nets3d;
@@ -558,6 +559,16 @@ pub struct RuledShape {
     pub rect: (i32, i32, i32, i32),
     pub min_spacing: i32,
     pub effective_width: i32,
+}
+
+/// One fill rectangle ([`Db::fill_rects`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FillRect {
+    /// Tech layer number.
+    pub layer: i64,
+    /// `dbFill::maskNumber()`; 0: none.
+    pub mask: u8,
+    pub rect: [i32; 4],
 }
 
 #[cfg(unix)]
@@ -2669,6 +2680,19 @@ impl Db {
     /// Number of fill shapes in the block.
     pub fn num_fills(&self) -> Result<usize> {
         Ok(sys::num_fills(self.r())?)
+    }
+    /// Every fill of the block with its layer and mask, in odb's `getFills()` order. A fill
+    /// without a tech layer is skipped.
+    pub fn fill_rects(&self) -> Result<Vec<FillRect>> {
+        Ok(sys::fill_records(self.r())?
+            .chunks(6)
+            .filter(|c| c.len() == 6)
+            .map(|c| FillRect {
+                layer: c[0],
+                mask: u8::try_from(c[1]).unwrap_or(u8::MAX),
+                rect: [c[2] as i32, c[3] as i32, c[4] as i32, c[5] as i32],
+            })
+            .collect())
     }
     /// Destroy every fill; returns the count removed. Fill is regenerated, not patched.
     /// ⛔ **NOT TRANSACTIONAL** — geometry is not journaled; see [`eco_try`](Self::eco_try).
