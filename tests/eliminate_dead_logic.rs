@@ -33,8 +33,10 @@ fn run(args: &[&str]) -> String {
     stderr
 }
 
-fn imported() -> PathBuf {
-    let odb = tmp("in.odb");
+/// Each test imports to its own file: the tests of this binary run in parallel in one process, so
+/// a shared `in.odb` would be rewritten by one test while another reads it.
+fn imported(test: &str) -> PathBuf {
+    let odb = tmp(&format!("{test}-in.odb"));
     run(&[
         "import",
         "--lef",
@@ -54,7 +56,7 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 
 #[test]
 fn removes_what_reaches_no_port_macro_or_dont_touch() {
-    let input = imported();
+    let input = imported("removes");
     let output = tmp("out.odb");
     let log = run(&["eliminate-dead-logic", "--input", input.to_str().unwrap(), "--output", output.to_str().unwrap()]);
     // The reference's own report line.
@@ -70,7 +72,7 @@ fn removes_what_reaches_no_port_macro_or_dont_touch() {
 
 #[test]
 fn a_second_run_removes_nothing() {
-    let input = imported();
+    let input = imported("second-run");
     let once = tmp("once.odb");
     let twice = tmp("twice.odb");
     run(&["eliminate-dead-logic", "--input", input.to_str().unwrap(), "--output", once.to_str().unwrap()]);
@@ -81,7 +83,7 @@ fn a_second_run_removes_nothing() {
 #[test]
 fn a_check_that_can_fail_does_fail() {
     // Without the pass, the dead cells are still there: the assertion above is not vacuous.
-    let db = Db::open(imported().to_str().unwrap()).unwrap();
+    let db = Db::open(imported("control").to_str().unwrap()).unwrap();
     assert!(db.inst_names().iter().any(|i| i == "ff_dead"));
     assert!(db.net_names().iter().any(|n| n == "l1"));
 }
