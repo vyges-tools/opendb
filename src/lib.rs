@@ -3459,8 +3459,14 @@ impl Db {
     /// `iterm_connect|I/P|N|pins`,
     /// `iterm_disconnect|I/P|N|pins`, `iterm_destroy|I/P|N`, `bterm_create|B`, `bterm_destroy|B`,
     /// `bterm_connect|B|N|pins`, `bterm_disconnect|B|N|pins` — `pins`: the net's terminals at
-    /// that moment (`I/P`, then ports), comma-separated; `terms`: the instance's terminals
-    /// `T=net=pins`, `;`-separated. Restarting clears the log.
+    /// that moment (`I/P`, then ports), comma-separated; on a connect or disconnect of a terminal
+    /// that cannot drive (a load), the net's `drivers` only (a load's wires come from them; the
+    /// whole net per load made a fanout repair O(fanout²)); `terms`: the instance's terminals
+    /// `T=net=drivers`, `;`-separated, `drivers` the net's terminals that can drive it (an
+    /// instance pin the LEF does not call INPUT, a port it does not call OUTPUT — a swap's
+    /// readers need a term net's drivers only; the whole net cost a resize on a clock net every
+    /// pin of it), none for a supply terminal (`USE POWER` / `GROUND`: no timing port).
+    /// Restarting clears the log.
     pub fn edit_log_start(&self) -> Result<()> {
         Ok(sys::edit_log_start(self.r())?)
     }
