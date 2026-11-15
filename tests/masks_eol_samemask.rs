@@ -10,7 +10,7 @@
 //! Ours runs with the reference's two readings ([`EolWithin::Reference`],
 //! [`EolTwoSides::Reference`]) and must print the same lines. The DEFAULT readings are the written
 //! ones ([`EolWithin::AsWritten`], [`EolTwoSides::AsWritten`]: a divergence by decision, drt
-//! divergence register D8), checked against the reference patched with upstream-fix 0001 + 0002.
+//! divergence register D8), checked against the reference patched with internal patches 0001 + 0002.
 //!
 //! The design (M2 vertical, wires 0.05 wide, every value invented): a/b end to end 35 apart;
 //! c/d end to end with no common run until the 0.01 EXTENSION grows both; e's end beside the

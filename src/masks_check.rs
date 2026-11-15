@@ -771,7 +771,7 @@ pub enum EolWithin {
     /// OpenROAD#12182). For correlation against the unpatched reference only.
     Reference,
     /// As written in the LEF (the LEF/DEF reference text says nothing of WITHIN changing with
-    /// SAMEMASK); the reference patched with vyges-openroad-patches upstream-fix 0002 reads it so.
+    /// SAMEMASK); the reference patched with internal patch 0002 reads it so.
     /// The default.
     #[default]
     AsWritten,
@@ -787,7 +787,7 @@ pub enum EolTwoSides {
     /// (reported upstream as OpenROAD#12181). For correlation against the unpatched reference only.
     Reference,
     /// As written: TWOSIDES means both sides (the LEF/DEF reference text); the reference patched
-    /// with vyges-openroad-patches upstream-fix 0001 reads it so. The default.
+    /// with internal patch 0001 reads it so. The default.
     #[default]
     AsWritten,
 }
