@@ -208,6 +208,14 @@ commands:
   --help,    -h       Print this help.
 ";
 
+/// The binary allocates through mimalloc, as the reference allocates through the tcmalloc its
+/// Bazel build links (`malloc = @tcmalloc`); see Cargo.toml for the pin.
+/// Not when this file is built into the library as `cli_main` (feature `suite`): the suite
+/// binary that links the library defines the allocator itself.
+#[cfg(all(feature = "mimalloc", not(feature = "suite")))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 pub fn main() {
     // Centralize libodb's native (C++ utl::Logger) diagnostics through vyges-events, alongside the
     // Rust-surface events — so everything odb emits lands in the MCP causal trail.

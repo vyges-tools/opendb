@@ -82,12 +82,22 @@ jobs:
           components: clippy
 
       - name: Test (default surface)
+        # Tests only: LTO and codegen units cannot change a result (language rule), so a test
+        # binary built without them tests the same code; release builds keep [profile.release].
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
         run: cargo test --release --verbose
 
       # 🔑 **Both, always.** `gen-write` gates the generated setter surface — including the whole
       # 3D/chiplet write path — and it carries test binaries the default build never compiles, let
       # alone runs. Testing only the default leaves that surface unexercised while looking green.
       - name: Test (with gen-write, the L2/write surface)
+        # Tests only: LTO and codegen units cannot change a result (language rule), so a test
+        # binary built without them tests the same code; release builds keep [profile.release].
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
         run: cargo test --release --features gen-write --verbose
 
       # The examples ARE the 3D/chiplet write path in use, so a compile is a real check on it.

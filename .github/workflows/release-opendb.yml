@@ -86,7 +86,7 @@ jobs:
         # not in the binary. Instrumentation needs the read->write->read loop over arbitrary fields.
         run: |
           [ "${{ runner.os }}" = "macOS" ] && export PATH="$(brew --prefix bison)/bin:$PATH"
-          cargo build --release --features gen-write --bin vyges-opendb
+          cargo build --release --features gen-write,mimalloc --bin vyges-opendb
 
       - name: Package vyges-opendb-${{ matrix.target }}.tar.gz
         id: pkg
