@@ -1906,6 +1906,12 @@ impl Db {
     pub fn iterm_pref_access_points(&self, inst: &str, pin: &str) -> Result<Vec<(i32, i32, i32)>> {
         Ok(sys::iterm_pref_access_points(self.r(), inst, pin)?.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect())
     }
+    /// EVERY access point of an instance terminal (`getAccessPoints`): master pins by ascending
+    /// id, each pin's points in stored order, as `(x, y, routing level)` — the point as stored,
+    /// relative to the instance's location. What a non-core terminal's router reads.
+    pub fn iterm_access_points(&self, inst: &str, pin: &str) -> Result<Vec<(i32, i32, i32)>> {
+        Ok(sys::iterm_access_points(self.r(), inst, pin)?.chunks(3).filter(|c| c.len() == 3).map(|c| (c[0], c[1], c[2])).collect())
+    }
     /// How many access points an instance terminal has over all its master pins.
     pub fn iterm_access_point_count(&self, inst: &str, pin: &str) -> Result<usize> {
         Ok(sys::iterm_access_point_count(self.r(), inst, pin)?)
