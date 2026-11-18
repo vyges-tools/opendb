@@ -553,13 +553,13 @@ pub struct StreamOut {
 pub fn write_gds(db: &mut Db, map: &LayerMap, cell_gds: &[impl AsRef<Path>], out: impl AsRef<Path>) -> Result<StreamOut> {
     let cells = read_cell_gds(db, cell_gds)?;
     let top = db.block_name();
-    let lib = create_library(db, &cells, &top)?;
+    let (lib, k) = create_library(db, &cells, &top)?;
     let mut so = StreamOut { cells: copy_cell_tree(db, &cells, lib)?, ..StreamOut::default() };
     let mut els = Vec::new();
-    place_instances(db, &mut els, &mut so);
-    stream_routing(db, map, &mut els, &mut so)?;
-    stream_pins(db, map, &mut els, &mut so)?;
-    stream_die_area(db, map, &mut els, &mut so)?;
+    place_instances(db, k, &mut els, &mut so)?;
+    stream_routing(db, map, k, &mut els, &mut so)?;
+    stream_pins(db, map, k, &mut els, &mut so)?;
+    stream_die_area(db, map, k, &mut els, &mut so)?;
     db.gds_create_structure(lib, &top)?;
     db.gds_add(lib, &top, &els)?;
     // An `.oas` output is written by our OASIS writer (odb has none); anything else is GDS.
@@ -575,8 +575,15 @@ fn read_cell_gds(db: &mut Db, cell_gds: &[impl AsRef<Path>]) -> Result<Vec<GdsLi
     cell_gds.iter().map(|p| db.layout_read(p)).collect()
 }
 
-/// The output library, in the cell GDS's units, which must be the design's.
-fn create_library(db: &mut Db, cells: &[GdsLib], top: &str) -> Result<GdsLib> {
+/// The output library, in the cell GDS's units, and the factor design coordinates are scaled by.
+///
+/// The reference stream-out reads the DEF into a layout whose database unit is the technology's
+/// (the cell GDS's), scaling DEF coordinates into it, and writes in that unit
+/// (`top_only_layout.dbu = main_layout.dbu`): ASAP7 cells are drawn at 0.25 nm and a 1000/um DEF
+/// is written x4. Here the factor is `design DBU / cell DBU`, which must be a whole number; a cell
+/// grid that is coarser than the design's, or not a divisor of it, would round design geometry and
+/// is refused.
+fn create_library(db: &mut Db, cells: &[GdsLib], top: &str) -> Result<(GdsLib, i32)> {
     let (uu, m) = db.gds_units(cells[0])?;
     for &c in &cells[1..] {
         let u = db.gds_units(c)?;
@@ -585,12 +592,30 @@ fn create_library(db: &mut Db, cells: &[GdsLib], top: &str) -> Result<GdsLib> {
         }
     }
     let dbu_m = 1e-6 / db.dbu_per_micron() as f64;
-    if !same(m, dbu_m) {
-        return Err(Error::Odb(format!("write-gds: the cell GDS database unit is {m} m, the design's {dbu_m} m")));
-    }
+    let Some(k) = unit_scale(dbu_m, m) else {
+        return Err(Error::Odb(format!("write-gds: the cell GDS database unit is {m} m, the design's {dbu_m} m: \
+                                       the design unit is not a whole multiple of the cell unit")));
+    };
     let lib = db.gds_create_lib(top)?;
     db.gds_set_units(lib, uu, m)?;
-    Ok(lib)
+    Ok((lib, k))
+}
+
+/// `design / cell` when it is a whole number (1 when the units agree), else `None`.
+fn unit_scale(design_m: f64, cell_m: f64) -> Option<i32> {
+    let r = design_m / cell_m;
+    let k = r.round();
+    (k >= 1.0 && k <= i32::MAX as f64 && same(r, k)).then_some(k as i32)
+}
+
+/// A design coordinate in the output unit.
+fn sc(v: i32, k: i32) -> Result<i32> {
+    v.checked_mul(k).ok_or_else(|| Error::Odb(format!("write-gds: coordinate {v} x {k} overflows 32 bits")))
+}
+
+/// A box in the output unit; the layer is kept.
+fn scale_box(b: Box4, k: i32) -> Result<Box4> {
+    Ok((b.0, sc(b.1, k)?, sc(b.2, k)?, sc(b.3, k)?, sc(b.4, k)?))
 }
 
 fn same(a: f64, b: f64) -> bool {
@@ -623,7 +648,7 @@ fn copy_cell_tree(db: &mut Db, cells: &[GdsLib], lib: GdsLib) -> Result<usize> {
 }
 
 /// One reference per placed instance, at its transform's origin.
-fn place_instances(db: &Db, els: &mut Vec<GdsElement>, so: &mut StreamOut) {
+fn place_instances(db: &Db, k: i32, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
     for i in db.block_get_insts() {
         if matches!(db.inst_get_placement_status(&i).as_str(), "NONE" | "UNPLACED") {
             so.unplaced += 1;
@@ -631,10 +656,11 @@ fn place_instances(db: &Db, els: &mut Vec<GdsElement>, so: &mut StreamOut) {
         }
         let orient = db.inst_get_orient(&i);
         let trans = orient_strans(&orient).unwrap_or(STrans::IDENTITY);
-        let origin = (db.inst_get_origin_x(&i), db.inst_get_origin_y(&i));
+        let origin = (sc(db.inst_get_origin_x(&i), k)?, sc(db.inst_get_origin_y(&i), k)?);
         els.push(GdsElement::SRef { structure: db.inst_get_master(&i), origin, trans, props: Vec::new() });
         so.instances += 1;
     }
+    Ok(())
 }
 
 /// Layer number -> (name, is a cut layer).
@@ -679,31 +705,37 @@ fn stream_box(map: &LayerMap, layers: &Layers, purpose: &str, b: (i64, i32, i32,
 }
 
 /// Signal routing (NET) and the special nets (SPNET), vias decomposed onto their layers.
-fn stream_routing(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
+fn stream_routing(db: &Db, map: &LayerMap, scale: i32, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
     let layers = layer_table(db)?;
     for n in db.block_get_nets() {
         let masks = db.net_wire_box_masks(&n)?;
         for (k, b) in db.net_wire_boxes(&n).into_iter().enumerate() {
             let purpose = if b.from_via { "VIA" } else { "NET" };
             let mask = masks.get(k).copied().unwrap_or(0);
-            stream_box(map, &layers, purpose, (b.layer, b.x0, b.y0, b.x1, b.y1), mask, els, so);
+            let b = scale_box((b.layer, b.x0, b.y0, b.x1, b.y1), scale)?;
+            stream_box(map, &layers, purpose, b, mask, els, so);
         }
     }
     let masks = db.swire_box_masks()?;
     for (k, b) in db.swire_boxes()?.into_iter().enumerate() {
-        stream_box(map, &layers, "SPNET", b, masks.get(k).copied().unwrap_or(0), els, so);
+        stream_box(map, &layers, "SPNET", scale_box(b, scale)?, masks.get(k).copied().unwrap_or(0), els, so);
     }
     Ok(())
 }
 
 /// Every block-pin box on PIN, and the pin's name on its layer's LABEL at the box centre.
-fn stream_pins(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
+fn stream_pins(db: &Db, map: &LayerMap, k: i32, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
     let layers = layer_table(db)?;
     for t in db.block_get_b_terms() {
         for p in 0..db.num_bterm_get_b_pins(&t) {
             let boxes = db.bpin_layer_boxes(&t, p)?;
             let masks = db.bpin_layer_box_masks(&t, p)?;
-            let masked: Vec<(Box4, u8)> = boxes.iter().enumerate().map(|(k, &b)| (b, masks.get(k).copied().unwrap_or(0))).collect();
+            // Scaled BEFORE the label centre is taken, as the reference converts each DEF
+            // coordinate on reading: the centre of the scaled box, not the scaled centre.
+            let mut masked: Vec<(Box4, u8)> = Vec::with_capacity(boxes.len());
+            for (n, &b) in boxes.iter().enumerate() {
+                masked.push((scale_box(b, k)?, masks.get(n).copied().unwrap_or(0)));
+            }
             for &(b, mask) in &masked {
                 stream_box(map, &layers, "PIN", b, mask, els, so);
             }
@@ -742,8 +774,11 @@ fn port_label_boxes<'a>(layers: &'a HashMap<i64, (String, bool)>, boxes: &[(Box4
 }
 
 /// The die outline as one polygon on each DIEAREA target.
-fn stream_die_area(db: &Db, map: &LayerMap, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
-    let mut xy = db.die_area_polygon()?;
+fn stream_die_area(db: &Db, map: &LayerMap, k: i32, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
+    let mut xy = Vec::new();
+    for (x, y) in db.die_area_polygon()? {
+        xy.push((sc(x, k)?, sc(y, k)?));
+    }
     if xy.is_empty() {
         return Ok(());
     }
@@ -824,6 +859,26 @@ mod tests {
     #[test]
     fn a_label_sits_at_the_integer_centre_of_its_box() {
         assert_eq!(label_point(333200, 519515, 333340, 520000), (333270, 519757));
+    }
+
+    /// The reference stream-out writes in the technology's (the cell GDS's) database unit and
+    /// scales DEF coordinates into it on reading (`def2stream.py`: `top_only_layout.dbu =
+    /// main_layout.dbu`): a 1000/um design over 0.25 nm ASAP7 cells is written x4. A cell unit
+    /// coarser than the design's, or not dividing it, would round geometry: refused.
+    #[test]
+    fn design_coordinates_scale_by_the_whole_ratio_of_design_to_cell_unit() {
+        assert_eq!(unit_scale(1e-9, 2.5e-10), Some(4), "ASAP7: 1 nm design over 0.25 nm cells");
+        assert_eq!(unit_scale(1e-9, 1e-9), Some(1), "equal units: unchanged");
+        assert_eq!(unit_scale(2.5e-10, 1e-9), None, "a coarser cell unit would round the design");
+        assert_eq!(unit_scale(1e-9, 3e-10), None, "not a whole multiple");
+        assert_eq!(scale_box((7, -3, 0, 5, 9), 4).unwrap(), (7, -12, 0, 20, 36), "the layer is kept");
+        assert!(sc(i32::MAX / 2, 4).is_err(), "an overflow is an error, not a wrap");
+        // 🔑 The label goes at the centre of the SCALED box, as the reference converts each
+        // coordinate on reading: an odd x0 + x1 rounds once at the design grid otherwise.
+        let b = scale_box((1, 0, 0, 3, 1), 4).unwrap();
+        assert_eq!(label_point(b.1, b.2, b.3, b.4), (6, 2));
+        let (x, y) = label_point(0, 0, 3, 1);
+        assert_ne!((x * 4, y * 4), (6, 2), "scaling the centre instead loses half a design unit");
     }
 
     /// KLayout's DEF reader labels a pin port once per layer, at the LAST shape on that layer, not
