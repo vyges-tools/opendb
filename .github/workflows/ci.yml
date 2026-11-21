@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: vyges-tools/opendb-lib
+          ref: repin-f11b4276  # repin branch; back to the default at the merge
           path: vyges-tools-opendb-lib
       # ⚠️ EVERY [patch] entry needs a checkout, not just the obvious one. This workflow's first
       # run failed here: it checked out opendb-lib and not layout, and cargo stopped with
@@ -46,6 +47,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: vyges-tools/loom
+          ref: repin-f11b4276  # repin branch; back to the default at the merge
           path: vyges-tools-loom
 
       # 🔑 Check the sibling layout BEFORE cargo does, so a missing one names itself. Cargo's

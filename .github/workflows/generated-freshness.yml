@@ -38,6 +38,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: vyges-tools/opendb-lib
+          ref: repin-f11b4276  # repin branch; back to the default at the merge
           path: vyges-tools-opendb-lib
 
       - name: Regenerate from db.h and fail on drift
