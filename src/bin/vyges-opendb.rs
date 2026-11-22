@@ -112,11 +112,13 @@ commands:
 
   color-masks               --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...
                             [--same-mask-spacing LAYER:DBU]...
-                            [--check-only] [--report <f.json>] [--fail-on-findings]
+                            [--check-only] [--parity-only] [--report <f.json>] [--fail-on-findings]
                             [--require-coloured]
                       Colour routed wires on multi-mask layers by track parity (DEF TRACKS MASK, or
                       mask 1 on the first track), and power-grid shapes that sit on one track (their
-                      via landings follow), keep pre-coloured shapes, then check: off-track,
+                      via landings follow), keep pre-coloured shapes; then recolour whole polygons
+                      where parity breaks a same-mask rule and a two-colouring exists (pre-coloured
+                      shapes never flipped; --parity-only skips this); then check: off-track,
                       wrong-way, multi-track, uncoloured, same-mask pairs under the spacing, odd
                       cycles (report). --require-coloured: exit 3, REFUSED, when any shape on a
                       multi-mask layer is still uncoloured afterwards (the tapeout gate).
