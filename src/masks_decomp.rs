@@ -37,6 +37,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use vyges_layout::edges::{ring_edges, Axis, Edge};
+
+use vyges_layout::geom::Rect;
+
 use crate::masks::MaskShape;
 
 /// What [`decompose`] decided for one layer.
@@ -214,6 +218,226 @@ pub fn decompose(shapes: &[MaskShape], pairs: &[(usize, usize)], anchor: &[bool]
     out
 }
 
+// ---- line-end windows as hard constraints ------------------------------------------------------
+
+/// A same-mask line-end rule, in DBU, as a sign-off deck states it: a **line end** is a boundary
+/// edge of a polygon no longer than `eol_max` whose two corners are convex and whose two
+/// neighbouring edges are at least `adj_min` long; its window reaches `space` outward from the
+/// edge, widened by `ext` on each side. With `to_eol` the rule is broken by another line end
+/// facing it (itself widened by `ext`, closer than `space`); otherwise by any shape of the layer
+/// in the open window. `len_lt` / `len_ge` keep only line ends shorter than / at least that long.
+///
+/// 🔑 Two polygons that break such a rule on one mask must take opposite masks, as two closer
+/// than the same-mask spacing must. The window reaches where plain spacing does not: two line
+/// ends on adjacent tracks, offset along the track, are further apart than the same-mask spacing
+/// corner to corner and still inside each other's widened windows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EolWindow {
+    pub space: i32,
+    pub eol_max: i32,
+    pub adj_min: i32,
+    pub ext: i32,
+    pub to_eol: bool,
+    pub len_lt: Option<i32>,
+    pub len_ge: Option<i32>,
+}
+
+impl EolWindow {
+    /// `LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N]`, DBU.
+    pub fn parse(spec: &str) -> Result<(String, EolWindow), String> {
+        let (layer, rest) = spec.split_once(':').ok_or_else(|| format!("{spec}: wants LAYER:SPACE,EOLMAX,ADJMIN,EXT[,...]"))?;
+        let mut it = rest.split(',');
+        let mut num = |what: &str| -> Result<i32, String> {
+            let v = it.next().ok_or_else(|| format!("{spec}: no {what}"))?;
+            v.trim().parse().map_err(|_| format!("{spec}: {what} not a DBU value: {v}"))
+        };
+        let (space, eol_max, adj_min, ext) = (num("SPACE")?, num("EOLMAX")?, num("ADJMIN")?, num("EXT")?);
+        let mut w = EolWindow { space, eol_max, adj_min, ext, to_eol: false, len_lt: None, len_ge: None };
+        for o in it {
+            let o = o.trim();
+            let val = |v: &str| v.parse::<i32>().map_err(|_| format!("{spec}: not a DBU value: {v}"));
+            if o == "toeol" {
+                w.to_eol = true;
+            } else if let Some(v) = o.strip_prefix("lenlt=") {
+                w.len_lt = Some(val(v)?);
+            } else if let Some(v) = o.strip_prefix("lenge=") {
+                w.len_ge = Some(val(v)?);
+            } else {
+                return Err(format!("{spec}: unknown option {o}"));
+            }
+        }
+        if layer.is_empty() || space <= 0 || eol_max <= 0 || adj_min < 0 || ext < 0 {
+            return Err(format!("{spec}: needs a layer, SPACE and EOLMAX > 0, ADJMIN and EXT >= 0"));
+        }
+        Ok((layer.to_string(), w))
+    }
+}
+
+fn outward(e: &Edge) -> (i32, i32) {
+    ((e.b.1 - e.a.1).signum(), -(e.b.0 - e.a.0).signum())
+}
+
+fn edge_box(e: &Edge) -> Rect {
+    Rect { x0: e.a.0.min(e.b.0), y0: e.a.1.min(e.b.1), x1: e.a.0.max(e.b.0), y1: e.a.1.max(e.b.1) }
+}
+
+/// The line ends of the union of `rects` (see [`EolWindow`]).
+pub fn line_ends(rects: &[Rect], w: &EolWindow) -> Vec<Edge> {
+    let mut out = Vec::new();
+    // the contour tracer wants tiles that do not overlap: union first
+    let tiles = vyges_layout::boolean::boolean(rects, &[], vyges_layout::boolean::Op::Or);
+    for ring in vyges_layout::contour::trace_contours(&tiles) {
+        let ring = ring_edges(&ring);
+        let n = ring.len();
+        if n < 4 {
+            continue;
+        }
+        let turn = |p: &Edge, q: &Edge| -> i64 {
+            let (ux, uy) = (i64::from(p.b.0 - p.a.0), i64::from(p.b.1 - p.a.1));
+            let (vx, vy) = (i64::from(q.b.0 - q.a.0), i64::from(q.b.1 - q.a.1));
+            ux * vy - uy * vx
+        };
+        for i in 0..n {
+            let (p, e, q) = (&ring[(i + n - 1) % n], &ring[i], &ring[(i + 1) % n]);
+            let len = e.len();
+            if len <= i64::from(w.eol_max)
+                && p.len() >= i64::from(w.adj_min)
+                && q.len() >= i64::from(w.adj_min)
+                && turn(p, e) > 0
+                && turn(e, q) > 0
+                && w.len_lt.is_none_or(|v| len < i64::from(v))
+                && w.len_ge.is_none_or(|v| len >= i64::from(v))
+            {
+                out.push(*e);
+            }
+        }
+    }
+    out
+}
+
+/// The window of line end `e`: `space` outward, widened by `ext` along it.
+pub fn eol_window(e: &Edge, space: i32, ext: i32) -> Rect {
+    let (ox, oy) = outward(e);
+    let b = edge_box(e);
+    if e.axis() == Axis::Horizontal {
+        let (y0, y1) = if oy > 0 { (b.y0, b.y0 + space) } else { (b.y0 - space, b.y0) };
+        Rect { x0: b.x0 - ext, y0, x1: b.x1 + ext, y1 }
+    } else {
+        let (x0, x1) = if ox > 0 { (b.x0, b.x0 + space) } else { (b.x0 - space, b.x0) };
+        Rect { x0, y0: b.y0 - ext, x1, y1: b.y1 + ext }
+    }
+}
+
+/// How far `r` lies outward of line end `e` (0 when it reaches back over the edge).
+fn eol_gap(e: &Edge, r: &Rect) -> i32 {
+    let at = if e.axis() == Axis::Horizontal { e.a.1 } else { e.a.0 };
+    let v = match outward(e) {
+        (1, _) => r.x0 - at,
+        (-1, _) => at - r.x1,
+        (_, 1) => r.y0 - at,
+        _ => at - r.y1,
+    };
+    v.max(0)
+}
+
+/// Does line end `f` (facing `e`) break `w` against `e`: closer than `space` across the gap, and
+/// the two, each widened by `ext`, overlapping along the edge.
+fn ends_face(e: &Edge, f: &Edge, w: &EolWindow) -> bool {
+    let (oe, of) = (outward(e), outward(f));
+    if e.axis() != f.axis() || of != (-oe.0, -oe.1) {
+        return false;
+    }
+    let g = eol_gap(e, &edge_box(f));
+    let (we, wf) = (eol_window(e, 0, w.ext), eol_window(f, 0, w.ext));
+    let along = if e.axis() == Axis::Horizontal {
+        we.x0.max(wf.x0) < we.x1.min(wf.x1)
+    } else {
+        we.y0.max(wf.y0) < we.y1.min(wf.y1)
+    };
+    g > 0 && g < w.space && along
+}
+
+/// The shape of a polygon `members` that holds line end `e` (its midpoint), so a frozen
+/// polygon's constraint lands on the shape that is close.
+fn holder(shapes: &[MaskShape], members: &[usize], e: &Edge) -> usize {
+    let (mx, my) = ((e.a.0 + e.b.0) / 2, (e.a.1 + e.b.1) / 2);
+    *members
+        .iter()
+        .find(|&&k| {
+            let r = shapes[k].rect;
+            r[0] <= mx && mx <= r[2] && r[1] <= my && my <= r[3]
+        })
+        .unwrap_or(&members[0])
+}
+
+/// Hard OPPOSITE pairs from line-end windows: `(i, j)`, `i < j`, shape indices, one pair per
+/// two polygons a rule of `windows` puts in conflict on one mask. Polygons as [`polygons`] forms
+/// them; a polygon's own ends never constrain it.
+pub fn eol_pairs(shapes: &[MaskShape], windows: &[EolWindow]) -> Vec<(usize, usize)> {
+    if windows.is_empty() || shapes.len() < 2 {
+        return Vec::new();
+    }
+    let poly = polygons(shapes, &vec![true; shapes.len()]);
+    let mut members: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (k, &p) in poly.iter().enumerate() {
+        members.entry(p).or_default().push(k);
+    }
+    // every point of a window lies within hypot(space, ext) of the end it widens, and a facing
+    // end is widened by ext again, so two polygons in conflict have shapes at least that close
+    let reach = windows
+        .iter()
+        .map(|w| {
+            let across = if w.to_eol { 2 * w.ext } else { w.ext };
+            f64::from(w.space).hypot(f64::from(across)).ceil() as i32 + 1
+        })
+        .max()
+        .unwrap_or(0);
+    let mut near: BTreeSet<(usize, usize)> = BTreeSet::new();
+    for (i, j, _) in crate::masks::conflict_edges(shapes, reach) {
+        let (p, q) = (poly[i], poly[j]);
+        if p != q {
+            near.insert((p, q));
+            near.insert((q, p));
+        }
+    }
+    let mut ends: BTreeMap<(usize, usize), Vec<Edge>> = BTreeMap::new();
+    let mut ends_of = |p: usize, wi: usize| -> Vec<Edge> {
+        ends.entry((p, wi))
+            .or_insert_with(|| {
+                let rects: Vec<Rect> = members[&p]
+                    .iter()
+                    .map(|&k| {
+                        let r = shapes[k].rect;
+                        Rect { x0: r[0], y0: r[1], x1: r[2], y1: r[3] }
+                    })
+                    .collect();
+                line_ends(&rects, &windows[wi])
+            })
+            .clone()
+    };
+    let mut out: BTreeSet<(usize, usize)> = BTreeSet::new();
+    for (wi, w) in windows.iter().enumerate() {
+        for &(p, q) in &near {
+            for e in ends_of(p, wi) {
+                let hit = if w.to_eol {
+                    ends_of(q, wi).iter().find(|f| ends_face(&e, f, w)).map(|f| holder(shapes, &members[&q], f))
+                } else {
+                    let win = eol_window(&e, w.space, w.ext);
+                    members[&q].iter().copied().find(|&k| {
+                        let r = shapes[k].rect;
+                        win.intersects(&Rect { x0: r[0], y0: r[1], x1: r[2], y1: r[3] })
+                    })
+                };
+                if let Some(j) = hit {
+                    let i = holder(shapes, &members[&p], &e);
+                    out.insert((i.min(j), i.max(j)));
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,5 +563,145 @@ mod tests {
         let a = decompose(&s, &pairs, &[false; 8]);
         assert_eq!(a, decompose(&s, &rev, &[false; 8]));
         assert_eq!(masks(&a), vec![1, 2, 1, 2, 1, 2, 1, 2]);
+    }
+
+    // ---- line-end windows -------------------------------------------------------------------
+
+    /// The deck's M2 same-mask line-end-to-line-end window and its plain line-end window
+    /// (generic values here, DBU = 1 nm): end edge no longer than 80, neighbours at least 20.
+    const S3: EolWindow = EolWindow { space: 80, eol_max: 80, adj_min: 20, ext: 32, to_eol: true, len_lt: None, len_ge: None };
+    const S4: EolWindow = EolWindow { space: 70, eol_max: 80, adj_min: 20, ext: 70, to_eol: false, len_lt: None, len_ge: None };
+
+    /// The counterexample a decomposed layout left on M2: two 32-wide wires on adjacent tracks
+    /// (pitch 64), a's right end at x 5075 (y 7424..7456) and b's left end at x 5143
+    /// (y 7360..7392), both on one mask. 68 apart along the track and 32 across: corner to
+    /// corner ~75, clear of a 66 same-mask spacing, so no spacing pair splits them.
+    fn counterexample(b_dx: i32, b_dy: i32) -> Vec<MaskShape> {
+        vec![sh("a", [4000, 7424, 5075, 7456], 1), sh("b", [5143 + b_dx, 7360 + b_dy, 6200 + b_dx, 7392 + b_dy], 1)]
+    }
+
+    /// Rule (deck line-end-to-line-end window): a line end's window reaches `space` outward,
+    /// widened by `ext` along the edge; another line end facing it, itself widened by `ext`,
+    /// inside that window breaks the rule on one mask. Here a's end widened is y 7392..7488 and
+    /// b's is 7328..7424: they overlap by 32, 68 < 80 apart, so a and b must take opposite masks.
+    #[test]
+    fn the_m2_line_end_counterexample_is_a_hard_pair() {
+        let s = counterexample(0, 0);
+        assert!(crate::masks::conflict_edges(&s, 66).is_empty(), "plain spacing does not see it");
+        assert_eq!(eol_pairs(&s, &[S3]), vec![(0, 1)]);
+        assert_eq!(eol_pairs(&s, &[S4]), vec![(0, 1)], "b's end lies in a's widened window too");
+        let d = decompose(&s, &eol_pairs(&s, &[S3, S4]), &[false, false]);
+        assert_eq!(masks(&d), vec![1, 2]);
+        // the windows are open: at exactly `space` apart nothing is broken
+        assert!(eol_pairs(&counterexample(12, 0), &[S3]).is_empty(), "80 apart");
+        assert_eq!(eol_pairs(&counterexample(11, 0), &[S3]), vec![(0, 1)], "79 apart");
+        // one more track down, the widened ends no longer overlap (7264..7360 vs 7392..7488)
+        assert!(eol_pairs(&counterexample(0, -64), &[S3]).is_empty());
+        // the widened ends just touching (b's widened top at 7392): no overlap along the edge
+        assert!(eol_pairs(&counterexample(0, -32), &[S3]).is_empty());
+        assert_eq!(eol_pairs(&counterexample(0, -31), &[S3]), vec![(0, 1)]);
+        // the pair names the shape that holds the end (a frozen polygon's constraint lands on
+        // the shape that is close), not the polygon's first shape
+        let split = vec![sh("a", [4000, 7424, 4500, 7456], 1), sh("a", [4500, 7424, 5075, 7456], 1), sh("b", [5143, 7360, 6200, 7392], 1)];
+        assert_eq!(eol_pairs(&split, &[S3]), vec![(1, 2)]);
+        // ends that point the same way do not face
+        let same_way = vec![sh("a", [4000, 7424, 5075, 7456], 1), sh("b", [4100, 7360, 5143, 7392], 1)];
+        assert!(eol_pairs(&same_way, &[S3]).is_empty());
+    }
+
+    /// Rule (what a line end is): an edge no longer than `eol_max` with two convex corners and
+    /// neighbours at least `adj_min` long, on the merged polygon. A wire wider than `eol_max`
+    /// has no line end; a stub of the same net flush with a's end makes that edge too long; a
+    /// neighbour shorter than `adj_min` disqualifies it.
+    #[test]
+    fn only_line_ends_of_the_merged_polygon_open_a_window() {
+        let wide = vec![sh("a", [4000, 7400, 5075, 7481], 1), sh("b", [5143, 7360, 6200, 7392], 1)];
+        assert!(eol_pairs(&wide, &[S3]).is_empty(), "a's end is 81 long");
+        let mut stub = counterexample(0, 0);
+        stub.push(sh("a", [5043, 7424, 5075, 7600], 1));
+        assert!(eol_pairs(&stub, &[S3]).is_empty(), "a's right edge is now 176 long");
+        // the stub is part of a's polygon: the pair (if any) never joins a to itself
+        assert!(eol_pairs(&stub, &[S4]).iter().all(|&(i, j)| (i, j) != (0, 2)));
+        let short = vec![sh("a", [5056, 7424, 5075, 7456], 1), sh("b", [5143, 7360, 6200, 7392], 1)];
+        assert!(eol_pairs(&short, &[S3]).is_empty(), "a's neighbours are 19 long");
+        let lt = EolWindow { len_lt: Some(32), ..S3 };
+        assert!(eol_pairs(&counterexample(0, 0), &[lt]).is_empty(), "both ends are 32, not < 32");
+        let ge = EolWindow { len_ge: Some(32), ..S3 };
+        assert_eq!(eol_pairs(&counterexample(0, 0), &[ge]), vec![(0, 1)]);
+    }
+
+    /// Rule (plain line-end window): any shape of the layer in the open window, not only a line
+    /// end. A wide wire (no line end of its own) 50 beyond a's end and 40 across is in S4's window
+    /// (reach 70, widened 70), not in S3's (it needs a facing end).
+    #[test]
+    fn a_plain_window_takes_any_shape() {
+        let s = vec![sh("a", [4000, 7424, 5075, 7456], 1), sh("w", [5125, 7200, 5300, 7384], 1)];
+        assert!(eol_pairs(&s, &[S3]).is_empty());
+        assert_eq!(eol_pairs(&s, &[S4]), vec![(0, 1)]);
+        // past the reach
+        let far = vec![sh("a", [4000, 7424, 5075, 7456], 1), sh("w", [5145, 7200, 5300, 7384], 1)];
+        assert!(eol_pairs(&far, &[S4]).is_empty());
+    }
+
+    /// The limits are inclusive: an end exactly `eol_max` long, with neighbours exactly
+    /// `adj_min` long, is a line end.
+    #[test]
+    fn a_line_end_at_the_limits_is_one() {
+        let at_max = vec![sh("a", [4000, 7400, 5075, 7480], 1), sh("b", [5143, 7360, 6200, 7392], 1)];
+        assert_eq!(eol_pairs(&at_max, &[S3]), vec![(0, 1)], "a's end is 80 long");
+        let at_adj = vec![sh("a", [5055, 7424, 5075, 7456], 1), sh("b", [5143, 7360, 6200, 7392], 1)];
+        assert_eq!(eol_pairs(&at_adj, &[S3]), vec![(0, 1)], "a's neighbours are 20 long");
+    }
+
+    /// The same counterexample on a vertical layer (x and y exchanged): the window and the
+    /// overlap along the edge are taken on the other axis.
+    #[test]
+    fn the_counterexample_turned_a_quarter_is_a_hard_pair_too() {
+        let t = |s: Vec<MaskShape>| -> Vec<MaskShape> {
+            s.into_iter().map(|m| MaskShape { rect: [m.rect[1], m.rect[0], m.rect[3], m.rect[2]], ..m }).collect()
+        };
+        assert_eq!(eol_pairs(&t(counterexample(0, 0)), &[S3]), vec![(0, 1)]);
+        assert_eq!(eol_pairs(&t(counterexample(0, 0)), &[S4]), vec![(0, 1)]);
+        assert!(eol_pairs(&t(counterexample(0, -32)), &[S3]).is_empty());
+        assert_eq!(eol_pairs(&t(counterexample(0, -31)), &[S3]), vec![(0, 1)]);
+        // S4's window widened along the edge: w sits beside a's end, past it by 50 and 60 to the
+        // side of the edge (inside ext 70, outside a window not widened)
+        let side = vec![sh("a", [4000, 7424, 5075, 7456], 1), sh("w", [5125, 7516, 5300, 7600], 1)];
+        assert_eq!(eol_pairs(&t(side.clone()), &[S4]), vec![(0, 1)]);
+        assert_eq!(eol_pairs(&side, &[S4]), vec![(0, 1)]);
+    }
+
+    /// Line ends are taken on the union: overlapping shapes of one net (a wire and the via
+    /// landing at its end) are one outline, and the end is the outline's.
+    #[test]
+    fn line_ends_are_of_the_union_of_overlapping_shapes() {
+        let r = |x0, y0, x1, y1| Rect { x0, y0, x1, y1 };
+        let ends = line_ends(&[r(4000, 7424, 5075, 7456), r(5000, 7424, 5075, 7456)], &S3);
+        assert_eq!(ends.len(), 2, "{ends:?}");
+        assert!(ends.iter().any(|e| e.a.0 == 5075 && e.b.0 == 5075));
+        // a landing wider than the wire: the wire's end is gone, the landing's is 40 + its sides
+        let ends = line_ends(&[r(4000, 7424, 5075, 7456), r(5035, 7416, 5075, 7464)], &S3);
+        assert!(ends.iter().all(|e| e.a.0 != 5075 || e.len() == 48), "{ends:?}");
+    }
+
+    /// A polygon's own line ends never constrain it: a U of one net whose shorter prong's end
+    /// window holds the longer prong is one piece of metal, not a pair.
+    #[test]
+    fn a_polygons_own_ends_are_no_pair() {
+        let u = vec![sh("c", [0, 0, 1050, 32], 1), sh("c", [0, 96, 1000, 128], 1), sh("c", [0, 0, 32, 128], 1)];
+        assert!(eol_pairs(&u, &[S4]).is_empty());
+        // the same prongs as two nets are a pair
+        let two = vec![sh("c", [0, 0, 1050, 32], 1), sh("d", [100, 96, 1000, 128], 1)];
+        assert_eq!(eol_pairs(&two, &[S4]), vec![(0, 1)]);
+    }
+
+    #[test]
+    fn an_eol_window_parses_from_its_spec() {
+        assert_eq!(EolWindow::parse("M2:80,80,20,32,toeol"), Ok(("M2".to_string(), S3)));
+        assert_eq!(EolWindow::parse("M1:70,80,20,16,lenlt=42").unwrap().1, EolWindow { space: 70, ext: 16, to_eol: false, len_lt: Some(42), ..S3 });
+        assert_eq!(EolWindow::parse("M1:67,80,20,16,lenge=42").unwrap().1.len_ge, Some(42));
+        for bad in ["M2", "M2:80,80,20", "M2:80,80,20,x", ":80,80,20,32", "M2:0,80,20,32", "M2:80,80,20,32,both"] {
+            assert!(EolWindow::parse(bad).is_err(), "{bad}");
+        }
     }
 }

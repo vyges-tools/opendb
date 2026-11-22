@@ -862,6 +862,10 @@ pub struct ColourOptions {
     pub eol_two_sides: crate::masks_check::EolTwoSides,
     /// Colour by track parity only: no decomposition stage ([`crate::masks_decomp`]).
     pub parity_only: bool,
+    /// Same-mask line-end rules per layer (DBU), hard constraints of the decomposition beside the
+    /// same-mask spacing (a sign-off deck's line-end windows, which the tech LEF may state more
+    /// loosely or not at all).
+    pub eol_windows: BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
 }
 
 /// What [`colour_masks`] did.
@@ -897,6 +901,8 @@ pub struct DecompStats {
     pub odd_components: usize,
     pub anchor_conflicts: usize,
     pub anchors: usize,
+    /// Hard pairs only a line-end window made (not already a same-mask spacing pair).
+    pub eol_pairs: usize,
 }
 
 /// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
@@ -1027,7 +1033,7 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
     if !opts.check_only {
         colour_special_nets(db, &by_name, &mut rep)?;
         if !opts.parity_only {
-            decompose_block(db, &by_name, &anchors, &mut rep)?;
+            decompose_block(db, &by_name, &anchors, &opts.eol_windows, &mut rep)?;
         }
     }
     check_block(db, &by_name, &mut rep)?;
@@ -1370,7 +1376,13 @@ pub fn hard_pairs(layer: &MaskLayer, shapes: &[MaskShape]) -> Vec<(usize, usize)
 }
 
 /// Decompose every two-mask layer and rewrite the nets whose polygons changed mask.
-fn decompose_block(db: &mut Db, layers: &BTreeMap<String, MaskLayer>, anchors: &Anchors, rep: &mut ColourReport) -> Result<()> {
+fn decompose_block(
+    db: &mut Db,
+    layers: &BTreeMap<String, MaskLayer>,
+    anchors: &Anchors,
+    eol_windows: &BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
+    rep: &mut ColourReport,
+) -> Result<()> {
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
     let shapes = block_shapes(db, &by_number)?;
     // per net: (layer, rect, mask) of every shape the decomposition placed
@@ -1390,7 +1402,13 @@ fn decompose_block(db: &mut Db, layers: &BTreeMap<String, MaskLayer>, anchors: &
                     })
             })
             .collect();
-        let d = crate::masks_decomp::decompose(v, &hard_pairs(layer, v), &anchored);
+        let mut pairs = hard_pairs(layer, v);
+        let eol = crate::masks_decomp::eol_pairs(v, eol_windows.get(&layer.name).map_or(&[][..], Vec::as_slice));
+        let eol_only = eol.iter().filter(|p| pairs.binary_search(p).is_err()).count();
+        pairs.extend(eol);
+        pairs.sort_unstable();
+        pairs.dedup();
+        let d = crate::masks_decomp::decompose(v, &pairs, &anchored);
         for c in &d.anchor_conflicts {
             rep.findings.push(Finding::AnchorConflict {
                 layer: layer.name.clone(),
@@ -1404,6 +1422,7 @@ fn decompose_block(db: &mut Db, layers: &BTreeMap<String, MaskLayer>, anchors: &
             odd_components: d.odd_components,
             anchor_conflicts: d.anchor_conflicts.len(),
             anchors: anchored.iter().filter(|&&a| a).count(),
+            eol_pairs: eol_only,
         });
         for (k, m) in d.mask.iter().enumerate() {
             let Some(m) = *m else { continue };

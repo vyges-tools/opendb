@@ -405,3 +405,38 @@ fn a_wire_on_a_coloured_cell_pin_takes_the_pins_mask() {
     let text = def(&db, "decomp");
     assert!(text.contains("( 50 50 ) MASK 2 ( 450 * )"), "{text}");
 }
+
+/// Rule (a line-end window is a hard constraint of the decomposition): nets a and b run two M1
+/// tracks apart (one parity, mask 1), a's right end 40 short of b's left end and 150 across, so
+/// no same-mask spacing pair joins them. A line-end-to-line-end window reaching 100 and widened
+/// by 80 holds both ends (a's widened -55..155 and b's 145..355 overlap), so they must take
+/// opposite masks; without the window both stay on mask 1.
+#[test]
+fn a_line_end_window_splits_two_ends_plain_spacing_does_not() {
+    let load = || {
+        let mut db = Db::new();
+        db.read_lef(fixture("masks.lef")).unwrap();
+        db.read_def(fixture("eol_window.def"), "default").unwrap();
+        db
+    };
+    let def = |db: &Db, tag: &str| {
+        let out = std::env::temp_dir().join(format!("vyges_opendb_eolw_{tag}_{}.def", std::process::id()));
+        db.write_def(&out).unwrap();
+        let t = std::fs::read_to_string(&out).unwrap();
+        let _ = std::fs::remove_file(out);
+        t
+    };
+    let mut db = load();
+    let rep = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    assert_eq!((rep.decomposition["M1"].flipped, rep.decomposition["M1"].eol_pairs), (0, 0));
+    let t = def(&db, "none");
+    assert!(t.contains("( 50 50 ) MASK 1 ( 950 * )") && t.contains("( 1040 250 ) MASK 1 ( 1900 * )"), "{t}");
+
+    let (l, w) = vyges_opendb::masks_decomp::EolWindow::parse("M1:100,60,20,80,toeol").unwrap();
+    let opts = ColourOptions { eol_windows: [(l, vec![w])].into(), ..ColourOptions::default() };
+    let mut db = load();
+    let rep = masks::colour_masks(&mut db, &opts).unwrap();
+    assert_eq!((rep.decomposition["M1"].flipped, rep.decomposition["M1"].eol_pairs), (1, 1), "{:?}", rep.decomposition);
+    let t = def(&db, "window");
+    assert!(t.contains("( 50 50 ) MASK 1 ( 950 * )") && t.contains("( 1040 250 ) MASK 2 ( 1900 * )"), "{t}");
+}
