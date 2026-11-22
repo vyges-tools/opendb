@@ -1429,6 +1429,36 @@ mod tests {
         assert_eq!(n, 0);
     }
 
+    /// Rule (drt `hasEol_getQueryBox` / `_check` / `_endToEndHelper` / `_helper`; drt divergence
+    /// register D8, confirmed by the foundry for its SAMEMASK end-of-line rules): WITHIN is the
+    /// rule's APPLICABILITY WINDOW, never a geometric widening of the line end. It decides only
+    /// which facing edges the rule applies to: those running past the end, sideways, by less than
+    /// WITHIN. The distance held to SPACING is measured straight out from the end itself (no
+    /// corner distance from a widened end), and the marker is the gap between the two real edges.
+    /// Here the end is x 0..50 at y 1000, WITHIN 20 (window x -20..70), a facing edge 60 above
+    /// (space 70) starting at x = left. Read as the reference reads a SAMEMASK rule (WITHIN 0),
+    /// only an edge over the end itself applies.
+    #[test]
+    fn within_is_the_lateral_window_of_the_end_never_a_widening_of_it() {
+        let written = EolSpacingDbu { within_policy: EolWithin::AsWritten, ..eol_con(None) };
+        let facing = |left: i32| [(0, [0, 0, 50, 1000]), (1, [left, 1060, 300, 1200])];
+        // Inside the window by 1: applies; the marker runs from the end's corner (x 50), not
+        // from the window's edge (x 70).
+        assert_eq!(eol_markers(&facing(69), &written), [([50, 1000, 69, 1060], vec![0, 1])]);
+        // On the window's edge and past it: nothing, though a widened end (grown to x 70) would be
+        // 60 from these edges, inside 70.
+        assert!(eol_markers(&facing(70), &written).is_empty(), "on the window's edge");
+        assert!(eol_markers(&facing(71), &written).is_empty(), "past the window");
+        // An edge over the whole end: the marker spans the end (x 0..50), not the window.
+        assert_eq!(eol_markers(&facing(-200), &written), [([0, 1000, 50, 1060], vec![0, 1])]);
+        // The reference's SAMEMASK reading has no window: the edge beside the end is dropped, the
+        // edge over it kept, the marker the same.
+        let reference = eol_con(None);
+        assert!(eol_markers(&facing(51), &reference).is_empty(), "WITHIN read as 0: an edge beside the end");
+        assert_eq!(eol_markers(&facing(51), &written).len(), 1, "as written: inside the window");
+        assert_eq!(eol_markers(&facing(-200), &reference), [([0, 1000, 50, 1060], vec![0, 1])]);
+    }
+
     /// drt `hasEol_helper`: a marker of no area is grown by 1 before the max-rectangle test, so a
     /// shape sitting on its line blocks it; without that shape the two ends are reported.
     #[test]
