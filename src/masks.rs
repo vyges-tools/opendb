@@ -881,6 +881,9 @@ pub struct ColourOptions {
     /// distances, each band at its priority. The `long_range` pairs, where given too, join them
     /// at priority 0 (the strongest).
     pub separators: BTreeMap<String, Vec<crate::masks_sep::Separator>>,
+    /// Colour-balance rules per layer, stepped over the die area (step 5 of
+    /// [`crate::masks_decomp`]).
+    pub balance: BTreeMap<String, Vec<crate::masks_decomp::BalanceRule>>,
 }
 
 /// What [`colour_masks`] did.
@@ -924,6 +927,9 @@ pub struct DecompStats {
     pub soft_flips: usize,
     /// Per separator priority: (pairs given, pairs on opposite masks).
     pub soft_by_priority: BTreeMap<u8, (usize, usize)>,
+    /// Per balance rule: windows measured, outside the range before and after the balance step.
+    pub balance: Vec<(usize, usize, usize)>,
+    pub balance_flips: usize,
 }
 
 /// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
@@ -1054,7 +1060,7 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
     if !opts.check_only {
         colour_special_nets(db, &by_name, &mut rep)?;
         if !opts.parity_only {
-            decompose_block(db, &by_name, &anchors, &opts.eol_windows, &opts.long_range, &opts.separators, &mut rep)?;
+            decompose_block(db, &by_name, &anchors, opts, &mut rep)?;
         }
     }
     check_block(db, &by_name, &mut rep)?;
@@ -1404,11 +1410,16 @@ fn decompose_block(
     db: &mut Db,
     layers: &BTreeMap<String, MaskLayer>,
     anchors: &Anchors,
-    eol_windows: &BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
-    long_range: &BTreeMap<String, i32>,
-    separators: &BTreeMap<String, Vec<crate::masks_sep::Separator>>,
+    opts: &ColourOptions,
     rep: &mut ColourReport,
 ) -> Result<()> {
+    let (eol_windows, long_range, separators) = (&opts.eol_windows, &opts.long_range, &opts.separators);
+    let die = vyges_layout::geom::Rect {
+        x0: db.block_get_die_area_x_min(),
+        y0: db.block_get_die_area_y_min(),
+        x1: db.block_get_die_area_x_max(),
+        y1: db.block_get_die_area_y_max(),
+    };
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
     let shapes = block_shapes(db, &by_number)?;
     // per net: (layer, rect, mask) of every shape the decomposition placed
@@ -1442,7 +1453,9 @@ fn decompose_block(
             soft.extend(crate::masks_sep::separator_pairs(v, seps));
         }
         soft.retain(|&(i, j, _)| pairs.binary_search(&(i, j)).is_err());
-        let d = crate::masks_decomp::decompose_weighted(v, &pairs, &soft, &anchored);
+        let targets: Vec<crate::masks_decomp::WindowTarget> =
+            opts.balance.get(&layer.name).map_or_else(Vec::new, |rs| rs.iter().map(|r| r.over(&die)).collect());
+        let d = crate::masks_decomp::decompose_goals(v, &pairs, &soft, &targets, &anchored);
         for c in &d.anchor_conflicts {
             rep.findings.push(Finding::AnchorConflict {
                 layer: layer.name.clone(),
@@ -1461,6 +1474,8 @@ fn decompose_block(
             soft_met: d.soft_met,
             soft_flips: d.soft_flips,
             soft_by_priority: d.soft_by_priority.clone(),
+            balance: d.balance.clone(),
+            balance_flips: d.balance_flips,
         });
         for (k, m) in d.mask.iter().enumerate() {
             let Some(m) = *m else { continue };

@@ -44,6 +44,13 @@
 //!    component flips when the strongest priority the flip changes gains, whatever it costs a
 //!    weaker one.
 //!
+//! 5. **Colour balance** ([`decompose_goals`], [`WindowTarget`]): per window of a density
+//!    check, the mask-1 share of the layer's metal area should stay in a range. A free
+//!    component flips when that strictly lowers the total, over all windows, of how far each lies
+//!    outside its range (area-weighted, exact integers). It comes after the separators and
+//!    overrides them, since balance is a sign-off rule and a separator only a preference; a
+//!    layout already in range is left exactly as step 4 left it.
+//!
 //! Same input, same output: polygons and edges are numbered by shape order, every walk is in
 //! index order, and nothing depends on hashing.
 
@@ -77,6 +84,11 @@ pub struct Decomposition {
     pub soft_flips: usize,
     /// Per separator priority: (pairs given, pairs on opposite masks).
     pub soft_by_priority: BTreeMap<u8, (usize, usize)>,
+    /// Per balance target: windows measured, and windows outside the range before and after
+    /// step 5.
+    pub balance: Vec<(usize, usize, usize)>,
+    /// Free components step 5 flipped.
+    pub balance_flips: usize,
 }
 
 /// Passes of the separator search over the free components (each flip raises the met pairs,
@@ -146,6 +158,19 @@ pub fn decompose_weighted(
     shapes: &[MaskShape],
     pairs: &[(usize, usize)],
     soft: &[(usize, usize, u8)],
+    anchor: &[bool],
+) -> Decomposition {
+    decompose_goals(shapes, pairs, soft, &[], anchor)
+}
+
+/// [`decompose_weighted`], then colour balance: each [`WindowTarget`] asks every one of its
+/// windows to keep the mask-1 share of the layer's metal area inside its range (step 5).
+#[must_use]
+pub fn decompose_goals(
+    shapes: &[MaskShape],
+    pairs: &[(usize, usize)],
+    soft: &[(usize, usize, u8)],
+    balance: &[WindowTarget],
     anchor: &[bool],
 ) -> Decomposition {
     let n = shapes.len();
@@ -318,6 +343,11 @@ pub fn decompose_weighted(
             }
         }
     }
+    // 5. colour balance: a free component flips when that lowers the windows' total distance
+    // outside their ranges (area-weighted), whatever it costs the separators
+    if !balance.is_empty() {
+        balance_free(shapes, &members, &mut free, balance, &mut out);
+    }
     for &(a, b, pr) in &soft {
         let (ma, mb) = (eff(&out, a), eff(&out, b));
         if ma != 0 && mb != 0 {
@@ -334,6 +364,230 @@ pub fn decompose_weighted(
         }
     }
     out
+}
+
+// ---- colour balance -----------------------------------------------------------------------------
+
+/// A colour-balance target: over each window, the mask-1 share of the layer's metal area
+/// (`area(mask 1) / area(all metal)`, uncoloured metal in the total) should lie in
+/// `[lo_ppm, hi_ppm]` parts per million. A window with no metal is not measured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowTarget {
+    pub windows: Vec<Rect>,
+    pub lo_ppm: i64,
+    pub hi_ppm: i64,
+}
+
+/// A balance rule before it meets an extent: window side and step (DBU) and the range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BalanceRule {
+    pub window: i32,
+    pub step: i32,
+    pub lo_ppm: i64,
+    pub hi_ppm: i64,
+}
+
+/// A fraction `0 <= f <= 1` as exact parts per million (`0.22` is 220000): at most six decimals.
+fn ppm(v: &str) -> Option<i64> {
+    let (i, f) = v.split_once('.').unwrap_or((v, ""));
+    if f.len() > 6 || !i.chars().all(|c| c.is_ascii_digit()) || !f.chars().all(|c| c.is_ascii_digit()) || i.is_empty() && f.is_empty() {
+        return None;
+    }
+    let i: i64 = if i.is_empty() { 0 } else { i.parse().ok()? };
+    let f: i64 = if f.is_empty() { 0 } else { format!("{f:0<6}").parse().ok()? };
+    let p = i * 1_000_000 + f;
+    (p <= 1_000_000).then_some(p)
+}
+
+impl BalanceRule {
+    /// `LAYER:WINDOW,STEP,MIN,MAX` (DBU, DBU, fractions).
+    pub fn parse(spec: &str) -> Result<(String, BalanceRule), String> {
+        let (layer, rest) = spec.split_once(':').ok_or_else(|| format!("{spec}: wants LAYER:WINDOW,STEP,MIN,MAX"))?;
+        let f: Vec<&str> = rest.split(',').map(str::trim).collect();
+        if layer.is_empty() || f.len() != 4 {
+            return Err(format!("{spec}: wants LAYER:WINDOW,STEP,MIN,MAX"));
+        }
+        let dbu = |what: &str, v: &str| v.parse::<i32>().ok().filter(|d| *d > 0).ok_or_else(|| format!("{spec}: {what} not a positive DBU value: {v}"));
+        let (window, step) = (dbu("WINDOW", f[0])?, dbu("STEP", f[1])?);
+        let frac = |what: &str, v: &str| ppm(v).ok_or_else(|| format!("{spec}: {what} not a fraction in [0, 1] with at most six decimals: {v}"));
+        let (lo_ppm, hi_ppm) = (frac("MIN", f[2])?, frac("MAX", f[3])?);
+        if lo_ppm > hi_ppm || step > window {
+            return Err(format!("{spec}: needs MIN <= MAX and STEP <= WINDOW"));
+        }
+        Ok((layer.to_string(), BalanceRule { window, step, lo_ppm, hi_ppm }))
+    }
+
+    /// The windows over `extent` as a sign-off density check steps them: from the lower left by
+    /// `step` while a window fits, the last row and column backed up to end on the extent; an
+    /// extent shorter than a window is one window over it.
+    #[must_use]
+    pub fn over(&self, extent: &Rect) -> WindowTarget {
+        let starts = |lo: i32, hi: i32| -> Vec<(i32, i32)> {
+            let (w, s) = (i64::from(self.window), i64::from(self.step));
+            if i64::from(hi) - i64::from(lo) <= w {
+                return vec![(lo, hi)];
+            }
+            let mut v = Vec::new();
+            let mut x = i64::from(lo);
+            while x + w <= i64::from(hi) {
+                v.push((x as i32, (x + w) as i32));
+                x += s;
+            }
+            if v.last().is_some_and(|l| l.1 < hi) {
+                v.push(((i64::from(hi) - w) as i32, hi));
+            }
+            v
+        };
+        let mut windows = Vec::new();
+        for (y0, y1) in starts(extent.y0, extent.y1) {
+            for (x0, x1) in starts(extent.x0, extent.x1) {
+                windows.push(Rect { x0, y0, x1, y1 });
+            }
+        }
+        WindowTarget { windows, lo_ppm: self.lo_ppm, hi_ppm: self.hi_ppm }
+    }
+}
+
+/// How far a window lies outside its range, in area x ppm (0 inside it).
+fn outside(a1: i64, total: i64, lo: i64, hi: i64) -> i128 {
+    let (a1, t) = (i128::from(a1) * 1_000_000, i128::from(total));
+    (i128::from(lo) * t - a1).max(0) + (a1 - i128::from(hi) * t).max(0)
+}
+
+fn clip_area(t: &Rect, w: &Rect) -> i64 {
+    let dx = i64::from(t.x1.min(w.x1)) - i64::from(t.x0.max(w.x0));
+    let dy = i64::from(t.y1.min(w.y1)) - i64::from(t.y0.max(w.y0));
+    if dx > 0 && dy > 0 { dx * dy } else { 0 }
+}
+
+/// Step 5 of [`decompose_goals`].
+fn balance_free(
+    shapes: &[MaskShape],
+    members: &BTreeMap<usize, Vec<usize>>,
+    free: &mut [(Vec<usize>, u8)],
+    targets: &[WindowTarget],
+    out: &mut Decomposition,
+) {
+    let eff = |out: &Decomposition, k: usize| out.mask[k].unwrap_or(shapes[k].mask);
+    let rect = |k: usize| {
+        let r = shapes[k].rect;
+        Rect { x0: r[0], y0: r[1], x1: r[2], y1: r[3] }
+    };
+    let union = |ks: &[usize]| -> Vec<Rect> {
+        let rs: Vec<Rect> = ks.iter().map(|&k| rect(k)).collect();
+        vyges_layout::boolean::boolean(&rs, &[], vyges_layout::boolean::Op::Or)
+    };
+    // metal of the layer as non-overlapping tiles with a mask source: a polygon of one mask is
+    // its union (one mask, the polygon's first shape); a polygon holding both masks (frozen) and
+    // shapes outside the decomposition count shape by shape
+    let mut tiles: Vec<(Rect, usize)> = Vec::new();
+    let mut in_poly = vec![false; shapes.len()];
+    for ks in members.values() {
+        let masks: BTreeSet<u8> = ks.iter().map(|&k| eff(out, k)).collect();
+        if masks.len() == 1 {
+            for t in union(ks) {
+                tiles.push((t, ks[0]));
+            }
+            for &k in ks {
+                in_poly[k] = true;
+            }
+        }
+    }
+    for k in (0..shapes.len()).filter(|&k| !in_poly[k]) {
+        tiles.push((rect(k), k));
+    }
+    // the free component of each shape
+    let mut comp_of: BTreeMap<usize, usize> = BTreeMap::new();
+    for (c, (polys, _)) in free.iter().enumerate() {
+        for p in polys {
+            for &k in &members[p] {
+                comp_of.insert(k, c);
+            }
+        }
+    }
+    // per target and window: mask-1 area and total; per free component: its (target, window,
+    // tile area, source shape) entries
+    let mut a1: Vec<Vec<i64>> = targets.iter().map(|t| vec![0; t.windows.len()]).collect();
+    let mut tot: Vec<Vec<i64>> = targets.iter().map(|t| vec![0; t.windows.len()]).collect();
+    let mut touch: Vec<Vec<(usize, usize, i64, usize)>> = vec![Vec::new(); free.len()];
+    for (ti, t) in targets.iter().enumerate() {
+        // windows are row-major over a grid of starts: index the x and y spans
+        let mut xs: Vec<(i32, i32)> = t.windows.iter().map(|w| (w.x0, w.x1)).collect();
+        xs.sort_unstable();
+        xs.dedup();
+        let mut ys: Vec<(i32, i32)> = t.windows.iter().map(|w| (w.y0, w.y1)).collect();
+        ys.sort_unstable();
+        ys.dedup();
+        let at: BTreeMap<(i32, i32), usize> = t.windows.iter().enumerate().map(|(i, w)| ((w.x0, w.y0), i)).collect();
+        for &(tile, k) in &tiles {
+            for &(x0, x1) in xs.iter().filter(|(x0, x1)| *x0 < tile.x1 && tile.x0 < *x1) {
+                for &(y0, y1) in ys.iter().filter(|(y0, y1)| *y0 < tile.y1 && tile.y0 < *y1) {
+                    let Some(&wi) = at.get(&(x0, y0)) else { continue };
+                    let a = clip_area(&tile, &Rect { x0, y0, x1, y1 });
+                    if a == 0 {
+                        continue;
+                    }
+                    tot[ti][wi] += a;
+                    if eff(out, k) == 1 {
+                        a1[ti][wi] += a;
+                    }
+                    if let Some(&c) = comp_of.get(&k) {
+                        touch[c].push((ti, wi, a, k));
+                    }
+                }
+            }
+        }
+    }
+    let bad = |a1: &[Vec<i64>]| -> Vec<usize> {
+        targets
+            .iter()
+            .enumerate()
+            .map(|(ti, t)| (0..t.windows.len()).filter(|&wi| tot[ti][wi] > 0 && outside(a1[ti][wi], tot[ti][wi], t.lo_ppm, t.hi_ppm) > 0).count())
+            .collect()
+    };
+    let before = bad(&a1);
+    for _ in 0..SOFT_PASSES {
+        let mut changed = false;
+        for c in 0..free.len() {
+            if touch[c].is_empty() {
+                continue;
+            }
+            // mask-1 area change per window if c flips
+            let mut d: BTreeMap<(usize, usize), i64> = BTreeMap::new();
+            for &(ti, wi, a, k) in &touch[c] {
+                *d.entry((ti, wi)).or_default() += if eff(out, k) == 1 { -a } else { a };
+            }
+            let gain: i128 = d
+                .iter()
+                .map(|(&(ti, wi), &dv)| {
+                    let (t, x, s) = (&targets[ti], a1[ti][wi], tot[ti][wi]);
+                    outside(x, s, t.lo_ppm, t.hi_ppm) - outside(x + dv, s, t.lo_ppm, t.hi_ppm)
+                })
+                .sum();
+            if gain > 0 {
+                changed = true;
+                out.balance_flips += 1;
+                for (&(ti, wi), &dv) in &d {
+                    a1[ti][wi] += dv;
+                }
+                free[c].1 = 3 - free[c].1;
+                for p in &free[c].0 {
+                    for &k in &members[p] {
+                        out.mask[k] = out.mask[k].map(|m| 3 - m);
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let after = bad(&a1);
+    out.balance = targets
+        .iter()
+        .enumerate()
+        .map(|(ti, t)| ((0..t.windows.len()).filter(|&wi| tot[ti][wi] > 0).count(), before[ti], after[ti]))
+        .collect();
 }
 
 // ---- line-end windows as hard constraints ------------------------------------------------------
@@ -648,6 +902,86 @@ mod tests {
         let s = vec![sh("a", [0, 0, 10, 10], 1), sh("x", [0, 20, 10, 30], 2), sh("b", [0, 40, 10, 50], 1)];
         let d = decompose_soft(&s, &[(0, 1), (1, 2)], &[(0, 2)], &[false; 3]);
         assert_eq!((masks(&d), d.soft_flips, d.soft_met), (vec![1, 2, 1], 0, 0));
+    }
+
+    fn target(lo: i64, hi: i64) -> WindowTarget {
+        WindowTarget { windows: vec![Rect { x0: 0, y0: 0, x1: 1000, y1: 1000 }], lo_ppm: lo, hi_ppm: hi }
+    }
+
+    /// Two rows, each a hard chain wide - narrow - wide (the wide ones forced together), both on
+    /// the same phase by parity: the wide metal is all mask 1, a share of 0.8 or more. The
+    /// balance step flips one whole row (a hard chain stays split) and the window comes into the
+    /// range; with no target, or a range the window already meets, nothing moves.
+    fn two_rows() -> (Vec<MaskShape>, Vec<(usize, usize)>) {
+        let s = vec![
+            sh("a", [0, 0, 400, 100], 1),
+            sh("b", [0, 130, 400, 140], 2),
+            sh("c", [0, 170, 400, 270], 1),
+            sh("d", [0, 500, 400, 600], 1),
+            sh("e", [0, 630, 400, 640], 2),
+            sh("f", [0, 670, 400, 770], 1),
+        ];
+        (s, vec![(0, 1), (1, 2), (3, 4), (4, 5)])
+    }
+
+    #[test]
+    fn balance_flips_a_free_component_into_range() {
+        let (s, hard) = two_rows();
+        let anch = [false; 6];
+        let d = decompose_goals(&s, &hard, &[], &[], &anch);
+        assert_eq!(masks(&d), vec![1, 2, 1, 1, 2, 1]);
+        let d = decompose_goals(&s, &hard, &[], &[target(200_000, 800_000)], &anch);
+        let m = masks(&d);
+        assert_eq!(m, vec![2, 1, 2, 1, 2, 1], "the later row cannot help alone; the first pass flips the first row");
+        assert_eq!((d.balance, d.balance_flips), (vec![(1, 1, 0)], 1));
+        // the hard pairs still hold
+        assert!(hard.iter().all(|&(i, j)| m[i] != m[j]));
+        // already in range: left exactly as it was
+        let d = decompose_goals(&s, &hard, &[], &[target(0, 1_000_000)], &anch);
+        assert_eq!((masks(&d), d.balance_flips, d.balance.clone()), (vec![1, 2, 1, 1, 2, 1], 0, vec![(1, 0, 0)]));
+    }
+
+    /// Rule: balance never flips an anchor; with both rows anchored the window stays out of
+    /// range and is reported so.
+    #[test]
+    fn balance_never_moves_an_anchor() {
+        let (s, hard) = two_rows();
+        let d = decompose_goals(&s, &hard, &[], &[target(200_000, 800_000)], &[true; 6]);
+        assert_eq!((masks(&d), d.balance_flips, d.balance), (vec![1, 2, 1, 1, 2, 1], 0, vec![(1, 1, 1)]));
+    }
+
+    /// Rule: balance outranks the separators: a soft pair asking the rows to stay as they are
+    /// does not stop the flip.
+    #[test]
+    fn balance_overrides_a_separator() {
+        let (s, hard) = two_rows();
+        // c (mask 1) and d (mask 1) prefer opposite masks: step 4 flips the first row (index order)
+        let d = decompose_goals(&s, &hard, &[(2, 3, 2)], &[], &[false; 6]);
+        assert_eq!(masks(&d), vec![2, 1, 2, 1, 2, 1]);
+        // with the window too: step 4's flip already balances it, step 5 has nothing to do
+        let d = decompose_goals(&s, &hard, &[(2, 3, 2)], &[target(200_000, 800_000)], &[false; 6]);
+        assert_eq!((masks(&d), d.balance_flips), (vec![2, 1, 2, 1, 2, 1], 0));
+        // a soft pair already met that the balance flip must break (b on 2, d on 1): it flips
+        // anyway
+        let d = decompose_goals(&s, &hard, &[(1, 3, 2)], &[target(200_000, 800_000)], &[false; 6]);
+        assert_eq!(d.balance_flips, 1);
+        assert_eq!(d.balance, vec![(1, 1, 0)]);
+        assert_eq!(d.soft_by_priority, BTreeMap::from([(2, (1, 0))]), "the separator is given up for the rule");
+    }
+
+    /// Rule: the window placement of a density check: from the lower left by step while a window
+    /// fits, the last backed up to end on the extent; an extent shorter than a window is one.
+    #[test]
+    fn balance_windows_step_then_back_up() {
+        let r = BalanceRule { window: 100, step: 50, lo_ppm: 0, hi_ppm: 1_000_000 };
+        let xs: Vec<(i32, i32)> = r.over(&Rect { x0: 0, y0: 0, x1: 230, y1: 80 }).windows.iter().map(|w| (w.x0, w.x1)).collect();
+        assert_eq!(xs, vec![(0, 100), (50, 150), (100, 200), (130, 230)]);
+        let t = r.over(&Rect { x0: 0, y0: 0, x1: 230, y1: 80 });
+        assert!(t.windows.iter().all(|w| (w.y0, w.y1) == (0, 80)));
+        assert_eq!(BalanceRule::parse("M2:25000,2500,0.22,0.78").unwrap().1, BalanceRule { window: 25000, step: 2500, lo_ppm: 220_000, hi_ppm: 780_000 });
+        for bad in ["M2:25000,2500,0.8,0.2", "M2:100,200,0.2,0.8", "M2:100,50,1.2,0.8", "M2:100,50,0.2", "M2:100,50,0.1234567,0.8", "M2:0,0,0,1"] {
+            assert!(BalanceRule::parse(bad).is_err(), "{bad}");
+        }
     }
 
     /// Rule (prioritised separators): the count is lexicographic, strongest priority (lowest
