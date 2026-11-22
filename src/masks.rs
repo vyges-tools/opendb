@@ -58,6 +58,10 @@ pub struct MaskLayer {
     pub horizontal: bool,
     /// The patterns ACROSS the preferred direction (Y patterns for a horizontal layer).
     pub tracks: Vec<TrackPattern>,
+    /// Every distinct track centreline across the preferred direction, in increasing order, when
+    /// the layer has several patterns and none carries a DEF mask ([`unmasked_order`]); empty
+    /// otherwise.
+    pub order: Vec<i32>,
     /// Required spacing between two shapes of the same mask.
     pub same_mask_spacing: i32,
     /// Where [`MaskLayer::same_mask_spacing`] came from.
@@ -104,6 +108,12 @@ impl MaskLayer {
     ///
     /// DEF rule: `MASK n` is the mask of a pattern's first track and the masks then cycle
     /// (1, 2, 1, 2 … for two masks); with `SAMEMASK` every track has mask `n`.
+    ///
+    /// Several patterns and no DEF mask on any (a non-uniform grid, as `make_tracks` lays for a
+    /// LEF58_PITCH FIRSTLASTPITCH layer: one pattern per track of a row, each stepping a row
+    /// height), the masks cycle over the layer's tracks in coordinate order, every pattern
+    /// together: neighbouring tracks never share a mask. Counting each pattern on its own would
+    /// give every track of a row the same mask.
     pub fn track_at(&self, coord: i32) -> TrackHit {
         for (k, p) in self.tracks.iter().enumerate() {
             if p.step <= 0 || p.count <= 0 {
@@ -115,7 +125,9 @@ impl MaskLayer {
             }
             let index = (d / p.step as i64) as i32;
             let first = if p.first_mask == 0 { 1 } else { p.first_mask };
-            let mask = if p.same_mask {
+            let mask = if let Ok(rank) = self.order.binary_search(&coord) {
+                (rank % self.num_masks as usize) as u8 + 1
+            } else if p.same_mask {
                 first
             } else {
                 ((first as i64 - 1 + index as i64) % self.num_masks as i64) as u8 + 1
@@ -816,6 +828,23 @@ pub fn uncoloured(rep: &ColourReport) -> Vec<&Finding> {
     rep.findings.iter().filter(|f| matches!(f, Finding::Uncoloured { .. })).collect()
 }
 
+/// [`MaskLayer::order`] for `tracks`: every distinct centreline in increasing order when there are
+/// several patterns and none carries a DEF mask (`MASK` or `SAMEMASK`); empty otherwise.
+#[must_use]
+pub fn unmasked_order(tracks: &[TrackPattern]) -> Vec<i32> {
+    if tracks.len() < 2 || tracks.iter().any(|t| t.first_mask != 0 || t.same_mask) {
+        return Vec::new();
+    }
+    let mut v: Vec<i32> = tracks
+        .iter()
+        .filter(|p| p.step > 0 && p.count > 0)
+        .flat_map(|p| (0..p.count).map(move |k| (p.origin as i64 + k as i64 * p.step as i64) as i32))
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
 /// The block's multi-mask routing layers and their track grids.
 pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
     let mut out = Vec::new();
@@ -827,7 +856,7 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
         let (px, py) = db.track_patterns(&name)?;
         let (mx, my) = db.track_pattern_masks(&name)?;
         let (pats, masks) = if horizontal { (py, my) } else { (px, mx) };
-        let tracks = pats
+        let tracks: Vec<TrackPattern> = pats
             .iter()
             .enumerate()
             .map(|(k, &(origin, count, step))| {
@@ -875,6 +904,7 @@ pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
             number: db.layer_get_number(&name) as i64,
             num_masks: db.layer_get_num_masks(&name).min(3) as u8,
             horizontal,
+            order: unmasked_order(&tracks),
             tracks,
             same_mask_spacing: spacing,
             spacing_source,
@@ -1112,7 +1142,7 @@ mod tests {
     use super::*;
 
     fn layer(horizontal: bool, tracks: Vec<TrackPattern>) -> MaskLayer {
-        MaskLayer { name: "M1".into(), number: 1, num_masks: 2, horizontal, tracks, same_mask_spacing: 60,
+        MaskLayer { name: "M1".into(), number: 1, num_masks: 2, horizontal, order: unmasked_order(&tracks), tracks, same_mask_spacing: 60,
                     spacing_source: SpacingSource::Option, rules: None }
     }
 
@@ -1186,6 +1216,38 @@ mod tests {
             TrackHit::Off => 0,
         }).collect();
         assert_eq!(m, vec![3, 1, 2, 3, 1], "three masks cycle from the first track's");
+    }
+
+    /// Rule: with several track patterns and no DEF mask on any — the non-uniform grid
+    /// `make_tracks` lays for a LEF58_PITCH FIRSTLASTPITCH layer, one pattern per track of a row,
+    /// each stepping a row height — the masks alternate over the tracks in coordinate order, all
+    /// patterns together, so no two neighbouring tracks share a mask. Here a 200 row with three
+    /// tracks at 20, 80, 140 and a first/last track on the row boundary (patterns 20, 80, 140,
+    /// 200, each step 200): masks 1, 2, 1, 2, 1, 2 … up the rows. A DEF mask on any pattern keeps
+    /// the DEF rule per pattern.
+    #[test]
+    fn unmasked_patterns_alternate_in_coordinate_order() {
+        let rows = layer(true, vec![pat(20, 3, 200, 0, false), pat(80, 3, 200, 0, false), pat(140, 3, 200, 0, false), pat(200, 2, 200, 0, false)]);
+        let at = |l: &MaskLayer, y: i32| match l.track_at(y) {
+            TrackHit::On { mask, .. } => mask,
+            TrackHit::Off => 0,
+        };
+        let ys = [20, 80, 140, 200, 220, 280, 340, 400, 420];
+        assert_eq!(ys.map(|y| at(&rows, y)), [1, 2, 1, 2, 1, 2, 1, 2, 1]);
+        assert_eq!(rows.track_at(80), TrackHit::On { pattern: 1, index: 0, mask: 2 }, "the pattern and index stay the pattern's own");
+        assert_eq!(at(&rows, 100), 0, "between tracks");
+        // a duplicated pattern (odb may hold one twice) counts each track once
+        let twice = layer(true, vec![pat(0, 4, 100, 0, false), pat(0, 4, 100, 0, false)]);
+        assert_eq!([0, 100, 200, 300].map(|y| at(&twice, y)), [1, 2, 1, 2]);
+        // three masks cycle the same way
+        let three = MaskLayer { num_masks: 3, ..rows.clone() };
+        assert_eq!(ys.map(|y| at(&three, y)), [1, 2, 3, 1, 2, 3, 1, 2, 3]);
+        // a DEF mask on one pattern: every pattern by the DEF rule, unmasked ones from 1
+        let def = layer(true, vec![pat(20, 3, 200, 2, false), pat(80, 3, 200, 0, false)]);
+        assert!(def.order.is_empty());
+        assert_eq!([20, 220, 80, 280].map(|y| at(&def, y)), [2, 1, 1, 2]);
+        // one pattern: its own count, as before
+        assert!(layer(true, vec![pat(50, 10, 100, 0, false)]).order.is_empty());
     }
 
     fn st(c: Option<u8>) -> WireMaskState {
