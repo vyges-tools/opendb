@@ -359,6 +359,13 @@ pub struct NetPlan {
 /// Plan the colours of one net from its records and the colour state at each (`state` is
 /// [`Db::net_wire_decode_masks`] without the header). A record's colour becomes its track's,
 /// unless it is already coloured (kept), off-track or wrong-way (left, reported).
+/// The point that names a patch (`RECT` record) offset from the path's point `at`: the centre of
+/// its own rectangle. 🔑 A patch need not cover the path's point (it can sit on the next track),
+/// so the point would name the neighbouring wire's track and shape, not the patch's.
+fn patch_centre((x, y): (i32, i32), (x0, y0, x1, y1): (i32, i32, i32, i32)) -> (i32, i32) {
+    (x + (x0 + x1).div_euclid(2), y + (y0 + y1).div_euclid(2))
+}
+
 pub fn plan_net(
     net: &str,
     layers: &BTreeMap<String, MaskLayer>,
@@ -428,8 +435,9 @@ pub fn plan_net(
                 layer_name = other.clone();
                 layer = layers.get(other);
             }
-            WireRec::Rect(..) => {
-                let (Some(at), Some(ml)) = (prev, layer) else { continue };
+            WireRec::Rect(x0, y0, x1, y1) => {
+                let (Some(p), Some(ml)) = (prev, layer) else { continue };
+                let at = patch_centre(p, (*x0, *y0, *x1, *y1));
                 let want = match (have.color, ml.mask_at(at)) {
                     (Some(c), _) => Some(c),
                     (None, Some(m)) => Some(m),
@@ -1322,12 +1330,10 @@ fn record_sites(recs: &[WireRec]) -> Vec<(usize, String, (i32, i32), Option<bool
                 layer = if *bottom == layer { top.clone() } else { bottom.clone() };
             }
             WireRec::Rect(x0, y0, x1, y1) => {
-                // 🔑 A patch is offset from the path's point and need not cover it: named by the
-                // point it would take the mask of whatever shape holds the point (a neighbouring
-                // wire of the net), not its own. Its own centre is inside it.
-                if let Some((x, y)) = prev {
-                    let c = (x + (x0 + x1).div_euclid(2), y + (y0 + y1).div_euclid(2));
-                    out.push((i, layer.clone(), c, None));
+                // named by the point, it would take the mask of whatever shape holds the point (a
+                // neighbouring wire of the net), not its own
+                if let Some(p) = prev {
+                    out.push((i, layer.clone(), patch_centre(p, (*x0, *y0, *x1, *y1)), None));
                 }
             }
             WireRec::Rule | WireRec::End | WireRec::Other(_) => {}
@@ -1705,6 +1711,29 @@ mod tests {
         assert_eq!(plan.via[3], Some(ViaMask { bottom: 2, cut: 0, top: 1 }));
         assert_eq!(plan.color[2], Some(2));
         assert_eq!(plan.color[4], Some(1), "the M2 segment after the via");
+    }
+
+    /// Rule (the parity stage names a patch by its own rectangle): an uncoloured patch takes the
+    /// track parity of its own centre, not of the path's point it is offset from. As on the routed
+    /// block: the point is on one track (y 50, mask 1), the patch on the next one up (y 150, mask 2).
+    #[test]
+    fn an_uncoloured_patch_takes_the_parity_of_its_own_centre() {
+        let h = MaskLayer { name: "M1".into(), ..layer(true, vec![pat(50, 10, 100, 1, false)]) };
+        let layers = BTreeMap::from([("M1".to_string(), h)]);
+        let recs = vec![
+            WireRec::Path("M1".into()),
+            WireRec::Point(0, 50),
+            WireRec::Point(100, 50),
+            WireRec::Path("M1".into()),
+            WireRec::Point(100, 50),
+            WireRec::Rect(16, 84, 75, 116),
+            WireRec::End,
+        ];
+        let mut f = Vec::new();
+        let plan = plan_net("n", &layers, &recs, &vec![st(None); recs.len()], &mut f);
+        assert!(f.is_empty(), "{f:?}");
+        assert_eq!(plan.color[2], Some(1), "the wire on y 50");
+        assert_eq!(plan.color[5], Some(2), "the patch centred on y 150");
     }
 
     /// The colour step assigns masks ONLY on the multi-mask routing layers. A via's cut digit, and
