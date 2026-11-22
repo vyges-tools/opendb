@@ -2346,6 +2346,7 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
     { "name": "--lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "tech LEF whose LEF58 SAMEMASK spacing rules (dropped by odb) set the same-mask spacing" },
     { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the --lef SAMEMASK rules, else the layer's SPACING, else its spacing table at minimum width)" },
     { "name": "--cell-lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "cell LEF whose PIN/OBS RECT MASK colours are set on the design's masters first (for an .odb written by a tool whose LEF reader dropped them); the colour step anchors routing on coloured cell metal" },
+    { "name": "--eol-window", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N] (DBU), a same-mask line-end rule the decomposition holds as a hard constraint: a line end (an edge no longer than EOLMAX, convex corners, neighbouring edges at least ADJMIN) and any shape (toeol: a facing line end) within SPACE outward, widened by EXT along it, take opposite masks" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
     { "name": "--parity-only", "kind": "flag", "type": "bool", "required": false, "description": "colour by track parity only, without the decomposition stage (by default whole polygons are recoloured where parity breaks a same-mask rule and a legal two-colouring exists; pre-coloured shapes are never flipped)" },
     { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
@@ -2386,13 +2387,18 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 let d: i32 = d.parse().map_err(|_| format!("color-masks: not a DBU value: {d}"))?;
                 opts.same_mask_spacing.insert(l.to_string(), d);
             }
+            "--eol-window" => {
+                let v = args.next().ok_or("color-masks: --eol-window needs LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol]")?;
+                let (l, w) = vyges_opendb::masks_decomp::EolWindow::parse(&v).map_err(|e| format!("color-masks: --eol-window {e}"))?;
+                opts.eol_windows.entry(l).or_default().push(w);
+            }
             "--describe" => {
                 println!("{COLOR_MASKS_DESCRIBE}");
                 return Ok(());
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
-                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]...\n\
+                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]... [--eol-window LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N]]...\n\
                        \x20                         [--check-only] [--parity-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
                 return Ok(());
             }
@@ -2477,7 +2483,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "cell_lefs": cell_masks,
         "decomposition": rep.decomposition.iter().map(|(l, d)| (l.clone(), serde_json::json!({
             "polygons": d.polygons, "components": d.components, "flipped": d.flipped,
-            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors,
+            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors, "eol_pairs": d.eol_pairs,
         }))).collect::<serde_json::Map<_, _>>(),
         "findings_by_kind": by_kind,
         "findings": rep.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),
