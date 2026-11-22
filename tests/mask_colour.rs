@@ -130,13 +130,13 @@ fn written_colours_survive_a_def_round_trip() {
     let _ = std::fs::remove_file(out);
 }
 
-/// ⛔ odb's DEF writer (`defout_impl.cpp`, `point_cnt % 2 == 0`) writes a wire `MASK` only before
-/// the 2nd, 4th … point of a path, and the reader's colour is sticky: the colour of a segment
-/// ending on the 3rd point is not merely dropped but read back as the previous segment's. Pinned
-/// so a change upstream is noticed (OpenROAD issue #12166); the colour pass writes one coloured
-/// segment per path for it.
+/// Rule (DEF 5.8 wiring): every point after a path's first carries the mask of the segment it
+/// ends. odb's own DEF writer writes a wire `MASK` only before the 2nd, 4th … point (OpenROAD
+/// #12166/#12271), and the reader's colour is sticky, so the 3rd point's segment read back with the
+/// previous one's mask. opendb-lib's write_def writes coloured wiring itself, so the segment keeps
+/// its own mask through DEF.
 #[test]
-fn the_def_writer_drops_the_mask_of_an_odd_point() {
+fn the_def_writer_keeps_the_mask_of_an_odd_point() {
     let mut db = load(&fixture("masks.def"));
     let names = vec!["M1".to_string()];
     #[rustfmt::skip]
@@ -149,7 +149,7 @@ fn the_def_writer_drops_the_mask_of_an_odd_point() {
     let back = load(out.to_str().unwrap());
     let (segs, _) = walk(&back, "b");
     assert_eq!(segs[0].3, Some(1));
-    assert_eq!(segs[1].3, Some(1), "after DEF: the first segment's mask, not its own");
+    assert_eq!(segs[1].3, Some(2), "after DEF: the segment's own mask");
     let _ = std::fs::remove_file(out);
 }
 
