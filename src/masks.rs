@@ -807,6 +807,15 @@ pub struct ColourReport {
     pub findings: Vec<Finding>,
 }
 
+/// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
+/// via landings, block pins: everything [`check_block`] collects). The tapeout gate refuses a
+/// design with any (`color-masks --require-coloured`): a multi-patterned layer is written to its
+/// masks only through the colours, so an uncoloured shape has no mask to go to. Cell metal is
+/// the cell library's and is checked on the final layout (`check-gds-layers`).
+pub fn uncoloured(rep: &ColourReport) -> Vec<&Finding> {
+    rep.findings.iter().filter(|f| matches!(f, Finding::Uncoloured { .. })).collect()
+}
+
 /// The block's multi-mask routing layers and their track grids.
 pub fn mask_layers(db: &Db, opts: &ColourOptions) -> Result<Vec<MaskLayer>> {
     let mut out = Vec::new();
