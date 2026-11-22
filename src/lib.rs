@@ -51,6 +51,8 @@ pub mod enclosure_edge;
 pub mod eol_enclosure;
 #[cfg(unix)]
 pub mod gds;
+#[cfg(unix)]
+pub mod gds_layers;
 pub mod joint_corner;
 pub mod masks;
 pub mod masks_check;

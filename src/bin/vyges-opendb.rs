@@ -25,6 +25,8 @@ fn diag_line(msg: String) {
     }
     let (severity, code, text) = if let Some(t) = msg.strip_prefix("vyges-opendb: error: ") {
         (Severity::Error, "ODB-ERROR".to_string(), t.to_string())
+    } else if let Some(t) = msg.strip_prefix("[ERROR] ") {
+        (Severity::Error, "ODB-ERROR".to_string(), t.to_string())
     } else if let Some(t) = msg.strip_prefix("[WARNING] ") {
         (Severity::Warn, "ODB-WARNING".to_string(), t.to_string())
     } else {
@@ -111,11 +113,22 @@ commands:
   color-masks               --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...
                             [--same-mask-spacing LAYER:DBU]...
                             [--check-only] [--report <f.json>] [--fail-on-findings]
+                            [--require-coloured]
                       Colour routed wires on multi-mask layers by track parity (DEF TRACKS MASK, or
                       mask 1 on the first track), and power-grid shapes that sit on one track (their
                       via landings follow), keep pre-coloured shapes, then check: off-track,
                       wrong-way, multi-track, uncoloured, same-mask pairs under the spacing, odd
-                      cycles (report).
+                      cycles (report). --require-coloured: exit 3, REFUSED, when any shape on a
+                      multi-mask layer is still uncoloured afterwards (the tapeout gate).
+
+  check-gds-layers          --gds <f.gds|f.oas> [--allowed-pairs <f.txt>]
+                            [--map <f.map> (--lef <tech.lef> | --input <f.odb>)] [--check-map]
+                            [--report <f.json>]
+                      The (layer, datatype) pairs a finished layout uses, checked: every pair on
+                      the allowed list (--allowed-pairs); no drawn shape on a pair the map sends
+                      UNCOLOURED shapes of a multi-mask layer to (--map with the tech); with
+                      --check-map, no map target outside the allowed list. Exit 3, REFUSED, on any
+                      finding; 2 when no check was asked for or the file holds no shapes.
 
   check-enclosure-edge      (--input <f.odb> | --lef <tech.lef> [--lef <cells.lef>]... [--def <f.def>])
                             [--report <f.json>] [--fail-on-findings]
@@ -262,6 +275,7 @@ fn run() -> Result<(), Fail> {
         "read-gds" => read_gds(args),
         "write-gds" => write_gds(args),
         "color-masks" => color_masks(args),
+        "check-gds-layers" => check_gds_layers(args),
         "check-enclosure-edge" => check_enclosure_edge(args),
         "check-eol-enclosure" => check_eol_enclosure(args),
         "check-prl-two-sides" => check_prl_two_sides(args),
@@ -335,6 +349,7 @@ const TOOL_DESCRIBE: &str = r#"{
     "read-gds",
     "write-gds",
     "color-masks",
+    "check-gds-layers",
     "check-enclosure-edge",
     "check-eol-enclosure",
     "check-prl-two-sides",
@@ -2330,16 +2345,17 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
     { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the --lef SAMEMASK rules, else the layer's SPACING, else its spacing table at minimum width)" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
     { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
-    { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when anything is reported" }
+    { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when anything is reported" },
+    { "name": "--require-coloured", "kind": "flag", "type": "bool", "required": false, "description": "the tapeout gate: exit 3, REFUSED, when any shape on a multi-mask layer (routed and special wires, via landings, block pins) is uncoloured after the pass" }
   ]
 }"#;
 
 /// `color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]... [--same-mask-spacing LAYER:DBU]...
-/// [--check-only] [--report <f.json>] [--fail-on-findings] | --describe`.
+/// [--check-only] [--report <f.json>] [--fail-on-findings] [--require-coloured] | --describe`.
 fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let (mut input, mut output, mut report) = (None, None, None);
     let mut opts = vyges_opendb::masks::ColourOptions::default();
-    let mut fail_on_findings = false;
+    let (mut fail_on_findings, mut require_coloured) = (false, false);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
@@ -2347,6 +2363,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "--report" => report = args.next(),
             "--check-only" => opts.check_only = true,
             "--fail-on-findings" => fail_on_findings = true,
+            "--require-coloured" | "--require-colored" => require_coloured = true,
             "--lef" => {
                 let path = args.next().ok_or("color-masks: --lef needs a tech LEF path")?;
                 let lef = vyges_loom::lef::Lef::load(&path).map_err(|e| format!("color-masks: {path}: {}", e.0))?;
@@ -2369,7 +2386,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
                        \x20                         [--same-mask-spacing LAYER:DBU]...\n\
-                       \x20                         [--check-only] [--report <f.json>] [--fail-on-findings]");
+                       \x20                         [--check-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
                 return Ok(());
             }
             other => return Err(format!("color-masks: unknown argument: {other}").into()),
@@ -2453,9 +2470,182 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         std::fs::write(&r, &text)?;
     }
     println!("{text}");
+    // ⛔ The tapeout gate: a multi-patterned layer reaches the masks only through its colours, so
+    // a shape left uncoloured has no mask to be written to. Refused loudly, with every shape named,
+    // never passed with a warning. Exit 3 (refused) is not exit 1 (findings standing).
+    if require_coloured {
+        let unc = vyges_opendb::masks::uncoloured(&rep);
+        if !unc.is_empty() {
+            for f in unc.iter().take(50) {
+                diag!("[ERROR] color-masks: uncoloured on a multi-mask layer: {}", f.to_json());
+            }
+            if unc.len() > 50 {
+                diag!("[ERROR] color-masks: ... and {} more (all in the report)", unc.len() - 50);
+            }
+            diag!(
+                "[ERROR] color-masks: REFUSED: {} shape(s) on multi-mask layer(s) carry no mask; a multi-patterned layer must be fully coloured for tapeout",
+                unc.len()
+            );
+            std::process::exit(3);
+        }
+    }
     if fail_on_findings && !rep.findings.is_empty() {
         return Err(format!("color-masks: {} finding(s)", rep.findings.len()).into());
     }
+    Ok(())
+}
+
+const CHECK_GDS_LAYERS_DESCRIBE: &str = r#"{
+  "step": "check-gds-layers",
+  "summary": "Check the (layer, datatype) pairs a finished layout (GDSII or OASIS) uses, read with no code shared with any writer: every pair must be on the allowed list; no drawn shape may sit on a pair the layer map sends uncoloured shapes of a multi-mask layer to; optionally, no map target outside the allowed list. Any finding is a refusal (exit 3). Nothing about any foundry is built in: the list and the map are inputs.",
+  "unix_only": true,
+  "args": [
+    { "name": "--gds", "kind": "input", "type": "path", "required": true, "description": "the layout to check (.gds, or .oas/.oasis)" },
+    { "name": "--allowed-pairs", "kind": "input", "type": "path", "required": false, "description": "the allowed GDS layer/datatype pairs, one `L D` per line" },
+    { "name": "--map", "kind": "input", "type": "path", "required": false, "description": "the LEF/DEF layer map the layout was streamed with; with --lef or --input it names the pairs an uncoloured shape of a multi-mask layer goes to" },
+    { "name": "--lef", "kind": "input", "type": "path", "required": false, "description": "tech LEF: which routing layers are multi-mask (MASK n, n >= 2)" },
+    { "name": "--input", "kind": "input", "type": "path", "required": false, "description": "a design .odb, instead of --lef, for the same" },
+    { "name": "--check-map", "kind": "flag", "type": "bool", "required": false, "description": "also refuse map targets outside the allowed list (needs --map and --allowed-pairs)" },
+    { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" }
+  ]
+}"#;
+
+/// `check-gds-layers --gds <f> [--allowed-pairs <f>] [--map <f> (--lef <tech.lef> | --input <f.odb>)]
+/// [--check-map] [--report <f.json>] | --describe`.
+fn check_gds_layers(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
+    use vyges_opendb::gds_layers as gl;
+    let (mut gds, mut allowed, mut map, mut input, mut report) = (None, None, None, None, None);
+    let (mut lefs, mut check_map) = (Vec::new(), false);
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--gds" => gds = args.next(),
+            "--allowed-pairs" => allowed = Some(args.next().ok_or("check-gds-layers: --allowed-pairs needs a FILE")?),
+            "--map" => map = Some(args.next().ok_or("check-gds-layers: --map needs a FILE")?),
+            "--lef" => lefs.push(args.next().ok_or("check-gds-layers: --lef needs a FILE")?),
+            "--input" | "-i" => input = args.next(),
+            "--check-map" => check_map = true,
+            "--report" => report = args.next(),
+            "--describe" => {
+                println!("{CHECK_GDS_LAYERS_DESCRIBE}");
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                diag!("usage: vyges-opendb check-gds-layers --gds <f.gds|f.oas> [--allowed-pairs <pairs.txt>]\n\
+                       \x20                              [--map <f.map> (--lef <tech.lef> | --input <f.odb>)] [--check-map]\n\
+                       \x20                              [--report <f.json>]");
+                return Ok(());
+            }
+            other => return Err(format!("check-gds-layers: unknown argument: {other}").into()),
+        }
+    }
+    let bad = |m: &str| -> ! {
+        diag!("vyges-opendb: error: check-gds-layers: {m}");
+        std::process::exit(2);
+    };
+    let Some(gds) = gds else { bad("--gds <f.gds|f.oas> required") };
+    if map.is_some() != (!lefs.is_empty() || input.is_some()) {
+        bad("--map and the tech (--lef <tech.lef> or --input <f.odb>) go together");
+    }
+    if check_map && (map.is_none() || allowed.is_none()) {
+        bad("--check-map needs --map and --allowed-pairs");
+    }
+    // 🔑 A pass word never comes from a run that checked nothing.
+    if allowed.is_none() && map.is_none() {
+        bad("nothing to check: give --allowed-pairs and/or --map with the tech");
+    }
+    let census = gl::census_path(&gds)?;
+    if census.elements == 0 {
+        bad(&format!("{gds}: the layout holds no shapes; nothing was checked"));
+    }
+    let pairs = match &allowed {
+        Some(p) => Some(vyges_opendb::gds::parse_allowed_pairs(&std::fs::read_to_string(p)?)?),
+        None => None,
+    };
+    let mut refusals: Vec<String> = Vec::new();
+    let not_allowed = pairs.as_ref().map(|p| gl::not_allowed(&census, p));
+    for ld in not_allowed.iter().flatten() {
+        let u = &census.pairs[ld];
+        refusals.push(format!("pair {}/{} is not on the allowed list ({} element(s) in {} structure(s))", ld.0, ld.1, u.by_kind.values().sum::<usize>(), u.structures.len()));
+    }
+    let (mut multi_mask, mut targets, mut uncoloured, mut map_bad) = (Vec::new(), Default::default(), Vec::new(), None);
+    if let Some(m) = &map {
+        let lm = vyges_opendb::gds::LayerMap::parse(&std::fs::read_to_string(m)?)?;
+        let db = match &input {
+            Some(i) => Db::open(i)?,
+            None => {
+                let mut db = Db::new();
+                for l in &lefs {
+                    db.read_lef(l)?;
+                }
+                db
+            }
+        };
+        for (name, _) in db.layers_with_direction()? {
+            if db.layer_get_type(&name)? == "ROUTING" && db.layer_get_num_masks(&name) >= 2 {
+                multi_mask.push(name);
+            }
+        }
+        let mm: std::collections::BTreeSet<String> = multi_mask.iter().cloned().collect();
+        targets = gl::uncoloured_targets(&lm, &mm);
+        if !mm.is_empty() && targets.is_empty() {
+            diag!("[WARNING] check-gds-layers: the map sends no uncoloured shape of a multi-mask layer anywhere: such a shape is not streamed at all, so the GDS cannot show it; the design-side gate is color-masks --require-coloured");
+        }
+        uncoloured = gl::uncoloured_found(&census, &targets);
+        for u in &uncoloured {
+            let names: Vec<&str> = u.structures.iter().take(10).map(String::as_str).collect();
+            refusals.push(format!(
+                "pair {}/{} holds {} uncoloured shape(s) of multi-mask layer(s) {} (structures: {}{})",
+                u.ld.0, u.ld.1, u.drawn, u.layers.iter().cloned().collect::<Vec<_>>().join(","), names.join(","),
+                if u.structures.len() > 10 { format!(" and {} more", u.structures.len() - 10) } else { String::new() }
+            ));
+        }
+        if check_map {
+            let v = gl::map_not_allowed(&lm, pairs.as_ref().expect("checked above"));
+            for line in &v {
+                refusals.push(format!("layer map entry targets a pair not on the allowed list: {line}"));
+            }
+            map_bad = Some(v);
+        }
+    }
+    let json = serde_json::json!({
+        "tool": "vyges-opendb",
+        "command": "check-gds-layers",
+        "status": if refusals.is_empty() { "clean" } else { "refused" },
+        "layout": gds,
+        "format": census.format,
+        "structures": census.structures,
+        "elements": census.elements,
+        "pairs": census.pairs.iter().map(|(ld, u)| serde_json::json!({
+            "layer": ld.0, "datatype": ld.1, "elements": u.by_kind, "structures": u.structures.len(),
+            "allowed": pairs.as_ref().map(|p| p.contains(ld)),
+        })).collect::<Vec<_>>(),
+        "allowed_pairs": allowed.as_ref().map(|f| serde_json::json!({
+            "file": f, "listed": pairs.as_ref().map_or(0, |p| p.len()),
+            "not_allowed": not_allowed.iter().flatten().map(|ld| [ld.0, ld.1]).collect::<Vec<_>>(),
+        })),
+        "uncoloured": map.as_ref().map(|f| serde_json::json!({
+            "map": f, "multi_mask_layers": multi_mask,
+            "targets": targets.iter().map(|(ld, ls)| serde_json::json!({"layer": ld.0, "datatype": ld.1, "from": ls})).collect::<Vec<_>>(),
+            "found": uncoloured.iter().map(|u| serde_json::json!({
+                "layer": u.ld.0, "datatype": u.ld.1, "from": u.layers, "shapes": u.drawn, "structures": u.structures,
+            })).collect::<Vec<_>>(),
+        })),
+        "map_targets_not_allowed": map_bad,
+        "refusals": refusals,
+    });
+    let text = serde_json::to_string_pretty(&json)?;
+    if let Some(r) = report {
+        std::fs::write(&r, &text)?;
+    }
+    println!("{text}");
+    if !refusals.is_empty() {
+        for r in &refusals {
+            diag!("[ERROR] check-gds-layers: {r}");
+        }
+        diag!("[ERROR] check-gds-layers: REFUSED: {gds}: {} finding(s); this layout is not fit for tapeout", refusals.len());
+        std::process::exit(3);
+    }
+    diag!("check-gds-layers: {gds}: clean ({} pair(s), {} element(s))", census.pairs.len(), census.elements);
     Ok(())
 }
 

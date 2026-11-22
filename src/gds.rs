@@ -410,6 +410,11 @@ impl LayerMap {
         Ok(m)
     }
 
+    /// Every shape entry: (layer, purpose, mask — 0 for none, targets), in no set order.
+    pub fn entries(&self) -> impl Iterator<Item = (&str, &str, u8, &[Ld])> {
+        self.shapes.iter().map(|((l, p, m), lds)| (l.as_str(), p.as_str(), *m, lds.as_slice()))
+    }
+
     /// Where an uncoloured shape on `layer` with `purpose` goes; empty when the map does not
     /// stream it.
     pub fn targets(&self, layer: &str, purpose: &str) -> &[Ld] {
