@@ -866,6 +866,9 @@ pub struct ColourOptions {
     /// same-mask spacing (a sign-off deck's line-end windows, which the tech LEF may state more
     /// loosely or not at all).
     pub eol_windows: BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
+    /// Long-range separators per layer (DBU): shapes closer than this, not already a hard pair,
+    /// prefer opposite masks (colour balance; never forced, see [`crate::masks_decomp`] step 4).
+    pub long_range: BTreeMap<String, i32>,
 }
 
 /// What [`colour_masks`] did.
@@ -903,6 +906,10 @@ pub struct DecompStats {
     pub anchors: usize,
     /// Hard pairs only a line-end window made (not already a same-mask spacing pair).
     pub eol_pairs: usize,
+    /// Long-range (soft) pairs, how many end on opposite masks, and the free components they flipped.
+    pub soft_pairs: usize,
+    pub soft_met: usize,
+    pub soft_flips: usize,
 }
 
 /// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
@@ -1033,7 +1040,7 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
     if !opts.check_only {
         colour_special_nets(db, &by_name, &mut rep)?;
         if !opts.parity_only {
-            decompose_block(db, &by_name, &anchors, &opts.eol_windows, &mut rep)?;
+            decompose_block(db, &by_name, &anchors, &opts.eol_windows, &opts.long_range, &mut rep)?;
         }
     }
     check_block(db, &by_name, &mut rep)?;
@@ -1381,6 +1388,7 @@ fn decompose_block(
     layers: &BTreeMap<String, MaskLayer>,
     anchors: &Anchors,
     eol_windows: &BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
+    long_range: &BTreeMap<String, i32>,
     rep: &mut ColourReport,
 ) -> Result<()> {
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
@@ -1408,7 +1416,11 @@ fn decompose_block(
         pairs.extend(eol);
         pairs.sort_unstable();
         pairs.dedup();
-        let d = crate::masks_decomp::decompose(v, &pairs, &anchored);
+        let soft: Vec<(usize, usize)> = match long_range.get(&layer.name) {
+            Some(&r) => conflict_edges(v, r).into_iter().map(|(i, j, _)| (i, j)).filter(|p| pairs.binary_search(p).is_err()).collect(),
+            None => Vec::new(),
+        };
+        let d = crate::masks_decomp::decompose_soft(v, &pairs, &soft, &anchored);
         for c in &d.anchor_conflicts {
             rep.findings.push(Finding::AnchorConflict {
                 layer: layer.name.clone(),
@@ -1423,6 +1435,9 @@ fn decompose_block(
             anchor_conflicts: d.anchor_conflicts.len(),
             anchors: anchored.iter().filter(|&&a| a).count(),
             eol_pairs: eol_only,
+            soft_pairs: d.soft_pairs,
+            soft_met: d.soft_met,
+            soft_flips: d.soft_flips,
         });
         for (k, m) in d.mask.iter().enumerate() {
             let Some(m) = *m else { continue };
