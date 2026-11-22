@@ -440,3 +440,45 @@ fn a_line_end_window_splits_two_ends_plain_spacing_does_not() {
     let t = def(&db, "window");
     assert!(t.contains("( 50 50 ) MASK 1 ( 950 * )") && t.contains("( 1040 250 ) MASK 2 ( 1900 * )"), "{t}");
 }
+
+/// Fill nine fill squares on M1, all mask 1, far from the routing: one die-sized window.
+fn with_fill() -> Db {
+    let mut db = load();
+    for y in [500, 900, 1300] {
+        for x in [1100, 1400, 1700] {
+            db.create_fill(false, 1, "M1", x, y, x + 200, y + 200).unwrap();
+        }
+    }
+    db
+}
+
+/// Rule (colour fill): with `colour_fill`, fill on a two-mask layer is a free shape of the
+/// decomposition, so the balance step recolours it to bring the window into range, and the new
+/// masks are written back to the fill (same count, order, layer and rectangles). Without it, fill
+/// is left as it is and the window stays outside.
+#[test]
+fn fill_takes_part_in_the_colour_balance() {
+    let rule = |r: &str| masks::ColourOptions {
+        balance: [("M1".to_string(), vec![vyges_opendb::masks_decomp::BalanceRule::parse(r).unwrap().1])].into_iter().collect(),
+        ..ColourOptions::default()
+    };
+    let opts = rule("M1:2000,2000,0.4,0.6");
+    let mut db = with_fill();
+    let before = db.fill_rects().unwrap();
+    let rep = masks::colour_masks(&mut db, &opts).unwrap();
+    let d = &rep.decomposition["M1"];
+    assert_eq!((d.fills, d.fills_changed), (0, 0));
+    assert_eq!(d.balance, vec![(1, 1, 1)], "fill alone holds the window over the range: {d:?}");
+    assert_eq!(db.fill_rects().unwrap(), before);
+
+    let mut db = with_fill();
+    let rep = masks::colour_masks(&mut db, &ColourOptions { colour_fill: true, ..opts }).unwrap();
+    let d = &rep.decomposition["M1"];
+    assert_eq!(d.fills, 9);
+    assert!(d.fills_changed > 0, "{d:?}");
+    assert_eq!(d.balance, vec![(1, 1, 0)], "{d:?}");
+    let after = db.fill_rects().unwrap();
+    assert_eq!(after.len(), 9);
+    assert!(after.iter().zip(&before).all(|(a, b)| a.layer == b.layer && a.rect == b.rect), "order and shapes kept");
+    assert_eq!(after.iter().filter(|f| f.mask == 2).count(), d.fills_changed, "the new masks reach the database");
+}

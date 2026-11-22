@@ -30,7 +30,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use crate::{Db, Result, ViaMask, WireMaskState};
+use crate::{Db, FillRect, Result, ViaMask, WireMaskState};
 use crate::masks_check::SameMaskRulesDbu;
 use vyges_loom::lef58_samemask::SameMaskRules;
 
@@ -884,6 +884,9 @@ pub struct ColourOptions {
     /// Colour-balance rules per layer, stepped over the die area (step 5 of
     /// [`crate::masks_decomp`]).
     pub balance: BTreeMap<String, Vec<crate::masks_decomp::BalanceRule>>,
+    /// Fill shapes on the two-mask layers take part in the decomposition as free shapes (no
+    /// anchor, their own net), so the balance step colours them too; their masks are written back.
+    pub colour_fill: bool,
 }
 
 /// What [`colour_masks`] did.
@@ -930,6 +933,9 @@ pub struct DecompStats {
     /// Per balance rule: windows measured, outside the range before and after the balance step.
     pub balance: Vec<(usize, usize, usize)>,
     pub balance_flips: usize,
+    /// Fill shapes that took part ([`ColourOptions::colour_fill`]), and how many changed mask.
+    pub fills: usize,
+    pub fills_changed: usize,
 }
 
 /// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
@@ -1421,7 +1427,25 @@ fn decompose_block(
         y1: db.block_get_die_area_y_max(),
     };
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
-    let shapes = block_shapes(db, &by_number)?;
+    let mut shapes = block_shapes(db, &by_number)?;
+    // fill as free shapes of their own net, in odb's fill order; `fill_at[layer]` maps each one
+    // back to its fill index. Only when every fill has a tech layer, so the order is odb's.
+    let mut fill_at: BTreeMap<i64, Vec<(usize, usize)>> = BTreeMap::new();
+    let fills = if opts.colour_fill { db.fill_rects()? } else { Vec::new() };
+    let fill_order_ok = fills.len() == db.num_fills()?;
+    if opts.colour_fill && !fill_order_ok {
+        rep.findings.push(Finding::NotRewritten { net: FILL.to_string(), why: "a fill without a tech layer: fill order unknown, fill left as it is".to_string() });
+    }
+    if fill_order_ok {
+        for (i, f) in fills.iter().enumerate() {
+            if by_number.get(&f.layer).is_some_and(|l| l.num_masks == 2) {
+                let v = shapes.entry(f.layer).or_default();
+                fill_at.entry(f.layer).or_default().push((v.len(), i));
+                v.push(MaskShape { net: FILL.to_string(), rect: f.rect, mask: f.mask, fixed: false });
+            }
+        }
+    }
+    let mut fill_mask: Vec<u8> = fills.iter().map(|f| f.mask).collect();
     // per net: (layer, rect, mask) of every shape the decomposition placed
     let mut placed: BTreeMap<String, Vec<(String, [i32; 4], u8)>> = BTreeMap::new();
     let mut touched: BTreeSet<String> = BTreeSet::new();
@@ -1476,10 +1500,17 @@ fn decompose_block(
             soft_by_priority: d.soft_by_priority.clone(),
             balance: d.balance.clone(),
             balance_flips: d.balance_flips,
+            fills: fill_at.get(num).map_or(0, Vec::len),
+            fills_changed: fill_at.get(num).map_or(0, |fs| fs.iter().filter(|&&(k, _)| d.mask[k].is_some_and(|m| m != v[k].mask)).count()),
         });
+        for &(k, i) in fill_at.get(num).map_or(&[][..], Vec::as_slice) {
+            if let Some(m) = d.mask[k] {
+                fill_mask[i] = m;
+            }
+        }
         for (k, m) in d.mask.iter().enumerate() {
             let Some(m) = *m else { continue };
-            if v[k].fixed {
+            if v[k].fixed || v[k].net == FILL {
                 continue;
             }
             placed.entry(v[k].net.clone()).or_default().push((layer.name.clone(), v[k].rect, m));
@@ -1505,6 +1536,25 @@ fn decompose_block(
         };
         let plan = plan_recolour(&parsed, &state, at);
         write_net_plan(db, &net, &wire_type, &parsed, &state, &plan, rep)?;
+    }
+    if fill_order_ok && fills.iter().zip(&fill_mask).any(|(f, &m)| f.mask != m) {
+        write_fill_masks(db, &fills, &fill_mask)?;
+    }
+    Ok(())
+}
+
+/// The net name fill shapes take in the decomposition.
+pub const FILL: &str = "(fill)";
+
+/// Rewrite every fill with its new mask, in the same order, keeping its layer and OPC flag: odb
+/// has no mask setter on a fill, so the fill is made again.
+fn write_fill_masks(db: &mut Db, fills: &[FillRect], masks: &[u8]) -> Result<()> {
+    let keep: Vec<(bool, String)> = (0..fills.len()).map(|i| (db.fill_needs_o_p_c(i), db.fill_get_tech_layer(i))).collect();
+    db.clear_fills()?;
+    // made last to first: odb hands the freed table slots back last-freed first, so this puts each
+    // fill back at its own index and `getFills()` keeps its order (pinned by a test)
+    for ((f, &m), (opc, layer)) in fills.iter().zip(masks).zip(keep).rev() {
+        db.create_fill(opc, u32::from(m), &layer, f.rect[0], f.rect[1], f.rect[2], f.rect[3])?;
     }
     Ok(())
 }
