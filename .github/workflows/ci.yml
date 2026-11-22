@@ -34,6 +34,7 @@ jobs:
         with:
           repository: vyges-tools/opendb-lib
           path: vyges-tools-opendb-lib
+          ref: cell-metal-masks  # feature branch; back to the default at the merge
       # ⚠️ EVERY [patch] entry needs a checkout, not just the obvious one. This workflow's first
       # run failed here: it checked out opendb-lib and not layout, and cargo stopped with
       # "failed to load source for dependency vyges-layout" before compiling anything.

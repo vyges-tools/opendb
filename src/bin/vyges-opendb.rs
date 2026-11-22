@@ -2345,6 +2345,7 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
     { "name": "--output", "kind": "output", "type": "path", "required": false, "description": "coloured .odb (default: in place); not written with --check-only" },
     { "name": "--lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "tech LEF whose LEF58 SAMEMASK spacing rules (dropped by odb) set the same-mask spacing" },
     { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the --lef SAMEMASK rules, else the layer's SPACING, else its spacing table at minimum width)" },
+    { "name": "--cell-lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "cell LEF whose PIN/OBS RECT MASK colours are set on the design's masters first (for an .odb written by a tool whose LEF reader dropped them); the colour step anchors routing on coloured cell metal" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
     { "name": "--parity-only", "kind": "flag", "type": "bool", "required": false, "description": "colour by track parity only, without the decomposition stage (by default whole polygons are recoloured where parity breaks a same-mask rule and a legal two-colouring exists; pre-coloured shapes are never flipped)" },
     { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
@@ -2359,11 +2360,13 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     let (mut input, mut output, mut report) = (None, None, None);
     let mut opts = vyges_opendb::masks::ColourOptions::default();
     let (mut fail_on_findings, mut require_coloured) = (false, false);
+    let mut cell_lefs: Vec<String> = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--input" | "-i" => input = args.next(),
             "--output" | "-o" => output = args.next(),
             "--report" => report = args.next(),
+            "--cell-lef" => cell_lefs.push(args.next().ok_or("color-masks: --cell-lef needs a cell LEF path")?),
             "--check-only" => opts.check_only = true,
             "--parity-only" => opts.parity_only = true,
             "--fail-on-findings" => fail_on_findings = true,
@@ -2389,7 +2392,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
-                       \x20                         [--same-mask-spacing LAYER:DBU]...\n\
+                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]...\n\
                        \x20                         [--check-only] [--parity-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
                 return Ok(());
             }
@@ -2398,6 +2401,11 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
     }
     let input = input.ok_or("color-masks: --input <in.odb> required")?;
     let mut db = Db::open(&input)?;
+    let mut cell_masks = Vec::new();
+    for lef in &cell_lefs {
+        let (set, unmatched) = db.apply_lef_macro_masks(lef).map_err(|e| format!("color-masks: --cell-lef {lef}: {e}"))?;
+        cell_masks.push(serde_json::json!({"lef": lef, "boxes_set": set, "unmatched": unmatched}));
+    }
     let rep = vyges_opendb::masks::colour_masks(&mut db, &opts)?;
     for l in &rep.layers {
         for (kind, n) in l.rules.iter().flat_map(|r| r.not_checked.iter()) {
@@ -2465,6 +2473,8 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "special_vias_coloured": rep.special_vias_coloured,
         "shapes": rep.shapes,
         "coloured": rep.coloured,
+        "cell_metal_unmasked": rep.cell_metal_unmasked,
+        "cell_lefs": cell_masks,
         "decomposition": rep.decomposition.iter().map(|(l, d)| (l.clone(), serde_json::json!({
             "polygons": d.polygons, "components": d.components, "flipped": d.flipped,
             "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors,

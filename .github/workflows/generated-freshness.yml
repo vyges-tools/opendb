@@ -39,6 +39,7 @@ jobs:
         with:
           repository: vyges-tools/opendb-lib
           path: vyges-tools-opendb-lib
+          ref: cell-metal-masks  # feature branch; back to the default at the merge
 
       - name: Regenerate from db.h and fail on drift
         working-directory: vyges-tools-opendb-lib

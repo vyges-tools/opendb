@@ -354,3 +354,54 @@ fn a_precoloured_off_track_shape_is_kept_silently() {
     let after = db.special_boxes().unwrap().into_iter().find(|b| b.shape == "FOLLOWPIN").unwrap();
     assert_eq!(after.mask, 1);
 }
+
+fn load_cells() -> Db {
+    let mut db = Db::new();
+    db.read_lef(fixture("masks.lef")).unwrap();
+    db.read_lef(fixture("cells.lef")).unwrap();
+    db.read_def(fixture("cells.def"), "default").unwrap();
+    db
+}
+
+/// The cell LEF's `RECT MASK n` reaches the colour step, placed by the instance: pin A (mask 2)
+/// with its net, the coloured obstruction (mask 1) with none, the uncoloured one (mask 0).
+#[test]
+fn cell_metal_comes_with_its_lef_mask_and_net() {
+    let db = load_cells();
+    let mut got: Vec<_> = db.inst_master_boxes().unwrap().into_iter().filter(|c| db.layer_name_by_number(c.layer) == "M1").map(|c| (c.rect, c.mask, c.obstruction, c.net)).collect();
+    got.sort();
+    assert_eq!(got, vec![
+        ([400, 25, 500, 75], 2, false, "n".to_string()),
+        ([550, 325, 650, 375], 1, true, String::new()),
+        ([550, 525, 650, 575], 0, true, String::new()),
+    ]);
+}
+
+/// Rule (cell metal is part of the mask): a wire that lands on a coloured cell pin is one piece
+/// of metal with it and takes the pin's mask. Net n's M1 wire runs on the first M1 track (mask 1
+/// by parity) into pin A, which the cell LEF puts on mask 2; the decomposition anchors the
+/// polygon on the pin and the wire goes to mask 2. Parity alone leaves it on 1: a stitch on the
+/// pin. The uncoloured obstruction is counted, as the routing cannot be held to a colour it has
+/// not got.
+#[test]
+fn a_wire_on_a_coloured_cell_pin_takes_the_pins_mask() {
+    let mut db = load_cells();
+    let parity = ColourOptions { parity_only: true, ..ColourOptions::default() };
+    let rep = masks::colour_masks(&mut db, &parity).unwrap();
+    assert_eq!(rep.cell_metal_unmasked, 1);
+    let def = |db: &Db, tag: &str| {
+        let out = std::env::temp_dir().join(format!("vyges_opendb_cells_{tag}_{}.def", std::process::id()));
+        db.write_def(&out).unwrap();
+        let t = std::fs::read_to_string(&out).unwrap();
+        let _ = std::fs::remove_file(out);
+        t
+    };
+    let t = def(&db, "parity");
+    assert!(t.contains("( 50 50 ) MASK 1 ( 450 * )"), "{t}");
+    let mut db = load_cells();
+    let rep = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    assert!(rep.decomposition["M1"].anchors >= 1, "{:?}", rep.decomposition);
+    assert_eq!(rep.decomposition["M1"].flipped, 1, "{:?}", rep.decomposition);
+    let text = def(&db, "decomp");
+    assert!(text.contains("( 50 50 ) MASK 2 ( 450 * )"), "{text}");
+}
