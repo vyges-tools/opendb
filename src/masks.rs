@@ -694,6 +694,59 @@ pub fn odd_cycles(n: usize, edges: &[(usize, usize, i64)]) -> Vec<Vec<usize>> {
     out
 }
 
+/// For each shape, the polygon it belongs to, named by its lowest shape index: shapes of one net
+/// and one mask (uncoloured counted as a mask of its own) joined through shapes that overlap or
+/// share an edge of positive length, as a per-net polygon merge joins them. Shapes meeting only at
+/// a corner, or of two masks (a stitch), stay apart.
+#[must_use]
+pub fn net_polygons(shapes: &[MaskShape]) -> Vec<usize> {
+    fn find(p: &mut [usize], mut x: usize) -> usize {
+        while p[x] != x {
+            p[x] = p[p[x]];
+            x = p[x];
+        }
+        x
+    }
+    let mut p: Vec<usize> = (0..shapes.len()).collect();
+    let mut groups: BTreeMap<(&str, u8), Vec<usize>> = BTreeMap::new();
+    for (k, s) in shapes.iter().enumerate() {
+        groups.entry((s.net.as_str(), s.mask)).or_default().push(k);
+    }
+    for v in groups.values_mut() {
+        v.sort_by_key(|&k| shapes[k].rect[0]);
+        for x in 0..v.len() {
+            let a = shapes[v[x]].rect;
+            for &k in &v[x + 1..] {
+                let b = shapes[k].rect;
+                if b[0] > a[2] {
+                    break;
+                }
+                let ox = a[2].min(b[2]) as i64 - a[0].max(b[0]) as i64;
+                let oy = a[3].min(b[3]) as i64 - a[1].max(b[1]) as i64;
+                if ox >= 0 && oy >= 0 && (ox > 0 || oy > 0) {
+                    let (ra, rb) = (find(&mut p, v[x]), find(&mut p, k));
+                    let (lo, hi) = (ra.min(rb), ra.max(rb));
+                    p[hi] = lo;
+                }
+            }
+        }
+    }
+    (0..shapes.len()).map(|k| find(&mut p, k)).collect()
+}
+
+/// The conflict graph over polygons: each pair of `near` under the screening spacing becomes an
+/// edge between the polygons (`poly`, from [`net_polygons`]) of its two shapes, the closest pair
+/// kept per polygon pair; a pair inside one polygon is none.
+#[must_use]
+pub fn polygon_conflicts(near: &[(usize, usize, i64)], poly: &[usize], screen: i64) -> Vec<(usize, usize, i64)> {
+    let mut all: BTreeMap<(usize, usize), i64> = BTreeMap::new();
+    for &(i, j, g2) in near.iter().filter(|e| e.2 < screen * screen && poly[e.0] != poly[e.1]) {
+        let g = all.entry((poly[i].min(poly[j]), poly[i].max(poly[j]))).or_insert(g2);
+        *g = (*g).min(g2);
+    }
+    all.into_iter().map(|((a, b), g)| (a, b, g)).collect()
+}
+
 /// Check one layer's coloured shapes: uncoloured shapes, same-mask pairs under the spacing, and
 /// (two masks) odd cycles.
 pub fn check_layer(layer: &MaskLayer, shapes: &[MaskShape], findings: &mut Vec<Finding>) {
@@ -704,9 +757,13 @@ pub fn check_layer(layer: &MaskLayer, shapes: &[MaskShape], findings: &mut Vec<F
     // screening spacing for the conflict graph.
     let rules = layer.rules.as_ref().filter(|r| r.has_checked_rules());
     let radius = rules.map_or(0, SameMaskRulesDbu::max_required).max(layer.same_mask_spacing);
-    let near = conflict_edges(shapes, radius);
+    // One net's touching shapes of one mask are one polygon (the reference checks merged per-net
+    // polygons, never two parts of one): a pair inside one polygon is no conflict, and the
+    // conflict graph's nodes are the polygons.
+    let poly = net_polygons(shapes);
+    let near: Vec<(usize, usize, i64)> = conflict_edges(shapes, radius).into_iter().filter(|e| poly[e.0] != poly[e.1]).collect();
     let screen = layer.same_mask_spacing as i64;
-    let all: Vec<(usize, usize, i64)> = near.iter().copied().filter(|e| e.2 < screen * screen).collect();
+    let all = polygon_conflicts(&near, &poly, screen);
     // Shapes of ONE net that do not touch still conflict; touching ones of one net never reach
     // here (gap2 is None), and touching ones of two nets are shorts, also excluded.
     for &(i, j, g2) in &near {
@@ -1396,6 +1453,61 @@ mod tests {
         assert!(e.contains(&(0, 1)) && e.contains(&(0, 3)));
         assert!(!e.contains(&(0, 2)), "70 >= 60");
         assert!(!e.contains(&(0, 4)), "touching");
+    }
+
+    /// Rule (reference GC: each net's shapes are merged per layer into polygons, and spacing is
+    /// checked between polygons, never between two parts of one): two shapes of one net and one
+    /// mask joined through a third that overlaps or abuts both (a via pad, a wire, a pad) are one
+    /// polygon, so a gap between the two is no same-mask finding and no conflict-graph edge. A real
+    /// gap (nothing of the net between them), a join only at a corner, and a join through a shape
+    /// of the other mask (a stitch) all stay findings.
+    #[test]
+    fn one_nets_touching_shapes_of_one_mask_are_one_polygon() {
+        let l = layer(true, vec![pat(25, 10, 100, 1, false)]);
+        let same = |f: &[Finding]| f.iter().filter(|x| x.kind() == "same_mask_spacing").count();
+        let pads = |bridge: Option<([i32; 4], u8)>| {
+            let mut s = vec![sh("n", [0, 0, 80, 50], 1), sh("n", [90, 0, 170, 50], 1)];
+            if let Some((r, m)) = bridge {
+                s.push(sh("n", r, m));
+            }
+            let mut f = Vec::new();
+            check_layer(&l, &s, &mut f);
+            same(&f)
+        };
+        assert_eq!(pads(None), 1, "a real gap of 10");
+        assert_eq!(pads(Some(([40, 0, 130, 50], 1))), 0, "a wire over both pads");
+        assert_eq!(pads(Some(([80, 0, 90, 50], 1))), 0, "a patch abutting both on an edge");
+        assert_eq!(pads(Some(([80, 50, 90, 60], 1))), 1, "corners only: not joined");
+        assert_eq!(pads(Some(([40, 0, 130, 50], 2))), 1, "the other mask: a stitch, not one polygon");
+        // another net's wire over the gap joins nothing (and is a short, not this pass's)
+        let mut s = vec![sh("n", [0, 0, 80, 50], 1), sh("n", [90, 0, 170, 50], 1), sh("m", [40, 0, 130, 50], 1)];
+        let mut f = Vec::new();
+        check_layer(&l, &s, &mut f);
+        assert_eq!(same(&f), 1);
+        // the conflict graph's nodes are polygons: two pads of one polygon and a neighbour close
+        // to both are an edge, not a triangle, so no odd cycle; split the polygon and it is one
+        s = vec![sh("n", [0, 0, 80, 50], 0), sh("n", [90, 0, 170, 50], 0), sh("n", [40, 0, 130, 50], 0), sh("m", [0, 90, 170, 140], 0)];
+        let mut f = Vec::new();
+        check_layer(&l, &s, &mut f);
+        assert_eq!(f.iter().filter(|x| x.kind() == "odd_cycle").count(), 0, "{f:?}");
+        s.remove(2);
+        let mut f = Vec::new();
+        check_layer(&l, &s, &mut f);
+        assert_eq!(f.iter().filter(|x| x.kind() == "odd_cycle").count(), 1, "{f:?}");
+        assert_eq!(net_polygons(&[sh("n", [0, 0, 10, 10], 1), sh("n", [20, 0, 30, 10], 1), sh("n", [5, 0, 25, 10], 1)]), vec![0, 0, 0]);
+    }
+
+    /// The conflict graph is over polygons: a path a1 - b - c - a2 whose ends are one polygon is
+    /// the triangle a - b - c, an odd cycle, though no three shapes are pairwise close.
+    #[test]
+    fn the_conflict_graph_is_over_polygons() {
+        let near = [(0, 2, 1600), (2, 3, 1600), (3, 1, 1600), (0, 1, 100)];
+        let g = polygon_conflicts(&near, &[0, 0, 2, 3], 60);
+        assert_eq!(g, vec![(0, 2, 1600), (0, 3, 1600), (2, 3, 1600)]);
+        assert_eq!(odd_cycles(4, &g).len(), 1);
+        assert!(polygon_conflicts(&near, &[0, 0, 2, 3], 40).is_empty(), "only pairs under the screening spacing");
+        // two pairs between the same two polygons: one edge, the closer gap
+        assert_eq!(polygon_conflicts(&[(0, 2, 900), (1, 2, 400)], &[0, 0, 2], 60), vec![(0, 2, 400)]);
     }
 
     /// Same-mask pairs under the spacing are reported (on one track: a line-end pair); different
