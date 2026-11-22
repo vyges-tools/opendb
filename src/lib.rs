@@ -55,6 +55,7 @@ pub mod gds;
 pub mod gds_layers;
 pub mod joint_corner;
 pub mod masks;
+pub mod masks_decomp;
 pub mod masks_check;
 pub mod masks_geom;
 pub mod masks_balance;
