@@ -1295,7 +1295,8 @@ pub struct Anchors {
 }
 
 /// Walk a wire's records: for each record that carries a colour on a multi-mask layer, its
-/// layer, the point that names its shape (a segment's end, a patch's or via's location) and, for
+/// layer, the point that names its shape (a segment's end, a via's location, the centre of a
+/// patch's own rectangle) and, for
 /// a via, which digit (`Some(true)` bottom, `Some(false)` top). One walk shared by the anchor
 /// collection and the recolouring, as [`plan_net`] walks them.
 fn record_sites(recs: &[WireRec]) -> Vec<(usize, String, (i32, i32), Option<bool>)> {
@@ -1320,9 +1321,13 @@ fn record_sites(recs: &[WireRec]) -> Vec<(usize, String, (i32, i32), Option<bool
                 }
                 layer = if *bottom == layer { top.clone() } else { bottom.clone() };
             }
-            WireRec::Rect(..) => {
-                if let Some(at) = prev {
-                    out.push((i, layer.clone(), at, None));
+            WireRec::Rect(x0, y0, x1, y1) => {
+                // 🔑 A patch is offset from the path's point and need not cover it: named by the
+                // point it would take the mask of whatever shape holds the point (a neighbouring
+                // wire of the net), not its own. Its own centre is inside it.
+                if let Some((x, y)) = prev {
+                    let c = (x + (x0 + x1).div_euclid(2), y + (y0 + y1).div_euclid(2));
+                    out.push((i, layer.clone(), c, None));
                 }
             }
             WireRec::Rule | WireRec::End | WireRec::Other(_) => {}
@@ -1517,6 +1522,35 @@ mod tests {
 
     fn pat(origin: i32, count: i32, step: i32, first_mask: u8, same_mask: bool) -> TrackPattern {
         TrackPattern { origin, count, step, first_mask, same_mask }
+    }
+
+    /// Rule (a patch takes its own shape's mask): a RECT record is offset from the path's point
+    /// and need not cover it. Geometry from a routed block: the net's wire on one track ends at
+    /// (55680, 16976); a patch RECT ( 16 48 75 80 ) from that point lies on the next track up,
+    /// inside a wire the decomposition put on the other mask. The patch takes that wire's mask
+    /// (2), not the mask of the wire holding its anchor point (1).
+    #[test]
+    fn a_patch_takes_the_mask_of_its_own_rectangle() {
+        let recs = vec![
+            WireRec::Path("M2".into()),
+            WireRec::Point(55356, 16976),
+            WireRec::Point(55680, 16976),
+            WireRec::Path("M2".into()),
+            WireRec::Point(55608, 17040),
+            WireRec::Point(55860, 17040),
+            WireRec::Path("M2".into()),
+            WireRec::Point(55680, 16976),
+            WireRec::Rect(16, 48, 75, 80),
+        ];
+        let state = vec![WireMaskState::default(); recs.len()];
+        // the decomposition's placement: lower track on mask 1, upper track and the patch on 2
+        let placed = [([55340, 16960, 55696, 16992], 1u8), ([55592, 17024, 55876, 17056], 2), ([55696, 17024, 55755, 17056], 2)];
+        let at = |l: &str, (x, y): (i32, i32)| -> Option<u8> {
+            (l == "M2").then(|| placed.iter().find(|(r, _)| r[0] <= x && x <= r[2] && r[1] <= y && y <= r[3]).map(|t| t.1)).flatten()
+        };
+        let plan = plan_recolour(&recs, &state, at);
+        assert_eq!(plan.color[8], Some(2), "the patch");
+        assert_eq!((plan.color[2], plan.color[5]), (Some(1), Some(2)), "the two wires");
     }
 
     /// Same-mask shape rules see one mask's shapes as a layer of their own: a forbidden gap with a
