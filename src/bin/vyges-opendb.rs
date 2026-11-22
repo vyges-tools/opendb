@@ -2347,6 +2347,7 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
     { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the --lef SAMEMASK rules, else the layer's SPACING, else its spacing table at minimum width)" },
     { "name": "--cell-lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "cell LEF whose PIN/OBS RECT MASK colours are set on the design's masters first (for an .odb written by a tool whose LEF reader dropped them); the colour step anchors routing on coloured cell metal" },
     { "name": "--long-range", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, long-range separators for colour balance: shapes of different polygons closer than DBU that are not a hard pair prefer opposite masks; they only choose the phase of a component with no anchor, never break a hard constraint" },
+    { "name": "--separator", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:PRIORITY,EDGES,LO,HI[,eolmax=N,adjmin=N], a prioritised separator band for colour balance (DBU): facing boundary edges of class EDGES (any, major = long sides, minor = ends, notend = not a line end, which needs eolmax and adjmin) on different polygons, each seeing the other (shielded), with a gap in [LO, HI), prefer opposite masks; a lower PRIORITY is stronger, compared lexicographically; only the phase of a component with no anchor moves" },
     { "name": "--eol-window", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N] (DBU), a same-mask line-end rule the decomposition holds as a hard constraint: a line end (an edge no longer than EOLMAX, convex corners, neighbouring edges at least ADJMIN) and any shape (toeol: a facing line end) within SPACE outward, widened by EXT along it, take opposite masks" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
     { "name": "--parity-only", "kind": "flag", "type": "bool", "required": false, "description": "colour by track parity only, without the decomposition stage (by default whole polygons are recoloured where parity breaks a same-mask rule and a legal two-colouring exists; pre-coloured shapes are never flipped)" },
@@ -2399,13 +2400,18 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 let d: i32 = d.parse().ok().filter(|d| *d > 0).ok_or_else(|| format!("color-masks: not a positive DBU value: {d}"))?;
                 opts.long_range.insert(l.to_string(), d);
             }
+            "--separator" => {
+                let v = args.next().ok_or("color-masks: --separator needs LAYER:PRIORITY,EDGES,LO,HI")?;
+                let (l, sep) = vyges_opendb::masks_sep::Separator::parse(&v).map_err(|e| format!("color-masks: --separator {e}"))?;
+                opts.separators.entry(l).or_default().push(sep);
+            }
             "--describe" => {
                 println!("{COLOR_MASKS_DESCRIBE}");
                 return Ok(());
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
-                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]... [--eol-window LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N]]... [--long-range LAYER:DBU]...\n\
+                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]... [--eol-window LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N]]... [--long-range LAYER:DBU]... [--separator LAYER:PRIORITY,EDGES,LO,HI[,eolmax=N,adjmin=N]]...\n\
                        \x20                         [--check-only] [--parity-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
                 return Ok(());
             }
@@ -2492,6 +2498,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "polygons": d.polygons, "components": d.components, "flipped": d.flipped,
             "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors, "eol_pairs": d.eol_pairs,
             "soft_pairs": d.soft_pairs, "soft_met": d.soft_met, "soft_flips": d.soft_flips,
+            "soft_by_priority": d.soft_by_priority.iter().map(|(p, (n, m))| (p.to_string(), serde_json::json!({"pairs": n, "met": m}))).collect::<serde_json::Map<String, serde_json::Value>>(),
         }))).collect::<serde_json::Map<_, _>>(),
         "findings_by_kind": by_kind,
         "findings": rep.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),

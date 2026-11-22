@@ -39,7 +39,10 @@
 //!    components are revisited in index order; one flips only when that strictly raises the
 //!    number of its soft pairs on opposite masks, counted against everything else as it stands.
 //!    Each flip raises the total, so the passes end (capped at 8). A hard constraint is never
-//!    traded: a component flips whole.
+//!    traded: a component flips whole. With prioritised separators
+//!    ([`decompose_weighted`], pairs from [`crate::masks_sep`]) the count is lexicographic: a
+//!    component flips when the strongest priority the flip changes gains, whatever it costs a
+//!    weaker one.
 //!
 //! Same input, same output: polygons and edges are numbered by shape order, every walk is in
 //! index order, and nothing depends on hashing.
@@ -72,7 +75,13 @@ pub struct Decomposition {
     pub soft_met: usize,
     /// Free components the long-range separators flipped.
     pub soft_flips: usize,
+    /// Per separator priority: (pairs given, pairs on opposite masks).
+    pub soft_by_priority: BTreeMap<u8, (usize, usize)>,
 }
+
+/// Passes of the separator search over the free components (each flip raises the met pairs,
+/// strongest priority first, so the search ends; this caps it).
+const SOFT_PASSES: usize = 8;
 
 /// One net's touching shapes (overlap, or a shared edge of positive length), any mask, among
 /// `take`: the polygon of each taken shape, named by its lowest shape index; `usize::MAX` for a
@@ -122,9 +131,23 @@ pub fn decompose(shapes: &[MaskShape], pairs: &[(usize, usize)], anchor: &[bool]
     decompose_soft(shapes, pairs, &[], anchor)
 }
 
-/// [`decompose`], then the long-range separators: `soft` pairs prefer opposite masks (step 4).
+/// [`decompose`], then the long-range separators: `soft` pairs prefer opposite masks (step 4),
+/// all at one priority.
 #[must_use]
 pub fn decompose_soft(shapes: &[MaskShape], pairs: &[(usize, usize)], soft: &[(usize, usize)], anchor: &[bool]) -> Decomposition {
+    let soft: Vec<(usize, usize, u8)> = soft.iter().map(|&(a, b)| (a, b, 0)).collect();
+    decompose_weighted(shapes, pairs, &soft, anchor)
+}
+
+/// [`decompose`], then prioritised separators: `soft` pairs `(a, b, priority)` prefer opposite
+/// masks, a lower priority number being the stronger preference (step 4, lexicographic).
+#[must_use]
+pub fn decompose_weighted(
+    shapes: &[MaskShape],
+    pairs: &[(usize, usize)],
+    soft: &[(usize, usize, u8)],
+    anchor: &[bool],
+) -> Decomposition {
     let n = shapes.len();
     let take: Vec<bool> = shapes.iter().map(|s| !(s.fixed && s.mask == 0)).collect();
     let poly = polygons(shapes, &take);
@@ -239,10 +262,10 @@ pub fn decompose_soft(shapes: &[MaskShape], pairs: &[(usize, usize)], soft: &[(u
             free.push((comp, phase));
         }
     }
-    // 4. long-range separators: soft pairs decide the phases of free components
+    // 4. separators: soft pairs decide the phases of free components, priority by priority
     let eff = |out: &Decomposition, k: usize| out.mask[k].unwrap_or(shapes[k].mask);
-    let soft: Vec<(usize, usize)> =
-        soft.iter().copied().filter(|&(a, b)| take[a] && take[b] && poly[a] != poly[b]).collect();
+    let soft: Vec<(usize, usize, u8)> =
+        soft.iter().copied().filter(|&(a, b, _)| take[a] && take[b] && poly[a] != poly[b]).collect();
     if !soft.is_empty() && !free.is_empty() {
         let mut comp_of: BTreeMap<usize, usize> = BTreeMap::new();
         for (c, (polys, _)) in free.iter().enumerate() {
@@ -252,32 +275,34 @@ pub fn decompose_soft(shapes: &[MaskShape], pairs: &[(usize, usize)], soft: &[(u
                 }
             }
         }
-        // per free component, its soft pairs as (own shape, other shape), other outside it
-        let mut touch: Vec<Vec<(usize, usize)>> = vec![Vec::new(); free.len()];
-        for &(a, b) in &soft {
+        // per free component, its soft pairs as (own shape, other shape, priority), other outside it
+        let mut touch: Vec<Vec<(usize, usize, u8)>> = vec![Vec::new(); free.len()];
+        for &(a, b, pr) in &soft {
             let (ca, cb) = (comp_of.get(&a), comp_of.get(&b));
             if ca.is_some() && ca == cb {
                 continue;
             }
             if let Some(&c) = ca {
-                touch[c].push((a, b));
+                touch[c].push((a, b, pr));
             }
             if let Some(&c) = cb {
-                touch[c].push((b, a));
+                touch[c].push((b, a, pr));
             }
         }
-        for _ in 0..8 {
+        for _ in 0..SOFT_PASSES {
             let mut changed = false;
             for c in 0..free.len() {
-                let (mut keep, mut flip) = (0usize, 0usize);
-                for &(a, b) in &touch[c] {
+                // per priority: pairs a flip would meet minus pairs it would break
+                let mut gain: BTreeMap<u8, i64> = BTreeMap::new();
+                for &(a, b, pr) in &touch[c] {
                     let (ma, mb) = (eff(&out, a), eff(&out, b));
                     if ma == 0 || mb == 0 {
                         continue;
                     }
-                    if ma != mb { keep += 1 } else { flip += 1 }
+                    *gain.entry(pr).or_default() += if ma != mb { -1 } else { 1 };
                 }
-                if flip > keep {
+                // flip when the strongest priority it changes gains
+                if gain.values().find(|&&g| g != 0).is_some_and(|&g| g > 0) {
                     changed = true;
                     out.soft_flips += 1;
                     free[c].1 = 3 - free[c].1;
@@ -293,11 +318,14 @@ pub fn decompose_soft(shapes: &[MaskShape], pairs: &[(usize, usize)], soft: &[(u
             }
         }
     }
-    for &(a, b) in &soft {
+    for &(a, b, pr) in &soft {
         let (ma, mb) = (eff(&out, a), eff(&out, b));
         if ma != 0 && mb != 0 {
             out.soft_pairs += 1;
             out.soft_met += usize::from(ma != mb);
+            let e = out.soft_by_priority.entry(pr).or_default();
+            e.0 += 1;
+            e.1 += usize::from(ma != mb);
         }
     }
     for p in members.keys() {
@@ -620,6 +648,29 @@ mod tests {
         let s = vec![sh("a", [0, 0, 10, 10], 1), sh("x", [0, 20, 10, 30], 2), sh("b", [0, 40, 10, 50], 1)];
         let d = decompose_soft(&s, &[(0, 1), (1, 2)], &[(0, 2)], &[false; 3]);
         assert_eq!((masks(&d), d.soft_flips, d.soft_met), (vec![1, 2, 1], 0, 0));
+    }
+
+    /// Rule (prioritised separators): the count is lexicographic, strongest priority (lowest
+    /// number) first. x (free, mask 1) has one strong pair to a (anchored 1) and two weak pairs
+    /// to b and c (anchored 2): a plain count keeps x on 1 (two met against one), the priorities
+    /// put it on 2. With the priorities swapped it stays on 1.
+    #[test]
+    fn a_stronger_separator_outweighs_any_number_of_weaker_ones() {
+        let s = vec![
+            sh("x", [0, 0, 10, 10], 1),
+            sh("a", [0, 100, 10, 110], 1),
+            sh("b", [0, -110, 10, -100], 2),
+            sh("c", [100, 0, 110, 10], 2),
+        ];
+        let anch = [false, true, true, true];
+        let d = decompose_soft(&s, &[], &[(0, 1), (0, 2), (0, 3)], &anch);
+        assert_eq!(masks(&d)[0], 1);
+        let d = decompose_weighted(&s, &[], &[(0, 1, 2), (0, 2, 6), (0, 3, 6)], &anch);
+        assert_eq!(masks(&d)[0], 2);
+        assert_eq!(d.soft_by_priority, BTreeMap::from([(2, (1, 1)), (6, (2, 0))]));
+        let d = decompose_weighted(&s, &[], &[(0, 1, 6), (0, 2, 2), (0, 3, 2)], &anch);
+        assert_eq!(masks(&d)[0], 1);
+        assert_eq!(d.soft_by_priority, BTreeMap::from([(2, (2, 2)), (6, (1, 0))]));
     }
 
     /// Rule (step 4 is a local search to a fixpoint): three free wires in a row, all on one

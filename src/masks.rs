@@ -877,6 +877,10 @@ pub struct ColourOptions {
     /// Long-range separators per layer (DBU): shapes closer than this, not already a hard pair,
     /// prefer opposite masks (colour balance; never forced, see [`crate::masks_decomp`] step 4).
     pub long_range: BTreeMap<String, i32>,
+    /// Prioritised separator bands per layer ([`crate::masks_sep`]): soft pairs at several
+    /// distances, each band at its priority. The `long_range` pairs, where given too, join them
+    /// at priority 0 (the strongest).
+    pub separators: BTreeMap<String, Vec<crate::masks_sep::Separator>>,
 }
 
 /// What [`colour_masks`] did.
@@ -918,6 +922,8 @@ pub struct DecompStats {
     pub soft_pairs: usize,
     pub soft_met: usize,
     pub soft_flips: usize,
+    /// Per separator priority: (pairs given, pairs on opposite masks).
+    pub soft_by_priority: BTreeMap<u8, (usize, usize)>,
 }
 
 /// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
@@ -1048,7 +1054,7 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
     if !opts.check_only {
         colour_special_nets(db, &by_name, &mut rep)?;
         if !opts.parity_only {
-            decompose_block(db, &by_name, &anchors, &opts.eol_windows, &opts.long_range, &mut rep)?;
+            decompose_block(db, &by_name, &anchors, &opts.eol_windows, &opts.long_range, &opts.separators, &mut rep)?;
         }
     }
     check_block(db, &by_name, &mut rep)?;
@@ -1400,6 +1406,7 @@ fn decompose_block(
     anchors: &Anchors,
     eol_windows: &BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
     long_range: &BTreeMap<String, i32>,
+    separators: &BTreeMap<String, Vec<crate::masks_sep::Separator>>,
     rep: &mut ColourReport,
 ) -> Result<()> {
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
@@ -1427,11 +1434,15 @@ fn decompose_block(
         pairs.extend(eol);
         pairs.sort_unstable();
         pairs.dedup();
-        let soft: Vec<(usize, usize)> = match long_range.get(&layer.name) {
-            Some(&r) => conflict_edges(v, r).into_iter().map(|(i, j, _)| (i, j)).filter(|p| pairs.binary_search(p).is_err()).collect(),
+        let mut soft: Vec<(usize, usize, u8)> = match long_range.get(&layer.name) {
+            Some(&r) => conflict_edges(v, r).into_iter().map(|(i, j, _)| (i, j, 0)).collect(),
             None => Vec::new(),
         };
-        let d = crate::masks_decomp::decompose_soft(v, &pairs, &soft, &anchored);
+        if let Some(seps) = separators.get(&layer.name) {
+            soft.extend(crate::masks_sep::separator_pairs(v, seps));
+        }
+        soft.retain(|&(i, j, _)| pairs.binary_search(&(i, j)).is_err());
+        let d = crate::masks_decomp::decompose_weighted(v, &pairs, &soft, &anchored);
         for c in &d.anchor_conflicts {
             rep.findings.push(Finding::AnchorConflict {
                 layer: layer.name.clone(),
@@ -1449,6 +1460,7 @@ fn decompose_block(
             soft_pairs: d.soft_pairs,
             soft_met: d.soft_met,
             soft_flips: d.soft_flips,
+            soft_by_priority: d.soft_by_priority.clone(),
         });
         for (k, m) in d.mask.iter().enumerate() {
             let Some(m) = *m else { continue };
