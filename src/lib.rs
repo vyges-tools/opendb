@@ -346,6 +346,19 @@ pub struct ITermPlace {
     pub placed: bool,
 }
 
+/// A placed instance's master box, from [`Db::inst_master_boxes`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CellBox {
+    /// Routing layer number.
+    pub layer: i64,
+    pub rect: [i32; 4],
+    /// The LEF mask (0: none).
+    pub mask: u8,
+    pub obstruction: bool,
+    /// The connected net of a pin box; empty for an obstruction or an unconnected pin.
+    pub net: String,
+}
+
 /// One routed shape: a metal rectangle on a layer, or a via joining two layers.
 ///
 /// Layers are odb layer *numbers*; resolve with [`Db::layer_name_by_number`]. Vias carry the
@@ -2453,6 +2466,32 @@ impl Db {
     /// The net of each box [`Self::swire_boxes`] returns, box for box.
     pub fn swire_box_nets(&self) -> Result<Vec<String>> {
         Ok(sys::swire_box_nets(self.r())?)
+    }
+    /// Every placed instance's master pin and obstruction boxes (vias excluded), placed, with the
+    /// mask the cell LEF gives each (`RECT MASK n`; 0 when none) and the net of the terminal a pin
+    /// box belongs to (empty for an obstruction or an unconnected pin).
+    /// Set each master box's mask from a cell LEF's `RECT MASK n`, for a db whose masters came
+    /// from an `.odb` written by a tool whose LEF reader dropped them (every LEF read through
+    /// this crate keeps them). Returns `(boxes set, statements with no unset box to match)`.
+    pub fn apply_lef_macro_masks(&self, lef: impl AsRef<std::path::Path>) -> Result<(u64, u64)> {
+        let p = lef.as_ref().to_string_lossy();
+        let v = sys::lef_apply_macro_masks(self.r(), &p)?;
+        Ok((v.first().copied().unwrap_or(0), v.get(1).copied().unwrap_or(0)))
+    }
+    pub fn inst_master_boxes(&self) -> Result<Vec<CellBox>> {
+        let recs = sys::inst_master_box_records(self.r())?;
+        let nets = sys::inst_master_box_nets(self.r())?;
+        Ok(recs
+            .as_chunks::<7>().0.iter()
+            .zip(nets)
+            .map(|(c, net)| CellBox {
+                layer: c[0],
+                rect: [c[1] as i32, c[2] as i32, c[3] as i32, c[4] as i32],
+                mask: c[5] as u8,
+                obstruction: c[6] != 0,
+                net,
+            })
+            .collect())
     }
     /// The WIRE (non-via) boxes of every SPECIAL net: `(layer number, x0, y0, x1, y1, shape)`,
     /// `shape` the `dbWireShapeType` name (`"STRIPE"`, `"DRCFILL"`, …).

@@ -882,6 +882,10 @@ pub struct ColourReport {
     pub findings: Vec<Finding>,
     /// What the decomposition stage did, per layer.
     pub decomposition: BTreeMap<String, DecompStats>,
+    /// Cell pin and obstruction boxes on multi-mask layers that the cell LEF gives no mask: the
+    /// pass cannot hold the routing to their colour (the layout check sees them on the
+    /// uncoloured target).
+    pub cell_metal_unmasked: usize,
 }
 
 /// One layer's decomposition, counted.
@@ -1181,6 +1185,7 @@ fn colour_special_vias(db: &mut Db, by_number: &BTreeMap<i64, &MaskLayer>, rep: 
 fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourReport) -> Result<()> {
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
     let shapes = block_shapes(db, &by_number)?;
+    rep.cell_metal_unmasked = cell_metal(db, &by_number)?.1;
     for (num, v) in &shapes {
         let layer = by_number[num];
         rep.shapes += v.len();
@@ -1191,7 +1196,11 @@ fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourRe
 }
 
 /// Every shape on the multi-mask layers, per layer number: routed wires (net order, box order),
-/// then special wires, then block pins (fixed).
+/// then special wires, then block pins, then the cell metal the cell LEF colours (pin and
+/// obstruction boxes with a `MASK`), all but the routed wires fixed. Cell metal is part of the
+/// layer the mask is made from: a wire that lands on a pin is one piece of metal with it and
+/// takes its mask, and every wire keeps the same-mask spacing to it. Cell metal the LEF leaves
+/// uncoloured cannot be placed on a mask here and is counted in [`ColourReport::cell_metal_unmasked`].
 fn block_shapes(db: &Db, by_number: &BTreeMap<i64, &MaskLayer>) -> Result<BTreeMap<i64, Vec<MaskShape>>> {
     let mut shapes: BTreeMap<i64, Vec<MaskShape>> = BTreeMap::new();
     for net in db.block_get_nets() {
@@ -1236,7 +1245,32 @@ fn block_shapes(db: &Db, by_number: &BTreeMap<i64, &MaskLayer>) -> Result<BTreeM
             }
         }
     }
+    for c in cell_metal(db, by_number)?.0 {
+        shapes.entry(c.0).or_default().push(c.1);
+    }
     Ok(shapes)
+}
+
+/// The net name cell metal with no net (an obstruction, an unconnected pin) is grouped under.
+pub const CELL_METAL: &str = "(cell metal)";
+
+/// Cell metal on the multi-mask layers: the coloured boxes as fixed shapes, and how many boxes the
+/// LEF leaves uncoloured.
+fn cell_metal(db: &Db, by_number: &BTreeMap<i64, &MaskLayer>) -> Result<(Vec<(i64, MaskShape)>, usize)> {
+    let mut out = Vec::new();
+    let mut unmasked = 0;
+    for c in db.inst_master_boxes()? {
+        if !by_number.contains_key(&c.layer) {
+            continue;
+        }
+        if c.mask == 0 {
+            unmasked += 1;
+            continue;
+        }
+        let net = if c.net.is_empty() { CELL_METAL.to_string() } else { c.net };
+        out.push((c.layer, MaskShape { net, rect: c.rect, mask: c.mask, fixed: true }));
+    }
+    Ok((out, unmasked))
 }
 
 // ---- stage: decomposition (constraint colouring over polygons) --------------------------------

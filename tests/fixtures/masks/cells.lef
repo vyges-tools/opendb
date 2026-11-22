@@ -1,0 +1,29 @@
+VERSION 5.8 ;
+BUSBITCHARS "[]" ;
+DIVIDERCHAR "/" ;
+
+# A synthetic cell on the masks.lef stack whose LEF colours its metal: pin A on M1 mask 2, one
+# obstruction on M1 mask 1 and one left uncoloured. Round numbers, not any library's.
+
+MACRO CM
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 0.4 BY 1.0 ;
+  SYMMETRY X Y ;
+  SITE core ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER M1 ;
+        RECT MASK 2 0.1 0.025 0.2 0.075 ;
+    END
+  END A
+  OBS
+    LAYER M1 ;
+      RECT MASK 1 0.25 0.325 0.35 0.375 ;
+      RECT 0.25 0.525 0.35 0.575 ;
+  END
+END CM
+
+END LIBRARY
