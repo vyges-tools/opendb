@@ -564,6 +564,7 @@ pub fn write_gds(db: &mut Db, map: &LayerMap, cell_gds: &[impl AsRef<Path>], out
     place_instances(db, k, &mut els, &mut so)?;
     stream_routing(db, map, k, &mut els, &mut so)?;
     stream_pins(db, map, k, &mut els, &mut so)?;
+    stream_fills(db, map, k, &mut els, &mut so)?;
     stream_die_area(db, map, k, &mut els, &mut so)?;
     db.gds_create_structure(lib, &top)?;
     db.gds_add(lib, &top, &els)?;
@@ -724,6 +725,21 @@ fn stream_routing(db: &Db, map: &LayerMap, scale: i32, els: &mut Vec<GdsElement>
     let masks = db.swire_box_masks()?;
     for (k, b) in db.swire_boxes()?.into_iter().enumerate() {
         stream_box(map, &layers, "SPNET", scale_box(b, scale)?, masks.get(k).copied().unwrap_or(0), els, so);
+    }
+    Ok(())
+}
+
+/// Every fill rectangle on FILL, or FILLOPC when it needs OPC, at its mask's datatype (the map's
+/// `FILL:MASK:<n>` entries), as KLayout's DEF reader streams `FILLS`.
+fn stream_fills(db: &Db, map: &LayerMap, k: i32, els: &mut Vec<GdsElement>, so: &mut StreamOut) -> Result<()> {
+    let layers = layer_table(db)?;
+    let fills = db.fill_rects()?;
+    // `fill_rects` skips a fill without a tech layer; only then can its index differ from odb's
+    let aligned = fills.len() == db.num_fills()?;
+    for (i, f) in fills.iter().enumerate() {
+        let purpose = if aligned && db.fill_needs_o_p_c(i) { "FILLOPC" } else { "FILL" };
+        let b = scale_box((f.layer, f.rect[0], f.rect[1], f.rect[2], f.rect[3]), k)?;
+        stream_box(map, &layers, purpose, b, f.mask, els, so);
     }
     Ok(())
 }

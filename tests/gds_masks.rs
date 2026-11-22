@@ -142,3 +142,41 @@ fn special_wire_and_pin_boxes_carry_their_def_masks() {
     want.sort();
     assert_eq!(got, want);
 }
+
+/// Fill streams on FILL, or FILLOPC when the fill needs OPC, at its mask's datatype. Oracle:
+/// KLayout 0.30.4's DEF reader on `fills.def` + `fills.map` (this fixture plus a FILLS section and
+/// FILL / FILLOPC map entries): it wrote exactly these four fill shapes.
+#[test]
+fn fill_streams_to_its_purpose_and_mask_as_klayout_does() {
+    const KLAYOUT_FILL: &[(i16, i16, [i32; 4])] = &[
+        (10, 50, [1200, 1300, 1400, 1500]),
+        (10, 51, [1200, 500, 1400, 700]),
+        (10, 52, [1500, 500, 1700, 700]),
+        (20, 62, [1200, 900, 1400, 1100]),
+    ];
+    let mut db = Db::new();
+    db.read_lef(fixture("masks.lef")).unwrap();
+    db.read_def(fixture("fills.def"), "default").unwrap();
+    let cells = tmp("cells_fill.gds");
+    let lib = db.gds_create_lib("cells").unwrap();
+    db.gds_set_units(lib, 1e-3, 1e-9).unwrap();
+    db.gds_write(lib, &cells).unwrap();
+    let map = LayerMap::parse(&std::fs::read_to_string(fixture("fills.map")).unwrap()).unwrap();
+    let out = tmp("fills.gds");
+    gds::write_gds(&mut db, &map, &[&cells], &out).unwrap();
+    let mut rd = Db::new();
+    let back = rd.gds_read(&out).unwrap();
+    let mut fill = BTreeSet::new();
+    for e in rd.gds_elements(back, "masks").unwrap() {
+        if let GdsElement::Boundary { layer, datatype, xy, .. } = e {
+            if datatype >= 50 {
+                let xs = xy.iter().map(|p| p.0);
+                let ys = xy.iter().map(|p| p.1);
+                fill.insert((layer, datatype, [xs.clone().min().unwrap(), ys.clone().min().unwrap(), xs.max().unwrap(), ys.max().unwrap()]));
+            }
+        }
+    }
+    assert_eq!(fill, KLAYOUT_FILL.iter().copied().collect::<BTreeSet<_>>());
+    let _ = std::fs::remove_file(out);
+    let _ = std::fs::remove_file(cells);
+}
