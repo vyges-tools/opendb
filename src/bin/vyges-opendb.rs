@@ -2344,6 +2344,7 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
     { "name": "--lef", "kind": "input", "type": "path", "required": false, "repeatable": true, "description": "tech LEF whose LEF58 SAMEMASK spacing rules (dropped by odb) set the same-mask spacing" },
     { "name": "--same-mask-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:DBU, the same-mask spacing to check (default: the --lef SAMEMASK rules, else the layer's SPACING, else its spacing table at minimum width)" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
+    { "name": "--parity-only", "kind": "flag", "type": "bool", "required": false, "description": "colour by track parity only, without the decomposition stage (by default whole polygons are recoloured where parity breaks a same-mask rule and a legal two-colouring exists; pre-coloured shapes are never flipped)" },
     { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
     { "name": "--fail-on-findings", "kind": "flag", "type": "bool", "required": false, "description": "exit 1 when anything is reported" },
     { "name": "--require-coloured", "kind": "flag", "type": "bool", "required": false, "description": "the tapeout gate: exit 3, REFUSED, when any shape on a multi-mask layer (routed and special wires, via landings, block pins) is uncoloured after the pass" }
@@ -2362,6 +2363,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "--output" | "-o" => output = args.next(),
             "--report" => report = args.next(),
             "--check-only" => opts.check_only = true,
+            "--parity-only" => opts.parity_only = true,
             "--fail-on-findings" => fail_on_findings = true,
             "--require-coloured" | "--require-colored" => require_coloured = true,
             "--lef" => {
@@ -2386,7 +2388,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
                        \x20                         [--same-mask-spacing LAYER:DBU]...\n\
-                       \x20                         [--check-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
+                       \x20                         [--check-only] [--parity-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
                 return Ok(());
             }
             other => return Err(format!("color-masks: unknown argument: {other}").into()),
@@ -2461,6 +2463,10 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "special_vias_coloured": rep.special_vias_coloured,
         "shapes": rep.shapes,
         "coloured": rep.coloured,
+        "decomposition": rep.decomposition.iter().map(|(l, d)| (l.clone(), serde_json::json!({
+            "polygons": d.polygons, "components": d.components, "flipped": d.flipped,
+            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors,
+        }))).collect::<serde_json::Map<_, _>>(),
         "findings_by_kind": by_kind,
         "findings": rep.findings.iter().map(|f| f.to_json()).collect::<Vec<_>>(),
         "odb_written": written,

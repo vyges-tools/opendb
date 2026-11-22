@@ -284,6 +284,9 @@ pub enum Finding {
     },
     /// An odd cycle of conflict edges on a two-mask layer: no two-colouring exists.
     OddCycle { layer: String, shapes: Vec<(String, [i32; 4])> },
+    /// Anchored (pre-coloured) shapes no colouring can keep together: the decomposition left
+    /// their component as it was.
+    AnchorConflict { layer: String, shapes: Vec<(String, [i32; 4])> },
     /// A shape rule broken among one mask's shapes ([`crate::masks_check`]): `rule` is
     /// FORBIDDENSPACING, EOLEXTENSIONSPACING or JOINTCORNERSPACING SAMEMASK, `index` its place among the layer's rules
     /// of that kind, `marker` the reference checker's marker box, `nets` its source nets.
@@ -301,6 +304,7 @@ impl Finding {
             Finding::MultiTrack { .. } => "multi_track",
             Finding::SameMaskSpacing { .. } => "same_mask_spacing",
             Finding::OddCycle { .. } => "odd_cycle",
+            Finding::AnchorConflict { .. } => "anchor_conflict",
             Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_FORBIDDEN => "forbidden_spacing",
             Finding::SameMaskRule { rule, .. } if *rule == crate::joint_corner::RULE_JOINT_CORNER => "joint_corner_spacing",
             Finding::SameMaskRule { rule, .. } if *rule == crate::masks_check::RULE_EOL_SPACING => "eol_spacing",
@@ -327,7 +331,7 @@ impl Finding {
                 "layer": layer, "mask": mask, "a": {"net": a.0, "rect": a.1}, "b": {"net": b.0, "rect": b.1},
                 "gap": gap, "same_track": same_track, "required": required, "rule": rule,
             }),
-            Finding::OddCycle { layer, shapes } => json!({
+            Finding::OddCycle { layer, shapes } | Finding::AnchorConflict { layer, shapes } => json!({
                 "layer": layer,
                 "shapes": shapes.iter().map(|(n, r)| json!({"net": n, "rect": r})).collect::<Vec<_>>(),
             }),
@@ -856,6 +860,8 @@ pub struct ColourOptions {
     /// readings stay selectable for correlation).
     pub eol_within: crate::masks_check::EolWithin,
     pub eol_two_sides: crate::masks_check::EolTwoSides,
+    /// Colour by track parity only: no decomposition stage ([`crate::masks_decomp`]).
+    pub parity_only: bool,
 }
 
 /// What [`colour_masks`] did.
@@ -874,6 +880,19 @@ pub struct ColourReport {
     pub shapes: usize,
     pub coloured: usize,
     pub findings: Vec<Finding>,
+    /// What the decomposition stage did, per layer.
+    pub decomposition: BTreeMap<String, DecompStats>,
+}
+
+/// One layer's decomposition, counted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DecompStats {
+    pub polygons: usize,
+    pub components: usize,
+    pub flipped: usize,
+    pub odd_components: usize,
+    pub anchor_conflicts: usize,
+    pub anchors: usize,
 }
 
 /// The shapes left uncoloured on a multi-mask layer after the pass (routed and special wires,
@@ -986,6 +1005,8 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
         .map(|l| l.name.clone())
         .collect();
     let by_name: BTreeMap<String, MaskLayer> = rep.layers.iter().map(|l| (l.name.clone(), l.clone())).collect();
+    // The colours the design came in with: the decomposition never flips them.
+    let anchors = if opts.check_only || opts.parity_only { Anchors::default() } else { precoloured(db, &by_name)? };
     for net in db.block_get_nets() {
         if db.net_is_special(&net) {
             continue;
@@ -1001,6 +1022,9 @@ pub fn colour_masks(db: &mut Db, opts: &ColourOptions) -> Result<ColourReport> {
     }
     if !opts.check_only {
         colour_special_nets(db, &by_name, &mut rep)?;
+        if !opts.parity_only {
+            decompose_block(db, &by_name, &anchors, &mut rep)?;
+        }
     }
     check_block(db, &by_name, &mut rep)?;
     Ok(rep)
@@ -1025,6 +1049,20 @@ fn colour_net(
     let state = db.net_wire_decode_masks(net)?;
     let state = &state[1.min(state.len())..];
     let plan = plan_net(net, layers, &parsed, state, &mut rep.findings);
+    write_net_plan(db, net, wire_type, &parsed, state, &plan, rep)
+}
+
+/// Write `plan` into `net`'s wire, verified: the wire's geometry must not change, else the old
+/// wire is restored and the net reported. Counts the net as recoloured when written.
+fn write_net_plan(
+    db: &mut Db,
+    net: &str,
+    wire_type: &str,
+    parsed: &[WireRec],
+    state: &[WireMaskState],
+    plan: &NetPlan,
+    rep: &mut ColourReport,
+) -> Result<()> {
     if !plan.changed {
         return Ok(());
     }
@@ -1038,7 +1076,7 @@ fn colour_net(
         via: state.iter().map(|s| s.via).collect(),
         changed: false,
     };
-    let (ops, names, old_ops, old_names) = match (encode_ops(&parsed, &plan), encode_ops(&parsed, &keep)) {
+    let (ops, names, old_ops, old_names) = match (encode_ops(parsed, plan), encode_ops(parsed, &keep)) {
         (Ok((o, n)), Ok((oo, on))) => (o, n, oo, on),
         (Err(why), _) | (_, Err(why)) => {
             rep.findings.push(Finding::NotRewritten { net: net.into(), why });
@@ -1142,6 +1180,19 @@ fn colour_special_vias(db: &mut Db, by_number: &BTreeMap<i64, &MaskLayer>, rep: 
 /// wires, block pins) and check it.
 fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourReport) -> Result<()> {
     let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
+    let shapes = block_shapes(db, &by_number)?;
+    for (num, v) in &shapes {
+        let layer = by_number[num];
+        rep.shapes += v.len();
+        rep.coloured += v.iter().filter(|s| s.mask != 0).count();
+        check_layer(layer, v, &mut rep.findings);
+    }
+    Ok(())
+}
+
+/// Every shape on the multi-mask layers, per layer number: routed wires (net order, box order),
+/// then special wires, then block pins (fixed).
+fn block_shapes(db: &Db, by_number: &BTreeMap<i64, &MaskLayer>) -> Result<BTreeMap<i64, Vec<MaskShape>>> {
     let mut shapes: BTreeMap<i64, Vec<MaskShape>> = BTreeMap::new();
     for net in db.block_get_nets() {
         if db.net_is_special(&net) {
@@ -1185,13 +1236,206 @@ fn check_block(db: &Db, layers: &BTreeMap<String, MaskLayer>, rep: &mut ColourRe
             }
         }
     }
+    Ok(shapes)
+}
+
+// ---- stage: decomposition (constraint colouring over polygons) --------------------------------
+
+/// Points where a routed net came in coloured: per (net, layer), each point and its mask.
+#[derive(Debug, Clone, Default)]
+pub struct Anchors {
+    pub at: BTreeMap<(String, String), Vec<((i32, i32), u8)>>,
+}
+
+/// Walk a wire's records: for each record that carries a colour on a multi-mask layer, its
+/// layer, the point that names its shape (a segment's end, a patch's or via's location) and, for
+/// a via, which digit (`Some(true)` bottom, `Some(false)` top). One walk shared by the anchor
+/// collection and the recolouring, as [`plan_net`] walks them.
+fn record_sites(recs: &[WireRec]) -> Vec<(usize, String, (i32, i32), Option<bool>)> {
+    let mut out = Vec::new();
+    let (mut layer, mut prev): (String, Option<(i32, i32)>) = (String::new(), None);
+    for (i, r) in recs.iter().enumerate() {
+        match r {
+            WireRec::Path(l) => {
+                layer = l.clone();
+                prev = None;
+            }
+            WireRec::Point(x, y) | WireRec::PointExt(x, y, _) => {
+                if prev.is_some() {
+                    out.push((i, layer.clone(), (*x, *y), None));
+                }
+                prev = Some((*x, *y));
+            }
+            WireRec::Via { bottom, top, .. } => {
+                if let Some(at) = prev {
+                    out.push((i, bottom.clone(), at, Some(true)));
+                    out.push((i, top.clone(), at, Some(false)));
+                }
+                layer = if *bottom == layer { top.clone() } else { bottom.clone() };
+            }
+            WireRec::Rect(..) => {
+                if let Some(at) = prev {
+                    out.push((i, layer.clone(), at, None));
+                }
+            }
+            WireRec::Rule | WireRec::End | WireRec::Other(_) => {}
+        }
+    }
+    out
+}
+
+/// The pre-colours of every routed net, before this pass colours anything.
+fn precoloured(db: &Db, layers: &BTreeMap<String, MaskLayer>) -> Result<Anchors> {
+    let mut a = Anchors::default();
+    for net in db.block_get_nets() {
+        if db.net_is_special(&net) {
+            continue;
+        }
+        let recs = db.net_wire_decode(&net)?;
+        let Ok(parsed) = parse_records(recs.get(1..).unwrap_or(&[])) else { continue };
+        let state = db.net_wire_decode_masks(&net)?;
+        let state = &state[1.min(state.len())..];
+        for (i, layer, at, digit) in record_sites(&parsed) {
+            if !layers.contains_key(&layer) {
+                continue;
+            }
+            let st = state.get(i).copied().unwrap_or_default();
+            let m = match digit {
+                None => st.color.unwrap_or(0),
+                Some(true) => st.via.map_or(0, |v| v.bottom),
+                Some(false) => st.via.map_or(0, |v| v.top),
+            };
+            if m != 0 {
+                a.at.entry((net.clone(), layer)).or_default().push((at, m));
+            }
+        }
+    }
+    Ok(a)
+}
+
+/// Shape pairs on `layer` that would break a same-mask rule if they shared a mask: the check's
+/// own predicate ([`check_layer`]), so the colouring and the check agree on what conflicts.
+#[must_use]
+pub fn hard_pairs(layer: &MaskLayer, shapes: &[MaskShape]) -> Vec<(usize, usize)> {
+    let rules = layer.rules.as_ref().filter(|r| r.has_checked_rules());
+    let radius = rules.map_or(0, SameMaskRulesDbu::max_required).max(layer.same_mask_spacing);
+    conflict_edges(shapes, radius)
+        .into_iter()
+        .filter(|&(i, j, g2)| {
+            let required = match rules {
+                Some(r) => match r.required(&shapes[i].rect, &shapes[j].rect) {
+                    Some((x, _)) => x,
+                    None => return false,
+                },
+                None => layer.same_mask_spacing,
+            };
+            g2 < (required as i64) * (required as i64)
+        })
+        .map(|(i, j, _)| (i, j))
+        .collect()
+}
+
+/// Decompose every two-mask layer and rewrite the nets whose polygons changed mask.
+fn decompose_block(db: &mut Db, layers: &BTreeMap<String, MaskLayer>, anchors: &Anchors, rep: &mut ColourReport) -> Result<()> {
+    let by_number: BTreeMap<i64, &MaskLayer> = layers.values().map(|l| (l.number, l)).collect();
+    let shapes = block_shapes(db, &by_number)?;
+    // per net: (layer, rect, mask) of every shape the decomposition placed
+    let mut placed: BTreeMap<String, Vec<(String, [i32; 4], u8)>> = BTreeMap::new();
+    let mut touched: BTreeSet<String> = BTreeSet::new();
     for (num, v) in &shapes {
         let layer = by_number[num];
-        rep.shapes += v.len();
-        rep.coloured += v.iter().filter(|s| s.mask != 0).count();
-        check_layer(layer, v, &mut rep.findings);
+        if layer.num_masks != 2 {
+            continue;
+        }
+        let anchored: Vec<bool> = v
+            .iter()
+            .map(|s| {
+                (s.fixed && s.mask != 0)
+                    || anchors.at.get(&(s.net.clone(), layer.name.clone())).is_some_and(|pts| {
+                        pts.iter().any(|&((x, y), m)| m == s.mask && s.rect[0] <= x && x <= s.rect[2] && s.rect[1] <= y && y <= s.rect[3])
+                    })
+            })
+            .collect();
+        let d = crate::masks_decomp::decompose(v, &hard_pairs(layer, v), &anchored);
+        for c in &d.anchor_conflicts {
+            rep.findings.push(Finding::AnchorConflict {
+                layer: layer.name.clone(),
+                shapes: c.iter().map(|&k| (v[k].net.clone(), v[k].rect)).collect(),
+            });
+        }
+        rep.decomposition.insert(layer.name.clone(), DecompStats {
+            polygons: d.polygons,
+            components: d.components,
+            flipped: d.flipped,
+            odd_components: d.odd_components,
+            anchor_conflicts: d.anchor_conflicts.len(),
+            anchors: anchored.iter().filter(|&&a| a).count(),
+        });
+        for (k, m) in d.mask.iter().enumerate() {
+            let Some(m) = *m else { continue };
+            if v[k].fixed {
+                continue;
+            }
+            placed.entry(v[k].net.clone()).or_default().push((layer.name.clone(), v[k].rect, m));
+            if m != v[k].mask {
+                touched.insert(v[k].net.clone());
+            }
+        }
+    }
+    for net in touched {
+        let recs = db.net_wire_decode(&net)?;
+        let wire_type = recs.first().and_then(|r| r.strip_prefix("T|")).unwrap_or("").to_string();
+        let parsed = match parse_records(recs.get(1..).unwrap_or(&[])) {
+            Ok(p) => p,
+            Err(why) => {
+                rep.findings.push(Finding::NotRewritten { net: net.clone(), why });
+                continue;
+            }
+        };
+        let state = db.net_wire_decode_masks(&net)?;
+        let state = state[1.min(state.len())..].to_vec();
+        let at = |layer: &str, (x, y): (i32, i32)| -> Option<u8> {
+            placed.get(&net)?.iter().find(|(l, r, _)| l == layer && r[0] <= x && x <= r[2] && r[1] <= y && y <= r[3]).map(|t| t.2)
+        };
+        let plan = plan_recolour(&parsed, &state, at);
+        write_net_plan(db, &net, &wire_type, &parsed, &state, &plan, rep)?;
     }
     Ok(())
+}
+
+/// The colours one net's wire should carry after the decomposition: each record's metal (or
+/// via digit) takes the mask `at` gives the shape at its site; where `at` gives none, the record
+/// keeps what it has.
+pub fn plan_recolour(recs: &[WireRec], state: &[WireMaskState], at: impl Fn(&str, (i32, i32)) -> Option<u8>) -> NetPlan {
+    let mut plan = NetPlan {
+        color: state.iter().map(|s| s.color).collect(),
+        via: state.iter().map(|s| s.via).collect(),
+        changed: false,
+    };
+    for (i, layer, p, digit) in record_sites(recs) {
+        let Some(m) = at(&layer, p) else { continue };
+        match digit {
+            None => {
+                if plan.color.get(i).copied().flatten() != Some(m) && i < plan.color.len() {
+                    plan.color[i] = Some(m);
+                    plan.changed = true;
+                }
+            }
+            Some(bottom) => {
+                if i >= plan.via.len() {
+                    continue;
+                }
+                let mut v = plan.via[i].unwrap_or_default();
+                let d = if bottom { &mut v.bottom } else { &mut v.top };
+                if *d != m {
+                    *d = m;
+                    plan.via[i] = Some(v);
+                    plan.changed = true;
+                }
+            }
+        }
+    }
+    plan
 }
 
 #[cfg(test)]
@@ -1508,6 +1752,26 @@ mod tests {
         assert!(polygon_conflicts(&near, &[0, 0, 2, 3], 40).is_empty(), "only pairs under the screening spacing");
         // two pairs between the same two polygons: one edge, the closer gap
         assert_eq!(polygon_conflicts(&[(0, 2, 900), (1, 2, 400)], &[0, 0, 2], 60), vec![(0, 2, 400)]);
+    }
+
+    /// Rule: a hard must-differ pair for the decomposition is exactly a pair the check would
+    /// report on one mask: the gap strictly under the required spacing (60 here). At 60 the pair
+    /// may share a mask; at 59 it may not. Mask and net do not enter.
+    #[test]
+    fn a_hard_pair_is_a_pair_under_the_same_mask_spacing() {
+        let l = layer(true, vec![pat(25, 10, 100, 1, false)]);
+        let at = |gap: i32| vec![sh("a", [0, 0, 100, 50], 1), sh("b", [100 + gap, 0, 200 + gap, 50], 2)];
+        assert!(hard_pairs(&l, &at(60)).is_empty());
+        assert_eq!(hard_pairs(&l, &at(59)), vec![(0, 1)]);
+        // with a width table the requirement is the pair's own, not the screening radius: two
+        // narrow wires need 60 (60 apart: free), two wide ones 120 (100 apart: a pair)
+        let mut r = vyges_loom::lef58_samemask::SameMaskRules::default();
+        r.read_property("LEF58_SPACINGTABLE", "SPACINGTABLE TWOWIDTHS SAMEMASK WIDTH 0 0.06 0.06 WIDTH 0.1 0.06 0.12 ;");
+        let mut t = l.clone();
+        t.rules = Some(SameMaskRulesDbu::from_um(&r, 1000.0));
+        assert!(hard_pairs(&t, &at(60)).is_empty());
+        let wide = vec![sh("a", [0, 0, 1000, 200], 1), sh("b", [0, 300, 1000, 500], 1)];
+        assert_eq!(hard_pairs(&t, &wide), vec![(0, 1)]);
     }
 
     /// Same-mask pairs under the spacing are reported (on one track: a line-end pair); different

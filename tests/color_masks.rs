@@ -34,7 +34,8 @@ fn kinds(f: &[Finding]) -> Vec<&'static str> {
 #[test]
 fn the_pass_colours_by_track_and_reports_what_it_keeps() {
     let mut db = load();
-    let rep = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    let parity = ColourOptions { parity_only: true, ..ColourOptions::default() };
+    let rep = masks::colour_masks(&mut db, &parity).unwrap();
     assert_eq!(rep.layers.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), ["M1", "M2"]);
     assert_eq!(rep.unmasked_tracks, ["M1", "M2"]);
     assert_eq!((rep.nets_checked, rep.nets_recoloured), (2, 2));
@@ -47,8 +48,27 @@ fn the_pass_colours_by_track_and_reports_what_it_keeps() {
     assert!(text.contains("MASK 221 V12"), "top digit filled from the M2 track (2), cut and bottom kept:\n{text}");
     let _ = std::fs::remove_file(out);
     // A second run has nothing left to colour.
-    let again = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    let again = masks::colour_masks(&mut db, &parity).unwrap();
     assert_eq!(again.nets_recoloured, 0);
+}
+
+/// Rule (decomposition: one piece of metal takes one mask, and an anchor is never flipped): net
+/// a's pre-coloured M2 segment (mask 1, on a mask-2 track) and its via's M2 landing touch, so they
+/// are one polygon, which takes the anchor's mask. Parity alone filled the landing from the track
+/// (2), leaving two masks touching: a stitch nobody designed.
+#[test]
+fn the_decomposition_gives_one_polygon_its_anchors_mask() {
+    let mut db = load();
+    let rep = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    assert_eq!(rep.decomposition["M2"].flipped, 1, "{:?}", rep.decomposition);
+    assert!(rep.decomposition["M2"].anchors > 0);
+    let out = std::env::temp_dir().join(format!("vyges_opendb_decomp_{}.def", std::process::id()));
+    db.write_def(&out).unwrap();
+    let text = std::fs::read_to_string(&out).unwrap();
+    assert!(text.contains("MASK 121 V12"), "top digit from the anchored polygon (1):\n{text}");
+    let _ = std::fs::remove_file(out);
+    let again = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    assert_eq!(again.nets_recoloured, 0, "{:?}", again.decomposition);
 }
 
 /// Two segments of one net on one track, 10 apart: coloured alike (same track), so the pair is a
@@ -62,7 +82,15 @@ fn a_line_end_pair_on_one_track_is_a_same_mask_finding() {
     #[rustfmt::skip]
     let ops = [0, 0, 0, 1, 50, 250, 1, 500, 250, 0, 0, 0, 1, 560, 250, 1, 900, 250];
     db.net_write_wire("b", &ops, &names).unwrap();
-    let rep = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    // The decomposition splits the pair across the masks (no track rule binds a mask; the PDK
+    // asks only that no same-mask rule break), so no finding is left ...
+    let mut split = load();
+    split.net_write_wire("b", &ops, &names).unwrap();
+    let rep = masks::colour_masks(&mut split, &ColourOptions::default()).unwrap();
+    assert!(!rep.findings.iter().any(|f| f.kind() == "same_mask_spacing"), "{:?}", rep.findings);
+    assert_eq!(rep.decomposition["M1"].flipped, 1);
+    // ... while track parity alone keeps them on one mask: the finding.
+    let rep = masks::colour_masks(&mut db, &ColourOptions { parity_only: true, ..ColourOptions::default() }).unwrap();
     let same: Vec<&Finding> = rep.findings.iter().filter(|f| f.kind() == "same_mask_spacing").collect();
     assert_eq!(same.len(), 1, "{:?}", rep.findings);
     let Finding::SameMaskSpacing { layer, mask, gap, same_track, .. } = same[0] else { unreachable!() };
@@ -127,7 +155,7 @@ fn lef58_same_mask_rules_set_the_spacing() {
     #[rustfmt::skip]
     let ops = [0, 0, 0, 1, 50, 250, 1, 500, 250, 0, 0, 0, 1, 560, 250, 1, 900, 250];
     db.net_write_wire("b", &ops, &names).unwrap();
-    let _ = masks::colour_masks(&mut db, &ColourOptions::default()).unwrap();
+    let _ = masks::colour_masks(&mut db, &ColourOptions { parity_only: true, ..ColourOptions::default() }).unwrap();
     let by_lef = masks::colour_masks(&mut db, &opts).unwrap();
     let by_option = ColourOptions { same_mask_spacing: [("M1".to_string(), 120)].into(), check_only: true, ..ColourOptions::default() };
     let by_option = masks::colour_masks(&mut db, &by_option).unwrap();
