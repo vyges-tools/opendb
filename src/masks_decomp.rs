@@ -32,6 +32,15 @@
 //!    the component's lowest polygon keeps the mask of its lowest coloured shape (mask 1 if it
 //!    has none).
 //!
+//! 4. **Long-range separators** ([`decompose_soft`]): soft OPPOSITE pairs, shapes closer than a
+//!    range beyond the same-mask spacing (the colour-balance remedy a sign-off decomposition
+//!    offers: ask, never force). A hard component's colouring is fixed up to its phase, so a soft
+//!    pair only decides the phase of a free component (no anchor, no forced mask). Free
+//!    components are revisited in index order; one flips only when that strictly raises the
+//!    number of its soft pairs on opposite masks, counted against everything else as it stands.
+//!    Each flip raises the total, so the passes end (capped at 8). A hard constraint is never
+//!    traded: a component flips whole.
+//!
 //! Same input, same output: polygons and edges are numbered by shape order, every walk is in
 //! index order, and nothing depends on hashing.
 
@@ -57,6 +66,12 @@ pub struct Decomposition {
     pub odd_components: usize,
     /// Anchor conflicts: the shapes of the forced polygons of each conflicting component.
     pub anchor_conflicts: Vec<Vec<usize>>,
+    /// Soft pairs given (between two coloured shapes of different polygons), and how many end on
+    /// opposite masks.
+    pub soft_pairs: usize,
+    pub soft_met: usize,
+    /// Free components the long-range separators flipped.
+    pub soft_flips: usize,
 }
 
 /// One net's touching shapes (overlap, or a shared edge of positive length), any mask, among
@@ -104,6 +119,12 @@ pub fn polygons(shapes: &[MaskShape], take: &[bool]) -> Vec<usize> {
 /// neither coloured nor recoloured here.
 #[must_use]
 pub fn decompose(shapes: &[MaskShape], pairs: &[(usize, usize)], anchor: &[bool]) -> Decomposition {
+    decompose_soft(shapes, pairs, &[], anchor)
+}
+
+/// [`decompose`], then the long-range separators: `soft` pairs prefer opposite masks (step 4).
+#[must_use]
+pub fn decompose_soft(shapes: &[MaskShape], pairs: &[(usize, usize)], soft: &[(usize, usize)], anchor: &[bool]) -> Decomposition {
     let n = shapes.len();
     let take: Vec<bool> = shapes.iter().map(|s| !(s.fixed && s.mask == 0)).collect();
     let poly = polygons(shapes, &take);
@@ -144,6 +165,8 @@ pub fn decompose(shapes: &[MaskShape], pairs: &[(usize, usize)], anchor: &[bool]
     }
     let mut out = Decomposition { mask: vec![None; n], polygons: members.len(), ..Decomposition::default() };
     let mut side: BTreeMap<usize, u8> = BTreeMap::new();
+    // free components (phase from preference only): (polygons, phase)
+    let mut free: Vec<(Vec<usize>, u8)> = Vec::new();
     for &start in &nodes {
         if side.contains_key(&start) {
             continue;
@@ -179,6 +202,7 @@ pub fn decompose(shapes: &[MaskShape], pairs: &[(usize, usize)], anchor: &[bool]
                 phases.insert(if side[p] == 0 { m } else { 3 - m });
             }
         }
+        let is_free = phases.is_empty();
         let phase = match phases.len() {
             0 => {
                 // 3. keep more current masks; tie: the lowest polygon keeps its first mask
@@ -207,12 +231,78 @@ pub fn decompose(shapes: &[MaskShape], pairs: &[(usize, usize)], anchor: &[bool]
         };
         for p in &comp {
             let m = if side[p] == 0 { phase } else { 3 - phase };
-            if members[p].iter().any(|&k| shapes[k].mask != m) {
-                out.flipped += 1;
-            }
             for &k in &members[p] {
                 out.mask[k] = Some(m);
             }
+        }
+        if is_free {
+            free.push((comp, phase));
+        }
+    }
+    // 4. long-range separators: soft pairs decide the phases of free components
+    let eff = |out: &Decomposition, k: usize| out.mask[k].unwrap_or(shapes[k].mask);
+    let soft: Vec<(usize, usize)> =
+        soft.iter().copied().filter(|&(a, b)| take[a] && take[b] && poly[a] != poly[b]).collect();
+    if !soft.is_empty() && !free.is_empty() {
+        let mut comp_of: BTreeMap<usize, usize> = BTreeMap::new();
+        for (c, (polys, _)) in free.iter().enumerate() {
+            for p in polys {
+                for &k in &members[p] {
+                    comp_of.insert(k, c);
+                }
+            }
+        }
+        // per free component, its soft pairs as (own shape, other shape), other outside it
+        let mut touch: Vec<Vec<(usize, usize)>> = vec![Vec::new(); free.len()];
+        for &(a, b) in &soft {
+            let (ca, cb) = (comp_of.get(&a), comp_of.get(&b));
+            if ca.is_some() && ca == cb {
+                continue;
+            }
+            if let Some(&c) = ca {
+                touch[c].push((a, b));
+            }
+            if let Some(&c) = cb {
+                touch[c].push((b, a));
+            }
+        }
+        for _ in 0..8 {
+            let mut changed = false;
+            for c in 0..free.len() {
+                let (mut keep, mut flip) = (0usize, 0usize);
+                for &(a, b) in &touch[c] {
+                    let (ma, mb) = (eff(&out, a), eff(&out, b));
+                    if ma == 0 || mb == 0 {
+                        continue;
+                    }
+                    if ma != mb { keep += 1 } else { flip += 1 }
+                }
+                if flip > keep {
+                    changed = true;
+                    out.soft_flips += 1;
+                    free[c].1 = 3 - free[c].1;
+                    for p in &free[c].0 {
+                        for &k in &members[p] {
+                            out.mask[k] = out.mask[k].map(|m| 3 - m);
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+    for &(a, b) in &soft {
+        let (ma, mb) = (eff(&out, a), eff(&out, b));
+        if ma != 0 && mb != 0 {
+            out.soft_pairs += 1;
+            out.soft_met += usize::from(ma != mb);
+        }
+    }
+    for p in members.keys() {
+        if members[p].iter().any(|&k| out.mask[k].is_some_and(|m| m != shapes[k].mask)) {
+            out.flipped += 1;
         }
     }
     out
@@ -485,6 +575,62 @@ mod tests {
         assert_eq!(masks(&decompose(&s, &[(0, 1)], &[false; 2])), vec![2, 1]);
         let s = vec![sh("a", [0, 0, 10, 10], 0), sh("b", [0, 20, 10, 30], 0)];
         assert_eq!(masks(&decompose(&s, &[(1, 0)], &[false; 2])), vec![1, 2]);
+    }
+
+    /// Rule (long-range separators, step 4): a soft pair asks two free components for opposite
+    /// masks. Two lone wires on one mask, a soft pair apart: the first visited (the lower) flips,
+    /// which meets the pair. Without the soft pair nothing moves; the soft pair is never a hard
+    /// pair, so `decompose` is `decompose_soft` with none.
+    #[test]
+    fn a_soft_pair_splits_two_free_components() {
+        let s = vec![sh("a", [0, 0, 1000, 32], 1), sh("b", [0, 200, 1000, 232], 1)];
+        let d = decompose_soft(&s, &[], &[(0, 1)], &[false; 2]);
+        assert_eq!(masks(&d), vec![2, 1]);
+        assert_eq!((d.soft_pairs, d.soft_met, d.soft_flips, d.flipped), (1, 1, 1, 1));
+        assert_eq!(decompose_soft(&s, &[], &[], &[false; 2]), decompose(&s, &[], &[false; 2]));
+        assert_eq!(masks(&decompose(&s, &[], &[false; 2])), vec![1, 1]);
+    }
+
+    /// Rule (step 4 asks, never forces): an anchored shape never flips for a soft pair; the free
+    /// neighbour moves instead. A hard component flips whole, so its hard pair stays split; a
+    /// component flips only when it meets strictly more soft pairs (a tie keeps the preference).
+    #[test]
+    fn soft_pairs_never_flip_an_anchor_or_break_a_hard_pair() {
+        // a anchored on 1, b free on 1, soft a-b: b takes 2
+        let s = vec![sh("a", [0, 0, 10, 10], 1), sh("b", [0, 100, 10, 110], 1)];
+        let d = decompose_soft(&s, &[], &[(0, 1)], &[true, false]);
+        assert_eq!(masks(&d), vec![1, 2]);
+        // both anchored on 1: the soft pair stays unmet, nothing flips
+        let d = decompose_soft(&s, &[], &[(0, 1)], &[true, true]);
+        assert_eq!(masks(&d), vec![1, 1]);
+        assert_eq!((d.soft_pairs, d.soft_met, d.soft_flips), (1, 0, 0));
+        // hard pair b-c (b 1, c 2 by parity), anchor a on 1 soft-near b: the component flips whole
+        let s = vec![sh("a", [0, 0, 10, 10], 1), sh("b", [0, 100, 10, 110], 1), sh("c", [0, 120, 10, 130], 2)];
+        let d = decompose_soft(&s, &[(1, 2)], &[(0, 1)], &[true, false, false]);
+        assert_eq!(masks(&d), vec![1, 2, 1]);
+        // the same with a second soft pair a-c: one met either way, a tie keeps parity
+        let d = decompose_soft(&s, &[(1, 2)], &[(0, 1), (0, 2)], &[true, false, false]);
+        assert_eq!(masks(&d), vec![1, 1, 2]);
+        assert_eq!((d.soft_pairs, d.soft_met, d.soft_flips), (2, 1, 0));
+        // a soft pair inside one component (here a hard pair too) decides nothing
+        let d = decompose_soft(&s, &[(1, 2)], &[(1, 2)], &[false; 3]);
+        assert_eq!(d.soft_flips, 0);
+        // two polygons the hard pairs put on one mask (a-x-b), soft a-b: flipping the component
+        // cannot meet it, so it must not flip (nor oscillate)
+        let s = vec![sh("a", [0, 0, 10, 10], 1), sh("x", [0, 20, 10, 30], 2), sh("b", [0, 40, 10, 50], 1)];
+        let d = decompose_soft(&s, &[(0, 1), (1, 2)], &[(0, 2)], &[false; 3]);
+        assert_eq!((masks(&d), d.soft_flips, d.soft_met), (vec![1, 2, 1], 0, 0));
+    }
+
+    /// Rule (step 4 is a local search to a fixpoint): three free wires in a row, all on one
+    /// mask, soft pairs between neighbours: the passes end with every pair met (1 2 1 or 2 1 2).
+    #[test]
+    fn soft_pairs_reach_a_fixpoint() {
+        let s = vec![sh("a", [0, 0, 10, 10], 1), sh("b", [0, 100, 10, 110], 1), sh("c", [0, 200, 10, 210], 1)];
+        let d = decompose_soft(&s, &[], &[(0, 1), (1, 2)], &[false; 3]);
+        assert_eq!(d.soft_met, 2, "{:?}", masks(&d));
+        let m = masks(&d);
+        assert!(m[0] != m[1] && m[1] != m[2]);
     }
 
     /// Rule (anchors never flipped): an anchored shape keeps its mask and fixes the phase of its
