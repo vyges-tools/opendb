@@ -874,6 +874,9 @@ pub struct ColourOptions {
     /// same-mask spacing (a sign-off deck's line-end windows, which the tech LEF may state more
     /// loosely or not at all).
     pub eol_windows: BTreeMap<String, Vec<crate::masks_decomp::EolWindow>>,
+    /// Same-mask forbidden spacing of sandwiched wires per layer (DBU), hard constraints of the
+    /// decomposition ([`crate::masks_forbidden`]).
+    pub forbidden: BTreeMap<String, Vec<crate::masks_forbidden::ForbiddenSpacing>>,
     /// Long-range separators per layer (DBU): shapes closer than this, not already a hard pair,
     /// prefer opposite masks (colour balance; never forced, see [`crate::masks_decomp`] step 4).
     pub long_range: BTreeMap<String, i32>,
@@ -924,6 +927,8 @@ pub struct DecompStats {
     pub anchors: usize,
     /// Hard pairs only a line-end window made (not already a same-mask spacing pair).
     pub eol_pairs: usize,
+    /// Hard pairs only a forbidden-spacing rule made (not already one of the pairs above).
+    pub forbidden_pairs: usize,
     /// Long-range (soft) pairs, how many end on opposite masks, and the free components they flipped.
     pub soft_pairs: usize,
     pub soft_met: usize,
@@ -1469,6 +1474,11 @@ fn decompose_block(
         pairs.extend(eol);
         pairs.sort_unstable();
         pairs.dedup();
+        let fs = crate::masks_forbidden::forbidden_pairs(v, opts.forbidden.get(&layer.name).map_or(&[][..], Vec::as_slice));
+        let fs_only = fs.iter().filter(|p| pairs.binary_search(p).is_err()).count();
+        pairs.extend(fs);
+        pairs.sort_unstable();
+        pairs.dedup();
         let mut soft: Vec<(usize, usize, u8)> = match long_range.get(&layer.name) {
             Some(&r) => conflict_edges(v, r).into_iter().map(|(i, j, _)| (i, j, 0)).collect(),
             None => Vec::new(),
@@ -1494,6 +1504,7 @@ fn decompose_block(
             anchor_conflicts: d.anchor_conflicts.len(),
             anchors: anchored.iter().filter(|&&a| a).count(),
             eol_pairs: eol_only,
+            forbidden_pairs: fs_only,
             soft_pairs: d.soft_pairs,
             soft_met: d.soft_met,
             soft_flips: d.soft_flips,

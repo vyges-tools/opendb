@@ -2351,6 +2351,7 @@ const COLOR_MASKS_DESCRIBE: &str = r#"{
     { "name": "--balance", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:WINDOW,STEP,MIN,MAX, a colour-balance rule (window and step DBU, range as fractions): windows stepped over the die area from its lower left, the last backed up to end on it; a component with no anchor flips when that lowers the total area-weighted distance of the windows outside [MIN, MAX] of the mask-1 share of the layer's metal; applied after the separators and over them" },
     { "name": "--colour-fill", "kind": "flag", "required": false, "description": "fill shapes on the two-mask layers take part in the decomposition as free shapes of their own (no anchor), so the separators and the balance step colour them too; their new masks are written back (every fill is made again, in its order, with its layer and OPC flag)" },
     { "name": "--eol-window", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N] (DBU), a same-mask line-end rule the decomposition holds as a hard constraint: a line end (an edge no longer than EOLMAX, convex corners, neighbouring edges at least ADJMIN) and any shape (toeol: a facing line end) within SPACE outward, widened by EXT along it, take opposite masks" },
+    { "name": "--forbidden-spacing", "kind": "option", "type": "string", "required": false, "repeatable": true, "description": "LAYER:WLO,WHI,S,RUN,DLO,DHI (DBU, inclusive), a same-mask forbidden spacing the decomposition holds as a hard constraint: a wire WLO..WHI wide with other metal no more than S away on both sides, and metal DLO..DHI away from its side, take opposite masks; every measurement side to side over a run of at least RUN" },
     { "name": "--check-only", "kind": "flag", "type": "bool", "required": false, "description": "check the colours the design has; write nothing" },
     { "name": "--parity-only", "kind": "flag", "type": "bool", "required": false, "description": "colour by track parity only, without the decomposition stage (by default whole polygons are recoloured where parity breaks a same-mask rule and a legal two-colouring exists; pre-coloured shapes are never flipped)" },
     { "name": "--report", "kind": "output", "type": "path", "required": false, "description": "write the JSON report here as well as to stdout" },
@@ -2396,6 +2397,11 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
                 let (l, w) = vyges_opendb::masks_decomp::EolWindow::parse(&v).map_err(|e| format!("color-masks: --eol-window {e}"))?;
                 opts.eol_windows.entry(l).or_default().push(w);
             }
+            "--forbidden-spacing" => {
+                let v = args.next().ok_or("color-masks: --forbidden-spacing needs LAYER:WLO,WHI,S,RUN,DLO,DHI")?;
+                let (l, r) = vyges_opendb::masks_forbidden::ForbiddenSpacing::parse(&v).map_err(|e| format!("color-masks: --forbidden-spacing {e}"))?;
+                opts.forbidden.entry(l).or_default().push(r);
+            }
             "--long-range" => {
                 let v = args.next().ok_or("color-masks: --long-range needs LAYER:DBU")?;
                 let (l, d) = v.split_once(':').ok_or("color-masks: --long-range wants LAYER:DBU")?;
@@ -2419,7 +2425,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
             }
             "-h" | "--help" => {
                 diag!("usage: vyges-opendb color-masks --input <in.odb> [--output <out.odb>] [--lef <tech.lef>]...\n\
-                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]... [--eol-window LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N]]... [--long-range LAYER:DBU]... [--separator LAYER:PRIORITY,EDGES,LO,HI[,eolmax=N,adjmin=N]]... [--balance LAYER:WINDOW,STEP,MIN,MAX]... [--colour-fill]\n\
+                       \x20                         [--same-mask-spacing LAYER:DBU]... [--cell-lef <cells.lef>]... [--eol-window LAYER:SPACE,EOLMAX,ADJMIN,EXT[,toeol][,lenlt=N][,lenge=N]]... [--forbidden-spacing LAYER:WLO,WHI,S,RUN,DLO,DHI]... [--long-range LAYER:DBU]... [--separator LAYER:PRIORITY,EDGES,LO,HI[,eolmax=N,adjmin=N]]... [--balance LAYER:WINDOW,STEP,MIN,MAX]... [--colour-fill]\n\
                        \x20                         [--check-only] [--parity-only] [--report <f.json>] [--fail-on-findings] [--require-coloured]");
                 return Ok(());
             }
@@ -2504,7 +2510,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "cell_lefs": cell_masks,
         "decomposition": rep.decomposition.iter().map(|(l, d)| (l.clone(), serde_json::json!({
             "polygons": d.polygons, "components": d.components, "flipped": d.flipped,
-            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors, "eol_pairs": d.eol_pairs,
+            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors, "eol_pairs": d.eol_pairs, "forbidden_pairs": d.forbidden_pairs,
             "soft_pairs": d.soft_pairs, "soft_met": d.soft_met, "soft_flips": d.soft_flips,
             "balance": d.balance.iter().map(|(m, b, a)| serde_json::json!({"windows": m, "outside_before": b, "outside_after": a})).collect::<Vec<_>>(),
             "balance_flips": d.balance_flips,
