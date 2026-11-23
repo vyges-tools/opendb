@@ -929,6 +929,8 @@ pub struct DecompStats {
     pub eol_pairs: usize,
     /// Hard pairs only a forbidden-spacing rule made (not already one of the pairs above).
     pub forbidden_pairs: usize,
+    /// Forbidden-spacing pairs left out: with the pairs above and the anchors, two masks cannot hold them.
+    pub forbidden_left: usize,
     /// Long-range (soft) pairs, how many end on opposite masks, and the free components they flipped.
     pub soft_pairs: usize,
     pub soft_met: usize,
@@ -1475,7 +1477,9 @@ fn decompose_block(
         pairs.sort_unstable();
         pairs.dedup();
         let fs = crate::masks_forbidden::forbidden_pairs(v, opts.forbidden.get(&layer.name).map_or(&[][..], Vec::as_slice));
-        let fs_only = fs.iter().filter(|p| pairs.binary_search(p).is_err()).count();
+        let fs: Vec<(usize, usize)> = fs.into_iter().filter(|p| pairs.binary_search(p).is_err()).collect();
+        let (fs, fs_left) = crate::masks_forbidden::admit(v, &pairs, &anchored, &fs);
+        let fs_only = fs.len();
         pairs.extend(fs);
         pairs.sort_unstable();
         pairs.dedup();
@@ -1505,6 +1509,7 @@ fn decompose_block(
             anchors: anchored.iter().filter(|&&a| a).count(),
             eol_pairs: eol_only,
             forbidden_pairs: fs_only,
+            forbidden_left: fs_left,
             soft_pairs: d.soft_pairs,
             soft_met: d.soft_met,
             soft_flips: d.soft_flips,

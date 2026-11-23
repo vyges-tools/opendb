@@ -2510,7 +2510,7 @@ fn color_masks(mut args: impl Iterator<Item = String>) -> Result<(), Fail> {
         "cell_lefs": cell_masks,
         "decomposition": rep.decomposition.iter().map(|(l, d)| (l.clone(), serde_json::json!({
             "polygons": d.polygons, "components": d.components, "flipped": d.flipped,
-            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors, "eol_pairs": d.eol_pairs, "forbidden_pairs": d.forbidden_pairs,
+            "odd_components": d.odd_components, "anchor_conflicts": d.anchor_conflicts, "anchors": d.anchors, "eol_pairs": d.eol_pairs, "forbidden_pairs": d.forbidden_pairs, "forbidden_left": d.forbidden_left,
             "soft_pairs": d.soft_pairs, "soft_met": d.soft_met, "soft_flips": d.soft_flips,
             "balance": d.balance.iter().map(|(m, b, a)| serde_json::json!({"windows": m, "outside_before": b, "outside_after": a})).collect::<Vec<_>>(),
             "balance_flips": d.balance_flips,

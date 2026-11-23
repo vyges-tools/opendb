@@ -21,6 +21,11 @@
 //! - **The pair:** a part of a wire side facing another polygon outward `dlo..dhi` away
 //!   (inclusive): the wire's polygon and that polygon take opposite masks.
 //!
+//! - **Never at the cost of a harder rule** ([`admit`]): a pair is taken only where the colouring
+//!   can still hold it together with the same-mask spacing and line-end pairs and the anchored
+//!   masks. One that would close an odd cycle or contradict an anchor is left out and counted:
+//!   two masks cannot hold it there, it is the router's (or a stitch's) to clear.
+//!
 //! Same input, same output: every walk is in index order and the result is sorted.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -215,6 +220,71 @@ pub fn forbidden_pairs(shapes: &[MaskShape], rules: &[ForbiddenSpacing]) -> Vec<
     out.into_iter().collect()
 }
 
+/// Of the forbidden-spacing pairs `cand` (in order), the ones a two-mask colouring can hold with
+/// every pair of `hard` and the anchored masks (`anchor[k]`: shape `k` keeps `shapes[k].mask`),
+/// and how many were left out. One net's touching shapes are one polygon and share a mask; each
+/// pair in `hard` puts its two shapes on opposite masks. A pair is left out when its two shapes
+/// are already tied to the same mask by those, or by the pairs taken before it.
+#[must_use]
+pub fn admit(shapes: &[MaskShape], hard: &[(usize, usize)], anchor: &[bool], cand: &[(usize, usize)]) -> (Vec<(usize, usize)>, usize) {
+    // union-find with the parity to the root; node `n` is "mask 1", tying the anchored shapes
+    let n = shapes.len();
+    let mut up: Vec<usize> = (0..=n).collect();
+    let mut par: Vec<u8> = vec![0; n + 1];
+    fn find(up: &mut [usize], par: &mut [u8], x: usize) -> (usize, u8) {
+        let mut p = 0u8;
+        let mut r = x;
+        while up[r] != r {
+            p ^= par[r];
+            r = up[r];
+        }
+        // path compression, keeping each node's parity to the new root
+        let (mut y, mut q) = (x, p);
+        while up[y] != r {
+            let next = up[y];
+            let pn = q ^ par[y];
+            up[y] = r;
+            par[y] = q;
+            y = next;
+            q = pn;
+        }
+        (r, p)
+    }
+    // tie a and b at parity d; false when they are tied the other way already
+    let mut tie = |a: usize, b: usize, d: u8| -> bool {
+        let ((ra, pa), (rb, pb)) = (find(&mut up, &mut par, a), find(&mut up, &mut par, b));
+        if ra == rb {
+            return pa ^ pb == d;
+        }
+        let (lo, hi) = (ra.min(rb), ra.max(rb));
+        up[hi] = lo;
+        par[hi] = pa ^ pb ^ d;
+        true
+    };
+    let poly = polygons(shapes, &vec![true; n]);
+    for (k, &p) in poly.iter().enumerate() {
+        tie(k, p, 0);
+    }
+    for &(i, j) in hard {
+        tie(i, j, 1);
+    }
+    for (k, s) in shapes.iter().enumerate() {
+        if anchor[k] && s.mask != 0 {
+            tie(k, n, u8::from(s.mask == 2));
+        }
+    }
+    let mut kept = Vec::new();
+    let mut dropped = 0;
+    for &(i, j) in cand {
+        if tie(i, j, 1) {
+            kept.push((i, j));
+        } else {
+            dropped += 1;
+        }
+    }
+    (kept, dropped)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,6 +397,43 @@ mod tests {
         assert_ne!(d.mask[0], d.mask[2], "with the forbidden-spacing pair they differ");
         assert_ne!(d.mask[0], d.mask[1]);
         assert_ne!(d.mask[0], d.mask[3]);
+    }
+
+    /// Rule: a pair is never taken at the cost of a harder rule. W and G tied to one mask through
+    /// spacing pairs (W-B1 and B1-G) cannot also be opposite: the
+    /// pair is left out and counted; on a free layout it is taken. An anchor that fixes both ends
+    /// to one mask leaves it out the same way.
+    #[test]
+    fn a_pair_that_would_close_an_odd_cycle_is_left_out() {
+        let v = case(21, Some(25), 25, 90);
+        let cand = forbidden_pairs(&v, &[R]);
+        assert_eq!(cand, vec![(0, 2)]);
+        let free = vec![false; v.len()];
+        assert_eq!(admit(&v, &[(0, 1), (0, 3)], &free, &cand), (cand.clone(), 0), "W-B and W-B: W and G still free");
+        assert_eq!(admit(&v, &[(0, 1), (1, 2)], &free, &cand), (vec![], 1), "W-B1-G ties W and G to one mask");
+        let mut a = v.clone();
+        a[0].mask = 2;
+        a[2].mask = 2;
+        let anchored = vec![true, false, true, false];
+        assert_eq!(admit(&a, &[], &anchored, &cand), (vec![], 1), "both anchored on mask 2");
+        a[2].mask = 1;
+        assert_eq!(admit(&a, &[], &anchored, &cand), (cand.clone(), 0), "anchored on opposite masks");
+        // one net's touching shapes are one polygon: W and G tied through shapes of their own nets
+        let mut net = v.clone();
+        net.push(sh("w", [310, 0, 397, 21]));
+        net.push(sh("g", [310, 112, 397, 133]));
+        assert_eq!(admit(&net, &[(1, 4), (1, 5)], &vec![false; net.len()], &cand), (vec![], 1), "via the shapes W and G touch");
+    }
+
+    /// Rule: masks along a chain of opposite pairs alternate, however the chain was joined. The
+    /// chain 0-1-2-3-4 joined out of order (3-4, 1-2, 2-3, 0-1): 0 and 4 on one mask, 0 and 3 opposite,
+    /// 1 and 4 opposite; each answer read after the ones before it.
+    #[test]
+    fn a_chain_of_pairs_alternates_in_any_join_order() {
+        let v: Vec<MaskShape> = (0..5).map(|k| sh(&format!("n{k}"), [k * 1000, 0, k * 1000 + 21, 310])).collect();
+        let hard = [(3, 4), (1, 2), (2, 3), (0, 1)];
+        let free = vec![false; v.len()];
+        assert_eq!(admit(&v, &hard, &free, &[(0, 4), (1, 4), (0, 3), (1, 3)]), (vec![(1, 4), (0, 3)], 2));
     }
 
     #[test]
